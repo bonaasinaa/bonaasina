@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bonaasina — Kos Asina & Kos Bona</title>
+  <meta name="description" content="Kos Asina dan Kos Bona: kamar bersih dengan harga jelas, bisa sewa bulanan atau tahunan. Lihat kamar kosong, harga, fasilitas, lalu jadwalkan survei.">
+  <meta name="theme-color" content="#F7EDE3">
+  <meta property="og:title" content="Bonaasina — Kos Asina & Kos Bona">
+  <meta property="og:description" content="Lihat kamar kosong, harga bulanan & tahunan, fasilitas, dan jadwalkan survei.">
+  <meta property="og:image" content="/assets/img/logo-bonaasina.png">
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
+  <link rel="preload" href="/fonts/libre-caslon-display-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/fonts.css">
+  <link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+  <a class="skip" href="#kamar">Langsung ke daftar kamar</a>
+
+  <div class="availability" id="availability" aria-live="polite">
+    <span class="availability__dot" aria-hidden="true"></span>
+    <span id="availabilityText">Memuat ketersediaan kamar…</span>
+    <a href="#kamar">Lihat kamar</a>
+  </div>
+
+  <header class="nav" id="nav">
+    <a class="nav__brand" href="#top" aria-label="Bonaasina, ke atas">
+      <img src="/assets/img/mark.webp" alt="" width="54" height="37">
+      <span>Bonaasina</span>
+    </a>
+    <nav class="nav__links" aria-label="Menu utama">
+      <a href="#rumah">Dua rumah</a>
+      <a href="#kamar">Kamar & harga</a>
+      <a href="#cara">Cara menyewa</a>
+      <a href="#lokasi">Lokasi</a>
+      <a href="#tanya">Tanya jawab</a>
+    </nav>
+    <a class="btn btn--ink btn--sm nav__cta" href="#survei">Jadwalkan survei</a>
+    <button class="nav__menu" id="menuBtn" type="button" aria-expanded="false" aria-controls="mobileMenu">Menu</button>
+    <nav class="mobile-menu" id="mobileMenu" aria-label="Menu" hidden>
+      <a href="#rumah">Dua rumah</a>
+      <a href="#kamar">Kamar & harga</a>
+      <a href="#cara">Cara menyewa</a>
+      <a href="#lokasi">Lokasi & aturan</a>
+      <a href="#tanya">Tanya jawab</a>
+      <a class="btn btn--red" href="#survei">Jadwalkan survei</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero__copy">
+        <h1 id="heroTitle" class="hero__title">
+          <span class="line"><span class="line__in">Pulang ke kamar</span></span>
+          <span class="line"><span class="line__in">yang <span class="rotator" id="rotator" aria-live="off"><span class="rotator__word">tenang</span></span>.</span></span>
+        </h1>
+        <p class="hero__lead" id="heroLead">Kos Asina & Kos Bona — kamar bersih dengan harga jelas, dikelola langsung oleh pemiliknya.</p>
+        <div class="hero__ctas">
+          <a class="btn btn--red" href="#kamar">Lihat kamar & harga</a>
+          <a class="btn btn--ghost" id="heroWa" href="#" target="_blank" rel="noopener">Tanya lewat WhatsApp</a>
+        </div>
+        <dl class="hero__facts" id="heroFacts"></dl>
+      </div>
+      <div class="hero__art" aria-hidden="true">
+        <div class="hero__sun"></div>
+        <img class="hero__logo" id="heroLogo" src="/assets/img/logo-bonaasina.webp" alt="" width="900" height="796">
+      </div>
+    </section>
+
+    <!-- ULOS BAND: satu-satunya elemen dekoratif yang bergerak sendiri -->
+    <div class="ulos" aria-hidden="true">
+      <div class="ulos__weave"></div>
+      <div class="ulos__track" id="ulosTrack"></div>
+    </div>
+
+    <!-- DUA RUMAH (tab ala showcase) -->
+    <section class="section rumah" id="rumah" aria-labelledby="rumahTitle">
+      <div class="section__head">
+        <h2 id="rumahTitle">Dua rumah, satu pengelola.</h2>
+        <p>Pilih yang paling cocok. Harga, aturan, dan fasilitasnya bisa berbeda.</p>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Pilih kos" id="propTabs"></div>
+      <div class="rumah__stage" id="propStage"></div>
+    </section>
+
+    <!-- KAMAR & HARGA -->
+    <section class="section kamar" id="kamar" aria-labelledby="kamarTitle">
+      <div class="section__head section__head--split">
+        <div>
+          <h2 id="kamarTitle">Kamar & harga</h2>
+          <p id="kamarNote">Status diperbarui langsung oleh pemilik.</p>
+        </div>
+        <div class="kamar__controls">
+          <div class="toggle" role="radiogroup" aria-label="Lama sewa" id="cycleToggle">
+            <span class="toggle__pill" aria-hidden="true"></span>
+            <button role="radio" aria-checked="true" data-cycle="bulanan">Bulanan</button>
+            <button role="radio" aria-checked="false" data-cycle="tahunan">Tahunan</button>
+          </div>
+          <p class="toggle__hint" id="cycleHint"></p>
+        </div>
+      </div>
+      <div class="filters">
+        <div class="chips" role="group" aria-label="Saring menurut kos" id="propChips"></div>
+        <label class="check"><input type="checkbox" id="onlyAvailable"> Tampilkan yang kosong saja</label>
+      </div>
+      <ul class="rooms" id="roomList" aria-live="polite"></ul>
+    </section>
+
+    <!-- CARA MENYEWA (ini memang urutan langkah) -->
+    <section class="section cara" id="cara" aria-labelledby="caraTitle">
+      <div class="section__head">
+        <h2 id="caraTitle">Cara menyewa</h2>
+        <p>Empat langkah, biasanya selesai dalam dua hari.</p>
+      </div>
+      <ol class="steps">
+        <li><h3>Pilih kamar</h3><p>Lihat kamar yang kosong di atas, lalu tanyakan detailnya lewat WhatsApp.</p></li>
+        <li><h3>Survei langsung</h3><p id="stepSurvey">Datang melihat kamar dan lingkungan sebelum memutuskan.</p></li>
+        <li><h3>Bayar deposit & sewa pertama</h3><p id="stepPay">Deposit dan sewa pertama dibayar sebelum masuk.</p></li>
+        <li><h3>Terima kunci</h3><p>Kamar dicek bersama, lalu kunci diserahkan. Tagihan berikutnya diingatkan lewat WhatsApp.</p></li>
+      </ol>
+    </section>
+
+    <!-- LOKASI & ATURAN -->
+    <section class="section lokasi" id="lokasi" aria-labelledby="lokasiTitle">
+      <div class="section__head">
+        <h2 id="lokasiTitle">Lokasi & aturan</h2>
+        <p>Baca aturannya sebelum survei supaya tidak ada yang mengejutkan.</p>
+      </div>
+      <div class="lokasi__grid" id="lokasiGrid"></div>
+    </section>
+
+    <!-- SURVEI -->
+    <section class="section survei" id="survei" aria-labelledby="surveiTitle">
+      <div class="survei__intro">
+        <h2 id="surveiTitle">Jadwalkan survei</h2>
+        <p>Isi formulir ini, lalu kami konfirmasi lewat WhatsApp. Data Anda hanya dipakai untuk menghubungi Anda soal survei.</p>
+        <p class="survei__hours" id="surveyHours"></p>
+      </div>
+      <form class="form" id="surveyForm" novalidate>
+        <div class="form__row">
+          <label>Kos yang ingin dilihat
+            <select name="propertyId" id="fProperty" required></select>
+          </label>
+          <label>Kamar <span class="opt">(opsional)</span>
+            <select name="roomId" id="fRoom"><option value="">Belum tahu, mau lihat dulu</option></select>
+          </label>
+        </div>
+        <div class="form__row">
+          <label>Nama
+            <input name="name" autocomplete="name" required maxlength="80">
+          </label>
+          <label>Nomor WhatsApp
+            <input name="phone" inputmode="tel" autocomplete="tel" placeholder="0812 3456 7890" required maxlength="20">
+          </label>
+        </div>
+        <div class="form__row">
+          <label>Tanggal survei
+            <input type="date" name="date" id="fDate" required>
+          </label>
+          <label>Jam
+            <select name="time">
+              <option>09.00–11.00</option><option>11.00–13.00</option><option>13.00–15.00</option><option>15.00–18.00</option>
+            </select>
+          </label>
+        </div>
+        <fieldset class="form__radios">
+          <legend>Rencana lama sewa</legend>
+          <label><input type="radio" name="duration" value="bulanan" checked> Bulanan</label>
+          <label><input type="radio" name="duration" value="tahunan"> Tahunan</label>
+          <label><input type="radio" name="duration" value="belum tahu"> Belum tahu</label>
+        </fieldset>
+        <label>Pekerjaan / kampus <span class="opt">(opsional)</span>
+          <input name="occupation" maxlength="80">
+        </label>
+        <label>Catatan <span class="opt">(opsional)</span>
+          <textarea name="note" rows="3" maxlength="600" placeholder="Misalnya: ingin kamar mandi dalam, bawa motor."></textarea>
+        </label>
+        <label class="hp" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
+        <p class="form__error" id="formError" role="alert" hidden></p>
+        <button class="btn btn--red btn--block" type="submit" id="surveySubmit">Kirim permintaan survei</button>
+      </form>
+      <div class="form__done" id="surveyDone" hidden tabindex="-1">
+        <img src="/assets/img/mark.webp" alt="" width="120" height="82">
+        <h3>Permintaan survei terkirim</h3>
+        <p id="doneText">Kami akan menghubungi Anda lewat WhatsApp untuk konfirmasi jadwal.</p>
+        <a class="btn btn--ink" id="doneWa" href="#" target="_blank" rel="noopener">Kabari juga lewat WhatsApp</a>
+      </div>
+    </section>
+
+    <!-- TANYA JAWAB -->
+    <section class="section tanya" id="tanya" aria-labelledby="tanyaTitle">
+      <div class="section__head">
+        <h2 id="tanyaTitle">Tanya jawab</h2>
+      </div>
+      <div class="faq" id="faq"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer__logos">
+      <img src="/assets/img/logo-asina.webp" alt="Logo Kos Asina" width="300" height="340" loading="lazy">
+      <img src="/assets/img/logo-bonaasina.webp" alt="Logo Bonaasina" width="420" height="371" loading="lazy" class="footer__main">
+      <img src="/assets/img/logo-bona.webp" alt="Logo Kos Bona" width="300" height="324" loading="lazy">
+    </div>
+    <div class="footer__info" id="footerInfo"></div>
+    <p class="footer__small">© <span id="year"></span> Bonaasina. Sudah ngekos di sini? Buka portal penghuni dari link WhatsApp yang dikirim pemilik. <a href="/admin/">Masuk sebagai pemilik</a></p>
+  </footer>
+
+  <a class="wa-float" id="waFloat" href="#" target="_blank" rel="noopener" aria-label="Chat WhatsApp pemilik kos">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.4.8 3.2.6.5 0 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2l-.5-.3Z"/></svg>
+    <span>Chat pemilik</span>
+  </a>
+
+  <script src="/js/config.js"></script>
+  <script src="/vendor/gsap.min.js" defer></script>
+  <script src="/vendor/ScrollTrigger.min.js" defer></script>
+  <script src="/vendor/lenis.min.js" defer></script>
+  <script src="/js/site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Admin — Bonaasina</title>
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="stylesheet" href="/css/fonts.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <!-- Masuk -->
+  <main class="login" id="login" hidden>
+    <form class="login__card" id="loginForm">
+      <img src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="220" height="194">
+      <h1>Masuk sebagai pemilik</h1>
+      <label>Email
+        <input type="email" name="email" id="loginEmail" autocomplete="username" required>
+      </label>
+      <label>Kata sandi
+        <input type="password" name="password" id="loginPassword" autocomplete="current-password" required>
+      </label>
+      <p class="err" id="loginErr" role="alert" hidden></p>
+      <button class="btn btn--red btn--block" type="submit">Masuk</button>
+      <button class="linkish" type="button" id="showSetup">Pertama kali masuk atau lupa kata sandi?</button>
+    </form>
+    <form class="login__card" id="setupForm" hidden>
+      <img src="/assets/img/mark.webp" alt="" width="120" height="82">
+      <h1>Atur kata sandi</h1>
+      <p class="muted small">Masukkan kode penyiapan sekali pakai yang Anda terima, lalu buat kata sandi baru (minimal 10 karakter).</p>
+      <label>Email<input type="email" name="email" id="setupEmail" autocomplete="username" required></label>
+      <label>Kode penyiapan<input name="code" id="setupCode" autocomplete="one-time-code" required></label>
+      <label>Kata sandi baru<input type="password" name="password" id="setupPassword" autocomplete="new-password" minlength="10" required></label>
+      <label>Ulangi kata sandi<input type="password" name="password2" id="setupPassword2" autocomplete="new-password" minlength="10" required></label>
+      <p class="err" id="setupErr" role="alert" hidden></p>
+      <button class="btn btn--red btn--block" type="submit">Simpan kata sandi</button>
+      <button class="linkish" type="button" id="backToLogin">Kembali ke halaman masuk</button>
+    </form>
+  </main>
+
+  <!-- Aplikasi -->
+  <div class="app" id="app" hidden>
+    <aside class="side">
+      <a class="side__brand" href="/" target="_blank" rel="noopener" title="Buka website">
+        <img src="/assets/img/mark.webp" alt="" width="44" height="30"><span>Bonaasina</span>
+      </a>
+      <nav class="side__nav" id="sideNav" aria-label="Menu admin">
+        <a href="#ringkasan" data-view="ringkasan"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg>Ringkasan</a>
+        <a href="#tagihan" data-view="tagihan"><svg viewBox="0 0 24 24"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2Zm3 5v2h6V7H9Zm0 4v2h6v-2H9Z"/></svg>Tagihan<span class="badge" id="badgeTagihan" hidden></span></a>
+        <a href="#penghuni" data-view="penghuni"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-8 8a8 8 0 0 1 16 0H4Z"/></svg>Penghuni</a>
+        <a href="#kamar" data-view="kamar"><svg viewBox="0 0 24 24"><path d="M12 3 2 11h3v10h5v-6h4v6h5V11h3L12 3Z"/></svg>Kamar & kos</a>
+        <a href="#survei" data-view="survei"><svg viewBox="0 0 24 24"><path d="M7 2v2H4v18h16V4h-3V2h-2v2H9V2H7Zm-1 8h12v10H6V10Z"/></svg>Survei<span class="badge" id="badgeSurvei" hidden></span></a>
+        <a href="#kerusakan" data-view="kerusakan"><svg viewBox="0 0 24 24"><path d="M22.7 19 13.6 9.9a6 6 0 0 0-7.9-7.6l3.9 3.9-2.8 2.8-4-3.9A6 6 0 0 0 10.4 13l9.1 9.1a1 1 0 0 0 1.4 0l1.8-1.8a1 1 0 0 0 0-1.3Z"/></svg>Kerusakan<span class="badge" id="badgeKerusakan" hidden></span></a>
+        <a href="#laporan" data-view="laporan"><svg viewBox="0 0 24 24"><path d="M4 20V10h3v10H4Zm6 0V4h3v16h-3Zm6 0v-7h3v7h-3Z"/></svg>Laporan</a>
+        <a href="#pengaturan" data-view="pengaturan"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4L19.4 13ZM13 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"/></svg>Pengaturan</a>
+      </nav>
+      <button class="side__logout" id="logout" type="button">Keluar</button>
+    </aside>
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+
+  <dialog class="dlg" id="dlg">
+    <form method="dialog" class="dlg__form" id="dlgForm" novalidate>
+      <header class="dlg__head"><h2 id="dlgTitle"></h2><button class="icon-btn" value="cancel" formnovalidate aria-label="Tutup">✕</button></header>
+      <div class="dlg__body" id="dlgBody"></div>
+      <p class="err" id="dlgErr" role="alert" hidden></p>
+      <footer class="dlg__foot">
+        <button class="btn btn--ghost" value="cancel" formnovalidate>Batal</button>
+        <button class="btn btn--red" id="dlgOk" value="ok">Simpan</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/js/config.js"></script>
+  <script src="/admin/admin.js" defer></script>
+</body>
+</html>

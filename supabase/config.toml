@@ -1,0 +1,11 @@
+# Konfigurasi Supabase CLI (untuk pengembangan lokal: `supabase start`)
+project_id = "bonaasina"
+
+[functions.api]
+# Fungsi ini memeriksa login sendiri (admin: token Supabase Auth, penghuni: token portal),
+# dan halaman publik memanggilnya tanpa login.
+verify_jwt = false
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
