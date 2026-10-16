@@ -42,7 +42,7 @@ Supabase Auth: login admin
    Cara yang sama dipakai bila lupa kata sandi.
 
 ### 2. Alamat API
-Isi `web/js/config.js` dengan alamat fungsi: `https://<project-ref>.supabase.co/functions/v1/api`.
+Isi `web/js/config.js` dengan alamat fungsi: `https://<project-ref>.supabase.co/functions/v1/api`. Proyek saat ini: `ncjecdnbrtsshqbxvddb` (organisasi bonaasinaa, region Sydney).
 
 ### 3. Cloudflare Pages
 Workers & Pages → Create → Pages → *Connect to Git* → pilih repo **bonaasina** →
