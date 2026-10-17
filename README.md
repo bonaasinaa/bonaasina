@@ -50,7 +50,7 @@ Workers & Pages → Create → Pages → *Connect to Git* → pilih repo **bonaa
 - Build command: *(kosong)*
 - Build output directory: **web**
 
-Setiap `git push` ke `main` otomatis tayang. `web/_headers` mengatur header keamanan dan cache; `web/404.html` dipakai untuk halaman tidak ditemukan.
+Setiap `git push` ke `main` otomatis tayang. Setelah mengubah file JS/CSS, naikkan nilai `?v=` di tag `<script>`/`<link>` HTML supaya browser tidak memakai versi lama (zona Cloudflare menyimpan cache browser 4 jam). `web/_headers` mengatur header keamanan dan cache; `web/404.html` dipakai untuk halaman tidak ditemukan.
 
 ### 4. Cek
 ```bash
@@ -76,3 +76,7 @@ Lalu arahkan `web/js/config.js` ke alamat lokal itu dan buka folder `web/` denga
 
 ## Catatan pajak
 Penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 2 ayat 3) dan diperlakukan sebagai penghasilan usaha. Pajak daerah (PBJT) bergantung Perda setempat. Pastikan ke KPP/konsultan.
+
+## Analitik & log aktivitas
+- **Google Analytics 4**: ID di `web/js/config.js` (`ga4Id`). `web/js/analytics.js` mengirim page view dengan alamat bersih (tanpa `#` dan `?`), jadi token portal penghuni tidak pernah terkirim. Admin mengirim page view per menu (`/admin/<menu>`). Event: `generate_lead` (formulir survei terkirim), `contact_whatsapp` (klik tautan WA), `page_not_found`.
+- **Log aktivitas** (menu admin *Log aktivitas*, tabel `activity_log`): login/keluar dan percobaan gagal, semua perubahan data oleh admin, unduhan & bukti bayar yang dibuka, akses portal penghuni, dan permintaan survei. Disimpan 180 hari, dihapus otomatis.
