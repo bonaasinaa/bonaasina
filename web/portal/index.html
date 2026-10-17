@@ -2,34 +2,18 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#F7EDE3">
   <title>Portal Penghuni — Bonaasina</title>
-  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
-  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
-  <link rel="stylesheet" href="/css/fonts.css?v=20261017b">
-  <link rel="stylesheet" href="/css/site.css?v=20261017b">
-  <link rel="stylesheet" href="/portal/portal.css?v=20261017b">
+  <!-- Portal lama (link pribadi) sudah diganti dashboard penghuni dengan username & kata sandi. -->
+  <script>
+    try { localStorage.removeItem('bonaasina-portal-token'); } catch (e) { /* abaikan */ }
+    location.replace('/penghuni/');
+  </script>
+  <meta http-equiv="refresh" content="0; url=/penghuni/">
 </head>
-<body class="portal">
-  <header class="p-head">
-    <a class="p-head__brand" href="/" aria-label="Website Bonaasina">
-      <img src="/assets/img/mark.webp" alt="" width="46" height="31"><span>Bonaasina</span>
-    </a>
-    <span class="p-head__tag">Portal penghuni</span>
-  </header>
-
-  <main class="p-main" id="app" aria-live="polite">
-    <div class="p-loading" id="loading"><img src="/assets/img/mark.webp" alt="" width="96" height="65"><p>Memuat data Anda…</p></div>
-  </main>
-
-  <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" hidden>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <script src="/js/config.js?v=20261017b"></script>
-  <script src="/portal/portal.js?v=20261017b" defer></script>
-  <script src="/js/analytics.js?v=20261017b" defer></script>
+<body>
+  <p>Portal penghuni sudah pindah. <a href="/penghuni/">Buka dashboard penghuni</a>.</p>
 </body>
 </html>

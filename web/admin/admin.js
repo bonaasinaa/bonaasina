@@ -41,7 +41,8 @@
     catch { throw new Error('Tidak bisa terhubung ke server. Periksa koneksi internet lalu coba lagi.'); }
     if (res.status === 401 && !PUBLIC_PATHS.includes(path) && (await refreshSession())) res = await rawFetch(method, path, body, raw);
     if (res.status === 401 && !PUBLIC_PATHS.includes(path)) { setSession(null); showLogin(); throw new Error('Silakan masuk dulu.'); }
-    const data = res.headers.get('content-type')?.includes('json') ? await res.json() : res.headers.get('content-type')?.includes('csv') ? await res.blob() : await res.text();
+    const ct = res.headers.get('content-type') || '';
+    const data = ct.includes('json') ? await res.json() : ct.includes('csv') || ct.includes('pdf') ? await res.blob() : await res.text();
     if (!res.ok) throw new Error(data.error || 'Terjadi kesalahan.');
     // Setiap perubahan data membuat cache usang; halaman berikutnya diambil ulang dari server.
     if (method !== 'GET' && !PUBLIC_PATHS.includes(path)) { for (const v of store.values()) v.stale = true; forceFresh = true; }
@@ -82,7 +83,8 @@
 
   // ---------- dialog ----------
   const dlg = $('#dlg'); let dlgHandler = null;
-  function openDialog({ title, body, ok = 'Simpan', okClass = 'btn--red', onOk, onOpen }) {
+  function openDialog({ title, body, ok = 'Simpan', okClass = 'btn--red', onOk, onOpen, wide = false }) {
+    dlg.classList.toggle('dlg--wide', wide);
     $('#dlgTitle').textContent = title; $('#dlgBody').innerHTML = body;
     $('#dlgOk').textContent = ok; $('#dlgOk').className = `btn ${okClass}`; $('#dlgOk').hidden = !onOk;
     $('.dlg__foot .btn--ghost').textContent = onOk ? 'Batal' : 'Tutup';
@@ -97,7 +99,7 @@
     try {
       const data = Object.fromEntries(new FormData($('#dlgForm')));
       await dlgHandler(data, $('#dlgBody'));
-      dlg.close();
+      if (dlg.open && !dlg.dataset.keep) dlg.close();
     } catch (ex) { if (!ex.keepOpen) { $('#dlgErr').textContent = ex.message; $('#dlgErr').hidden = false; } }
     finally { btn.disabled = false; }
   });
@@ -132,8 +134,17 @@
   }
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault(); const btn = $('button[type=submit]', e.target); btn.disabled = true;
+    const id = e.target.email.value.trim(); const password = e.target.password.value;
     try {
-      setSession(await api('POST', '/login', { email: e.target.email.value, password: e.target.password.value }));
+      if (!id.includes('@')) {
+        // Username penghuni → masuk ke dashboard penghuni.
+        const res = await fetch(API.replace(/\/admin$/, '') + '/penghuni/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: id, password }) });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Username atau kata sandi salah.');
+        try { localStorage.setItem('bonaasina-penghuni-session', JSON.stringify(out)); } catch { /* abaikan */ }
+        location.href = '/penghuni/'; return;
+      }
+      setSession(await api('POST', '/login', { email: id, password }));
       e.target.password.value = ''; $('#loginErr').hidden = true; start();
     } catch (ex) { $('#loginErr').textContent = ex.message; $('#loginErr').hidden = false; }
     finally { btn.disabled = false; }
@@ -157,18 +168,22 @@
   async function start() {
     $('#login').hidden = true; $('#app').hidden = false;
     main.innerHTML = skeleton();
+    BonaLoader.show('Menyiapkan dashboard…', 0);
     try { [cache.properties, cache.settings] = await Promise.all([get('/properties'), get('/settings')]); }
-    catch (ex) { if (ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; return; }
-    await route();
+    catch (ex) { BonaLoader.hide(); if (ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; return; }
+    try { await route(); } finally { BonaLoader.hide(); }
     prefetchAll();
   }
 
   // ---------- router ----------
-  const views = { ringkasan, tagihan, penghuni, kamar, survei, kerusakan, laporan, aktivitas, pengaturan };
-  const TITLES = { ringkasan: 'Ringkasan', tagihan: 'Tagihan', penghuni: 'Penghuni', kamar: 'Kamar & kos', survei: 'Survei', kerusakan: 'Kerusakan', laporan: 'Laporan', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan' };
+  const views = { ringkasan, tagihan, laporan, penghuni, kontrak, pengumuman, piket, kerusakan, kamar, survei, tunggu, aktivitas, pengaturan };
+  const TITLES = { ringkasan: 'Ringkasan', tagihan: 'Tagihan', laporan: 'Laporan', penghuni: 'Penghuni', kontrak: 'Kontrak', pengumuman: 'Pengumuman', piket: 'Piket', kerusakan: 'Kerusakan', kamar: 'Kamar & kos', survei: 'Survei', tunggu: 'Daftar tunggu', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan' };
+  const hashParams = () => new URLSearchParams(location.hash.split('?')[1] || '');
   // Data yang dibutuhkan tiap menu; diambil bersamaan sebelum halaman digambar.
-  const deps = (name) => ({
-    ringkasan: ['/summary', '/invoices'], tagihan: ['/invoices', '/tenants'], penghuni: ['/tenants', '/rooms'],
+  const deps = (name, p = new URLSearchParams()) => ({
+    ringkasan: ['/summary', '/invoices'], tagihan: ['/invoices', '/tenants'],
+    penghuni: p.get('id') ? [`/tenants/${p.get('id')}/detail`, '/settings'] : ['/tenants', '/rooms'],
+    kontrak: ['/contracts', '/summary', '/tenants'], pengumuman: ['/announcements'], piket: ['/chores'], tunggu: ['/waitlist'],
     kamar: ['/rooms', '/properties'], survei: ['/surveys'], kerusakan: ['/issues'],
     laporan: [`/reports?year=${repYear}`, '/expenses'], aktivitas: [activityPath()], pengaturan: ['/settings'],
   }[name] || []);
@@ -178,9 +193,10 @@
   async function route() {
     const seq = ++routeSeq;
     const name = currentView(); const view = views[name];
-    const paths = deps(name);
+    const key = `${name}?${hashParams()}`;
+    const paths = deps(name, hashParams());
     const fresh = forceFresh; forceFresh = false;
-    const isNewView = shownView !== name;
+    const isNewView = shownView !== key;
     $$('#sideNav a').forEach((a) => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     $('#topTitle').textContent = TITLES[name];
     document.title = `${TITLES[name]} — Admin Bonaasina`;
@@ -191,15 +207,17 @@
       main.onclick = null; main.onchange = null;
       const y = isNewView ? 0 : scrollY;
       await view();
-      shownView = name;
+      shownView = key;
       if (isNewView) { main.classList.remove('is-in'); void main.offsetWidth; main.classList.add('is-in'); scrollTo(0, 0); } else scrollTo(0, y);
     };
     const fail = (ex) => { if (seq === routeSeq && ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; };
 
     // 1) Gambar langsung dari cache bila ada (kecuali tepat setelah data diubah).
     const cached = !fresh && paths.every((p) => store.has(p));
+    // Pindah ke menu yang datanya belum ada: layar muat penuh sampai tampilan tujuan siap.
+    const blocking = !cached && isNewView;
     if (cached) { try { await draw(); } catch (ex) { fail(ex); } }
-    else if (isNewView) main.innerHTML = skeleton();
+    else if (isNewView) { main.innerHTML = skeleton(); BonaLoader.show(`Memuat ${TITLES[name].toLowerCase()}…`); }
     else progress(true);
     renderBadges();
 
@@ -215,14 +233,14 @@
       if (changed && busy && dlg.open) dlg.dataset.refresh = '1';
       else if (changed && !busy) await draw();
     } catch (ex) { if (!cached) fail(ex); }
-    finally { if (seq === routeSeq) progress(false); }
+    finally { if (seq === routeSeq) progress(false); if (blocking) BonaLoader.hide(); }
     refreshBadges();
   }
   addEventListener('hashchange', () => route());
 
   // Ambil data semua menu di latar belakang setelah masuk, supaya klik pertama ke tiap menu juga instan.
   async function prefetchAll() {
-    const list = [...new Set(Object.keys(views).flatMap(deps))].filter((p) => !store.has(p));
+    const list = [...new Set(Object.keys(views).flatMap((n) => deps(n)))].filter((p) => !store.has(p));
     for (let i = 0; i < list.length; i += 3) {
       await Promise.all(list.slice(i, i + 3).map((p) => fetchFresh(p).catch(() => {})));
     }
@@ -250,7 +268,8 @@
     const s = store.get('/summary')?.data; if (!s) return;
     const set = (id, n) => { const b = $(id); b.textContent = n; b.hidden = !n; };
     set('#badgeTagihan', s.overdue + s.proofsPending); set('#badgeSurvei', s.newSurveys); set('#badgeKerusakan', s.openIssues);
-    const total = s.overdue + s.proofsPending + s.newSurveys + s.openIssues;
+    set('#badgeKontrak', (s.contractsEnding || 0) + (s.contractDecisions || 0)); set('#badgeTunggu', s.waitlistToNotify || 0);
+    const total = s.overdue + s.proofsPending + s.newSurveys + s.openIssues + (s.contractsEnding || 0) + (s.contractDecisions || 0) + (s.waitlistToNotify || 0);
     $('#navDot').hidden = !total;
   }
   async function refreshBadges() {
@@ -295,6 +314,7 @@
         <div class="panel stat"><p class="stat__label">Uang masuk bulan ini</p><p class="stat__value">${rp(s.incomeThisMonth)}</p><p class="stat__sub">Pengeluaran ${rp(s.expensesThisMonth)}</p></div>
         <div class="panel stat ${s.proofsPending ? 'stat--alert' : ''}"><p class="stat__label">Perlu dicek</p><p class="stat__value">${s.proofsPending + s.openIssues + s.newSurveys}</p><p class="stat__sub"><a href="#tagihan">${s.proofsPending} bukti bayar</a>, <a href="#kerusakan">${s.openIssues} kerusakan</a>, <a href="#survei">${s.newSurveys} survei</a></p></div>
       </div>
+      ${todoPanel(s)}
       ${proofs.length ? `<div class="panel mt"><h2>Bukti bayar menunggu dicek</h2><table><tbody>${proofs.map((i) => `<tr>
         <td data-label="Penghuni"><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></td>
         <td data-label="Dikirim" class="nowrap">${tgl(i.proofUploadedAt)}</td>
@@ -313,10 +333,26 @@
     bindInvoiceActions(inv);
   }
 
+  function todoPanel(s) {
+    const items = [
+      [s.proofsPending, '#tagihan', 'bukti bayar menunggu dicek', true],
+      [s.contractDecisions, '#kontrak', 'penghuni memilih perpanjang atau berhenti', true],
+      [s.waitlistToNotify, '#tunggu', 'calon penyewa perlu dikabari, ada kamar kosong', true],
+      [s.contractsEnding, '#kontrak', 'kontrak berakhir dalam 30 hari tanpa keputusan', false],
+      [s.contractsPending, '#kontrak', 'kontrak menunggu persetujuan penghuni', false],
+      [s.tenantsWithoutContract, '#penghuni', 'penghuni aktif belum punya kontrak', false],
+      [s.newSurveys, '#survei', 'permintaan survei baru', false],
+      [s.openIssues, '#kerusakan', 'laporan kerusakan terbuka', false],
+    ].filter(([n]) => n);
+    return `<div class="panel mt"><h2>Perlu tindakan</h2>${items.length ? `<div class="todo">${items.map(([n, href, text, urgent]) => `<a href="${href}" class="${urgent ? 'is-urgent' : ''}"><span class="count">${n}</span><span>${text}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu ditindaklanjuti.</p>'}</div>`;
+  }
+
   // ---------- aksi tagihan (dipakai di beberapa halaman) ----------
   function bindInvoiceActions(list) {
     main.onclick = async (e) => {
       const r = e.target.closest('[data-remind]'), p = e.target.closest('[data-pay]'), u = e.target.closest('[data-unpay]'), x = e.target.closest('[data-del-inv]'), pf = e.target.closest('[data-proof]');
+      const kw = e.target.closest('[data-receipt]');
+      if (kw) { const inv = list.find((i) => i.id === kw.dataset.receipt); download(`/invoices/${inv.id}/receipt.pdf`, `kuitansi-${safeName(inv.tenantName)}-${safeName(inv.periodLabel)}.pdf`); }
       if (pf) {
         const inv = list.find((i) => i.id === pf.dataset.proof);
         try {
@@ -332,15 +368,15 @@
                 <label>Cara bayar<select name="method"><option value="transfer">Transfer bank</option><option value="qris">QRIS</option><option value="lainnya">Lainnya</option></select></label>
               </div>
               <details class="reject"><summary>Tolak bukti ini</summary>
-                <label class="mt">Alasan (dikirim ke portal penghuni)<input id="rejectNote" placeholder="Contoh: nominal kurang Rp50.000"></label>
+                <label class="mt">Alasan (tampil di dashboard penghuni)<input id="rejectNote" placeholder="Contoh: nominal kurang Rp50.000"></label>
                 <button type="button" class="btn btn--ghost btn--sm mt" id="rejectBtn">Tolak bukti</button></details>`,
             onOpen: (b) => {
               $('#rejectBtn', b).onclick = async () => {
-                try { await api('POST', `/invoices/${inv.id}/reject-proof`, { note: $('#rejectNote', b).value }); dlg.close(); toast('Bukti ditolak. Penghuni akan melihat alasannya di portal.'); route(); }
+                try { await api('POST', `/invoices/${inv.id}/reject-proof`, { note: $('#rejectNote', b).value }); dlg.close(); toast('Bukti ditolak. Penghuni akan melihat alasannya di dashboard.'); route(); }
                 catch (ex) { $('#dlgErr').textContent = ex.message; $('#dlgErr').hidden = false; }
               };
             },
-            onOk: async (d) => { await api('POST', `/invoices/${inv.id}/pay`, d); toast(`Bukti diterima. Tagihan ${inv.tenantName} lunas.`); route(); },
+            onOk: async (d) => { const out = await api('POST', `/invoices/${inv.id}/pay`, d); toast(`Bukti diterima. Kuitansi ${out.receiptNo} terbit di dashboard ${inv.tenantName}.`); route(); },
           });
         } catch (ex) { toast(ex.message, true); }
       }
@@ -370,7 +406,7 @@
               <label>Cara bayar<select name="method"><option value="transfer">Transfer bank</option><option value="qris">QRIS</option><option value="tunai">Tunai</option><option value="lainnya">Lainnya</option></select></label>
               <label>Catatan <span class="hint">opsional</span><input name="note" value="${esc(inv.note || '')}"></label>
             </div>`,
-          onOk: async (d) => { await api('POST', `/invoices/${inv.id}/pay`, d); toast(`Tagihan ${inv.tenantName} ditandai lunas.`); route(); },
+          onOk: async (d) => { const out = await api('POST', `/invoices/${inv.id}/pay`, d); toast(`Tagihan ${inv.tenantName} lunas. Kuitansi ${out.receiptNo} dibuat.`); route(); },
         });
       }
       if (u) {
@@ -407,7 +443,7 @@
         <td data-label="Status">${i.status === 'lunas' ? `<span class="pill pill--lunas">Lunas ${tgl(i.paidAt)}</span>` : i.proofStatus === 'menunggu' ? '<span class="pill pill--dikonfirmasi">Bukti dikirim</span>' : i.overdue ? '<span class="pill pill--terlambat">Terlambat</span>' : '<span class="pill pill--belum">Belum bayar</span>'}${i.proofStatus === 'ditolak' && i.status === 'belum' ? `<span class="sub">Bukti ditolak: ${esc(i.proofNote)}</span>` : ''}</td>
         <td class="actions">${i.status === 'belum'
           ? (i.proofStatus === 'menunggu' ? `<button class="btn btn--red btn--sm" data-proof="${i.id}">Cek bukti</button>` : `<button class="btn btn--green btn--sm" data-remind="${i.id}">Kirim pengingat WA</button>`) + `<button class="btn btn--ghost btn--sm" data-pay="${i.id}">Tandai lunas</button>`
-          : `<button class="btn btn--ghost btn--sm" data-unpay="${i.id}">Batalkan lunas</button>`}</td></tr>`).join('')}</tbody></table>`
+          : `<button class="btn btn--ghost btn--sm" data-receipt="${i.id}">Kuitansi</button><button class="btn btn--ghost btn--sm" data-unpay="${i.id}">Batalkan lunas</button>`}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty">${invFilter === 'terlambat' ? 'Tidak ada tagihan terlambat.' : 'Tidak ada tagihan untuk pilihan ini.'}</div>`;
     };
     main.innerHTML = head('Tagihan', 'Tagihan sewa dibuat otomatis dari tanggal mulai sewa setiap penghuni.', '<button class="btn btn--red" id="addInv">Tagihan tambahan</button>') + `
@@ -440,61 +476,30 @@
   // ========== PENGHUNI ==========
   let tenantFilter = 'aktif';
   async function penghuni() {
+    const id = hashParams().get('id');
+    if (id) return penghuniDetail(id);
     const [tenants, rooms] = await Promise.all([get('/tenants'), get('/rooms')]);
     const draw = () => {
       const list = tenants.filter((t) => tenantFilter === 'semua' || t.status === tenantFilter);
-      $('#tnTable').innerHTML = list.length ? `<table><thead><tr><th>Nama</th><th>Kamar</th><th>Sewa</th><th>Mulai</th><th>Tagihan</th><th></th></tr></thead><tbody>${list.map((t) => `<tr>
-        <td data-label="Nama"><strong>${esc(t.name)}</strong><span class="sub">${esc(t.phone || 'Belum ada nomor WA')}${t.occupation ? `, ${esc(t.occupation)}` : ''}</span></td>
+      $('#tnTable').innerHTML = list.length ? `<table><thead><tr><th>Nama</th><th>Kamar</th><th>Sewa</th><th>Mulai</th><th>Akun</th><th>Tagihan</th><th></th></tr></thead><tbody>${list.map((t) => `<tr>
+        <td data-label="Nama"><a href="#penghuni?id=${t.id}"><strong>${esc(t.name)}</strong></a><span class="sub">${esc(t.phone || 'Belum ada nomor WA')}${t.occupation ? `, ${esc(t.occupation)}` : ''}</span></td>
         <td data-label="Kamar">${esc(t.room?.code || '-')}<span class="sub">${esc(propName(t.room?.propertyId))}</span></td>
         <td data-label="Sewa">${rp(t.rentAmount)}<span class="sub">per ${t.rentCycle === 'tahunan' ? 'tahun' : 'bulan'}</span></td>
         <td data-label="Mulai">${tgl(t.startDate)}${t.endDate ? `<span class="sub">${t.status === 'keluar' ? 'Keluar' : 'Sampai'} ${tgl(t.endDate)}</span>` : ''}</td>
+        <td data-label="Akun">${t.username ? `<span class="pill pill--${t.loginEnabled && t.status === 'aktif' ? 'aktif' : 'nonaktif'}">${esc(t.username)}</span>` : '<span class="pill pill--nonaktif">Belum ada</span>'}</td>
         <td data-label="Tagihan">${t.status !== 'aktif' ? `<span class="pill pill--keluar">Sudah keluar</span>` : t.unpaidCount ? `<span class="pill ${t.overdue ? 'pill--terlambat' : 'pill--belum'}">${t.unpaidCount} belum bayar, ${rp(t.unpaidAmount)}</span>` : '<span class="pill pill--lunas">Lunas semua</span>'}</td>
-        <td class="actions">${t.status === 'aktif' ? `<button class="btn btn--${t.hasPortal ? 'ghost' : 'green'} btn--sm" data-portal="${t.id}">${t.hasPortal ? 'Link portal' : 'Kirim link portal'}</button>` : ''}<button class="btn btn--ghost btn--sm" data-edit="${t.id}">Ubah</button>${t.status === 'aktif' ? `<button class="btn btn--ghost btn--sm" data-out="${t.id}">Keluar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+        <td class="actions"><a class="btn btn--ghost btn--sm" href="#penghuni?id=${t.id}">Detail</a>${t.status === 'aktif' && !t.username ? `<button class="btn btn--green btn--sm" data-acc="${t.id}">Buat akun</button>` : ''}<button class="btn btn--ghost btn--sm" data-edit="${t.id}">Ubah</button></td></tr>`).join('')}</tbody></table>`
         : `<div class="empty">${tenantFilter === 'aktif' ? 'Belum ada penghuni aktif.' : 'Tidak ada data.'}<br><button class="btn btn--red" data-add>Tambah penghuni</button></div>`;
     };
-    main.innerHTML = head('Penghuni', `${tenants.filter((t) => t.status === 'aktif').length} penghuni aktif.`, '<button class="btn btn--red" data-add>Tambah penghuni</button>') + `
+    main.innerHTML = head('Penghuni', `${tenants.filter((t) => t.status === 'aktif').length} penghuni aktif. Buka detail untuk akun login, kontrak, kondisi kamar, dan kartu penghuni.`, '<button class="btn btn--red" data-add>Tambah penghuni</button>') + `
       <div class="toolbar"><div class="seg" id="tnSeg">${[['aktif', 'Aktif'], ['keluar', 'Sudah keluar'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${tenantFilter === k}" data-k="${k}">${l}</button>`).join('')}</div></div>
       <div class="table-wrap" id="tnTable"></div>`;
     draw();
     $('#tnSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; tenantFilter = b.dataset.k; $$('#tnSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
-
     main.onclick = (e) => {
       if (e.target.closest('[data-add]')) tenantDialog(null, rooms);
       const ed = e.target.closest('[data-edit]'); if (ed) tenantDialog(tenants.find((t) => t.id === ed.dataset.edit), rooms);
-      const pt = e.target.closest('[data-portal]');
-      if (pt) {
-        const t = tenants.find((x) => x.id === pt.dataset.portal);
-        openDialog({
-          title: `Portal ${t.name}`, ok: t.hasPortal ? 'Buat link baru' : 'Buat link portal',
-          body: `<p>Lewat portal, penghuni bisa melihat tagihan, mengunggah bukti bayar, dan melaporkan kerusakan tanpa perlu akun atau kata sandi.</p>
-            ${t.hasPortal ? '<p class="hint mt">Penghuni ini sudah punya link. Link tidak bisa ditampilkan ulang karena hanya disimpan dalam bentuk tersandi. Membuat link baru akan mematikan link lama.</p>' : ''}
-            <div id="portalOut"></div>`,
-          onOk: async (_d, body) => {
-            const { token } = await api('POST', `/tenants/${t.id}/portal`);
-            const link = `${location.origin}/portal/#${token}`;
-            const msg = `Horas ${t.name}, ini link portal penghuni Bonaasina untuk Anda:\n${link}\n\nDi sana Anda bisa melihat tagihan, mengunggah bukti bayar, dan melaporkan kerusakan kamar. Simpan link ini dan jangan dibagikan ke orang lain.`;
-            const wa = t.phone ? `https://wa.me/${normPhone(t.phone)}?text=${encodeURIComponent(msg)}` : null;
-            t.hasPortal = true; dlg.dataset.refresh = '1';
-            $('#portalOut', body).innerHTML = `<div class="preview" id="portalLink" style="word-break:break-all">${esc(link)}</div>
-              <div class="btn-row mt">${wa ? `<a class="btn btn--green" href="${esc(wa)}" target="_blank" rel="noopener">Kirim lewat WhatsApp</a>` : '<span class="hint">Nomor WA penghuni belum diisi.</span>'}
-              <button type="button" class="btn btn--ghost" id="portalCopy">Salin link</button></div>`;
-            $('#portalCopy', body).onclick = () => copyText($('#portalLink', body));
-            $('#dlgOk').hidden = true; $('.dlg__foot .btn--ghost').textContent = 'Selesai';
-            throw Object.assign(new Error(''), { keepOpen: true });
-          },
-        });
-        return;
-      }
-      const out = e.target.closest('[data-out]');
-      if (out) {
-        const t = tenants.find((x) => x.id === out.dataset.out);
-        openDialog({
-          title: `${t.name} keluar`, ok: 'Simpan', body: `<p class="muted">Kamar ${esc(t.room?.code)} akan menjadi kosong. Tagihan yang belum dibayar untuk periode setelah tanggal keluar akan dihapus; tunggakan sebelumnya tetap tercatat.</p>
-            <label class="mt">Tanggal keluar<input type="date" name="endDate" value="${today()}"></label>
-            ${t.deposit ? `<p class="hint">Ingat: deposit ${rp(t.deposit)} perlu dikembalikan atau diperhitungkan.</p>` : ''}`,
-          onOk: async (d) => { await api('POST', `/tenants/${t.id}/checkout`, d); toast(`${t.name} tercatat keluar.`); route(); },
-        });
-      }
+      const ac = e.target.closest('[data-acc]'); if (ac) accountDialog(tenants.find((t) => t.id === ac.dataset.acc));
     };
   }
   function tenantDialog(t, rooms) {
@@ -522,6 +527,10 @@
           <label>Nomor<input name="emergencyPhone" inputmode="tel" value="${v('emergencyPhone')}"></label>
           <label>Hubungan<input name="emergencyRelation" value="${v('emergencyRelation')}" placeholder="Orang tua, saudara…"></label>
           <label class="span-all">Catatan<textarea name="note" rows="2">${v('note')}</textarea></label>
+          ${isNew ? `<p class="fieldset-title span-all">Akun login dashboard</p>
+          <label class="span-all"><input type="checkbox" name="makeAccount" id="tMake" checked>Buat akun supaya penghuni bisa masuk ke dashboard</label>
+          <label class="t-acc">Username<input name="username" id="tUser" autocapitalize="none" spellcheck="false" autocomplete="off"><span class="hint">Huruf kecil, angka, titik, minus, atau garis bawah.</span></label>
+          <label class="t-acc">Kata sandi<span class="pw-row"><input name="password" id="tPw" value="${genPassword()}" autocomplete="off"><button type="button" class="btn btn--ghost btn--sm" id="tPwGen">Buat acak</button></span><span class="hint">Minimal 8 karakter. Ditampilkan sekali untuk dikirim ke penghuni.</span></label>` : ''}
           <p class="hint span-all">Foto KTP sengaja tidak disimpan di sistem ini. Cukup periksa KTP saat penghuni masuk, sesuai prinsip UU Pelindungan Data Pribadi.</p>
         </div>`,
       onOpen: (body) => {
@@ -532,12 +541,25 @@
         $('#tAmount', body).addEventListener('input', (e) => { e.target.dataset.touched = 1; });
         if (!isNew) $('#tAmount', body).dataset.touched = 1;
         $('#tRoom', body).addEventListener('change', fill); $('#tCycle', body).addEventListener('change', () => { delete $('#tAmount', body).dataset.touched; fill(); });
-        if (isNew) fill();
+        if (isNew) {
+          fill();
+          // Usulan username dari nama + kamar, selama belum diubah manual.
+          const suggest = () => { const u = $('#tUser', body); if (!u.dataset.touched) u.value = suggestUsername($('[name=name]', body).value, $('#tRoom', body).selectedOptions[0]?.textContent.split(',')[0]); };
+          $('#tUser', body).addEventListener('input', (e) => { e.target.dataset.touched = 1; });
+          $('[name=name]', body).addEventListener('input', suggest); $('#tRoom', body).addEventListener('change', suggest); suggest();
+          $('#tPwGen', body).onclick = () => { $('#tPw', body).value = genPassword(); };
+          $('#tMake', body).onchange = (e) => $$('.t-acc', body).forEach((el) => { el.hidden = !e.target.checked; });
+        }
       },
       onOk: async (d) => {
         if (!d.billFrom) d.billFrom = '';
-        if (isNew) { await api('POST', '/tenants', d); toast(`${d.name} ditambahkan. Tagihannya dibuat otomatis.`); }
-        else { await api('PUT', `/tenants/${t.id}`, d); toast('Perubahan disimpan.'); }
+        if (isNew) {
+          const withAcc = d.makeAccount === 'on'; delete d.makeAccount;
+          if (!withAcc) { delete d.username; delete d.password; } else d.username = (d.username || '').trim().toLowerCase();
+          const rec = await api('POST', '/tenants', d);
+          toast(`${d.name} ditambahkan. Tagihannya dibuat otomatis.`);
+          if (withAcc) setTimeout(() => showCredentials(rec, d.username, d.password), 80);
+        } else { await api('PUT', `/tenants/${t.id}`, d); toast('Perubahan disimpan.'); }
         route();
       },
     });
@@ -702,7 +724,7 @@
         <td class="actions">${i.photoPath ? `<button class="btn btn--ghost btn--sm" data-photo="${esc(i.photoPath)}">Lihat foto</button>` : ''}<button class="btn btn--ghost btn--sm" data-issue="${i.id}">Perbarui</button>${i.waUrl ? `<a class="btn btn--green btn--sm" href="${esc(i.waUrl)}" target="_blank" rel="noopener">Balas di WA</a>` : ''}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty">${issueFilter === 'terbuka' ? 'Tidak ada laporan kerusakan yang terbuka.' : 'Tidak ada laporan.'}</div>`;
     };
-    main.innerHTML = head('Kerusakan', 'Laporan dari portal penghuni. Ubah statusnya supaya penghuni tahu perkembangannya.') + `
+    main.innerHTML = head('Kerusakan', 'Laporan dari dashboard penghuni. Ubah statusnya supaya penghuni tahu perkembangannya.') + `
       <div class="toolbar"><div class="seg" id="issSeg">${[['terbuka', 'Terbuka'], ['selesai', 'Selesai'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${issueFilter === k}" data-k="${k}">${l}</button>`).join('')}</div></div>
       <div class="table-wrap" id="issTable"></div>`;
     draw();
@@ -721,7 +743,7 @@
         openDialog({
           title: i.title, ok: 'Simpan',
           body: `<div class="fields"><label>Status<select name="status">${Object.entries(STATUS_ISSUE).map(([k, l]) => `<option value="${k}" ${i.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-            <label>Catatan untuk penghuni <span class="hint">tampil di portal</span><textarea name="ownerNote" rows="3" placeholder="Contoh: tukang datang Sabtu pagi">${esc(i.ownerNote || '')}</textarea></label></div>`,
+            <label>Catatan untuk penghuni <span class="hint">tampil di dashboard penghuni</span><textarea name="ownerNote" rows="3" placeholder="Contoh: tukang datang Sabtu pagi">${esc(i.ownerNote || '')}</textarea></label></div>`,
           onOk: async (d) => { await api('PUT', `/issues/${i.id}`, d); toast('Laporan diperbarui.'); route(); },
         });
       }
@@ -802,11 +824,11 @@
   async function aktivitas() {
     const data = await get(activityPath());
     const c = data.counts;
-    main.innerHTML = head('Log aktivitas', `Siapa melakukan apa di admin, portal penghuni, dan formulir website. Disimpan ${data.keepDays} hari.`) + `
+    main.innerHTML = head('Log aktivitas', `Siapa melakukan apa di admin, dashboard penghuni, dan formulir website. Disimpan ${data.keepDays} hari.`) + `
       <div class="grid grid--stats">
         <div class="panel stat"><p class="stat__label">Aktivitas 30 hari</p><p class="stat__value">${c.semua}</p><p class="stat__sub">semua pengguna</p></div>
         <div class="panel stat"><p class="stat__label">Oleh admin</p><p class="stat__value">${c.admin}</p><p class="stat__sub">masuk, ubah data, unduh</p></div>
-        <div class="panel stat"><p class="stat__label">Penghuni & publik</p><p class="stat__value">${c.penghuni + c.publik}</p><p class="stat__sub">${c.penghuni} portal, ${c.publik} website</p></div>
+        <div class="panel stat"><p class="stat__label">Penghuni & publik</p><p class="stat__value">${c.penghuni + c.publik}</p><p class="stat__sub">${c.penghuni} penghuni, ${c.publik} website</p></div>
         <div class="panel stat ${c.gagal ? 'stat--alert' : ''}"><p class="stat__label">Percobaan gagal</p><p class="stat__value">${c.gagal}</p><p class="stat__sub">login salah, link tidak berlaku</p></div>
       </div>
       <div class="toolbar mt">
@@ -832,11 +854,481 @@
     });
   }
 
+  // ========== ALAT BERSAMA (fitur penghuni) ==========
+  const SITE = location.origin;
+  const BULAN_PANJANG = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const tglPanjang = (s) => { if (!s) return '-'; const [y, m, d] = s.slice(0, 10).split('-').map(Number); return `${d} ${BULAN_PANJANG[m - 1]} ${y}`; };
+  const addDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+  const addMonthsC = (s, n) => {
+    const [y, m, d] = s.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1));
+    t.setUTCDate(Math.min(d, new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate())); return t.toISOString().slice(0, 10);
+  };
+  const waMe = (phone, text) => `https://wa.me/${normPhone(phone)}?text=${encodeURIComponent(text)}`;
+  const waShare = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`;
+  const genPassword = () => { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; const s = [...crypto.getRandomValues(new Uint8Array(10))].map((x) => a[x % a.length]).join(''); return `${s.slice(0, 5)}-${s.slice(5)}`; };
+  const suggestUsername = (name, room) => {
+    const first = String(name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/\s+/)[0].replace(/[^a-z0-9]/g, '') || 'penghuni';
+    const r = String(room || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return r ? `${first}.${r}` : first;
+  };
+  const fmtCode = (c) => (c ? `${c.slice(0, 4)}-${c.slice(4, 8)}`.toUpperCase() : '-');
+  const PHASE = { menunggu: 'Menunggu persetujuan', aktif: 'Aktif', akan_mulai: 'Akan mulai', akan_habis: 'Akan berakhir', berakhir: 'Berakhir', dibatalkan: 'Dibatalkan' };
+  const DECISION = { perpanjang: 'Ingin perpanjang', berhenti: 'Ingin berhenti' };
+  const CONDITION = { baik: 'Baik', kurang: 'Kurang baik', rusak: 'Rusak', tidak_ada: 'Tidak ada' };
+  const cycleWord = (c) => (c === 'tahunan' ? 'tahun' : 'bulan');
+  // Isi kontrak: baris "## Judul" tampil sebagai judul pasal (sama seperti di PDF).
+  const docHtml = (body) => esc(body).replace(/^## (.*)$/gm, '<strong class="doc-h">$1</strong>');
+  async function download(path, name, label = 'Menyiapkan PDF…') {
+    try { await BonaLoader.during(label, async () => saveBlob(await api('GET', path), name)); }
+    catch (ex) { toast(ex.message, true); }
+  }
+  const safeName = (s) => String(s || 'dokumen').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  function idCardHtml(c) {
+    return `<div class="idcard ${c.active ? '' : 'is-off'}" role="img" aria-label="Kartu penghuni ${esc(c.name)}">
+      <div class="idcard__top"><img src="/assets/img/mark.webp" alt=""><div><strong>BONAASINA</strong><small>KARTU PENGHUNI</small></div><em>${esc(c.propertyName)}</em></div>
+      <div class="idcard__body">
+        <div class="idcard__photo">${c.photoUrl ? `<img src="${esc(c.photoUrl)}" alt="">` : 'FOTO'}</div>
+        <div><div class="idcard__name">${esc(c.name)}</div>
+          <div class="idcard__f">Kamar</div><div class="idcard__v">${esc(c.roomCode)}</div>
+          <div class="idcard__f">Penghuni sejak</div><div class="idcard__v">${tglPanjang(c.since)}</div>
+          ${c.until ? `<div class="idcard__f">Kontrak s.d.</div><div class="idcard__v">${tglPanjang(c.until)}</div>` : ''}</div>
+        <div class="idcard__qr">${c.qrSvg || ''}<span>No. ${fmtCode(c.code)}</span></div>
+      </div></div>`;
+  }
+
+  // ---------- akun login penghuni ----------
+  function showCredentials(t, username, password) {
+    const link = `${SITE}/penghuni/`;
+    const msg = `Horas ${t.name}, akun dashboard penghuni Bonaasina Anda sudah siap.\n\nAlamat: ${link}\nUsername: ${username}\nKata sandi: ${password}\n\nDi dashboard Anda bisa melihat tagihan dan kuitansi, menyetujui kontrak sewa, membaca pengumuman, melihat jadwal piket, dan menyimpan kartu penghuni. Kata sandi bisa diganti di menu Profil. Jangan bagikan ke orang lain ya.`;
+    openDialog({
+      title: 'Akun penghuni siap',
+      body: `<p class="muted">Kata sandi hanya ditampilkan sekarang. Kirim ke ${esc(t.name)} lewat WhatsApp atau salin pesannya.</p>
+        <dl class="kv mt"><dt>Alamat</dt><dd>${esc(link)}</dd><dt>Username</dt><dd>${esc(username)}</dd><dt>Kata sandi</dt><dd class="mono" style="font-size:15px !important">${esc(password)}</dd></dl>
+        <div class="preview" id="credMsg">${esc(msg)}</div>
+        <div class="btn-row mt">${t.phone ? `<a class="btn btn--green" href="${esc(waMe(t.phone, msg))}" target="_blank" rel="noopener">Kirim lewat WhatsApp</a>` : '<span class="hint">Nomor WA penghuni belum diisi, salin pesannya.</span>'}
+          <button type="button" class="btn btn--ghost" id="credCopy">Salin pesan</button></div>`,
+      onOpen: (b) => { $('#credCopy', b).onclick = () => copyText($('#credMsg', b)); },
+    });
+  }
+  function accountDialog(t) {
+    const has = !!t.username;
+    openDialog({
+      title: has ? `Akun login ${t.name}` : `Buat akun login ${t.name}`, ok: has ? 'Simpan' : 'Buat akun',
+      body: `<p class="muted">Penghuni masuk di <strong>${esc(SITE.replace(/^https?:\/\//, ''))}/penghuni</strong> dengan username dan kata sandi ini.</p>
+        <div class="fields fields--2 mt">
+          <label>Username<input name="username" value="${esc(t.username || suggestUsername(t.name, t.room?.code))}" autocapitalize="none" spellcheck="false" autocomplete="off" required><span class="hint">Huruf kecil, angka, titik, minus, atau garis bawah.</span></label>
+          <label>${has ? 'Kata sandi baru <span class="hint">kosongkan bila tidak diganti</span>' : 'Kata sandi'}<span class="pw-row"><input name="password" id="pwIn" value="${has ? '' : genPassword()}" autocomplete="off"><button type="button" class="btn btn--ghost btn--sm" id="pwGen">Buat acak</button></span><span class="hint">Minimal 8 karakter.</span></label>
+          ${has ? `<label class="span-all"><input type="checkbox" name="enabled" ${t.loginEnabled ? 'checked' : ''}>Akun aktif (penghuni bisa masuk)</label>` : ''}
+        </div>`,
+      onOpen: (b) => { $('#pwGen', b).onclick = () => { $('#pwIn', b).value = genPassword(); }; },
+      onOk: async (d) => {
+        const body = { username: d.username.trim().toLowerCase(), password: d.password || undefined, enabled: has ? d.enabled === 'on' : true };
+        await api('POST', `/tenants/${t.id}/account`, body);
+        toast(has ? 'Akun login diperbarui.' : 'Akun login dibuat.');
+        if (d.password) setTimeout(() => showCredentials(t, body.username, d.password), 80);
+        route();
+      },
+    });
+  }
+
+  // ---------- kontrak ----------
+  function contractDialog(tenant, existing, renewFrom) {
+    const start0 = existing?.startDate || (renewFrom ? addDays(renewFrom.endDate, 1) : (tenant.startDate > today() ? tenant.startDate : today()));
+    const end0 = existing?.endDate || addDays(addMonthsC(start0, 12), -1);
+    const cyc = existing?.rentCycle || tenant.rentCycle || 'bulanan';
+    openDialog({
+      wide: true, title: existing ? `Ubah kontrak ${existing.number}` : renewFrom ? `Kontrak lanjutan ${tenant.name}` : `Kontrak baru ${tenant.name}`, ok: existing ? 'Simpan perubahan' : 'Buat & kirim ke penghuni',
+      body: `<div class="fields fields--3">
+          <label>Mulai<input type="date" name="startDate" value="${start0}" required></label>
+          <label>Selesai<input type="date" name="endDate" value="${end0}" required></label>
+          <label>Jenis sewa<select name="rentCycle"><option value="bulanan" ${cyc === 'bulanan' ? 'selected' : ''}>Bulanan</option><option value="tahunan" ${cyc === 'tahunan' ? 'selected' : ''}>Tahunan</option></select></label>
+          <label>Harga sewa<input type="number" name="rentAmount" value="${existing?.rentAmount ?? tenant.rentAmount ?? ''}" min="0" step="1000"></label>
+          <label>Deposit<input type="number" name="deposit" value="${existing?.deposit ?? tenant.deposit ?? 0}" min="0" step="1000"></label>
+          <div class="btn-row" style="align-self:end"><button type="button" class="btn btn--ghost" id="ctrFill">Isi ulang dari templat</button></div>
+          <label class="span-all">Isi kontrak <span class="hint">Baris yang diawali "## " menjadi judul pasal. Templat diubah di menu Pengaturan.</span><textarea class="doc-edit" name="body" id="ctrBody" rows="16">${esc(existing?.body || '')}</textarea></label>
+          <p class="hint span-all">Setelah dibuat, kontrak muncul di dashboard penghuni untuk dibaca dan disetujui. PDF tersimpan otomatis setelah disetujui.</p>
+        </div>`,
+      onOpen: (b) => {
+        const fill = async () => {
+          const f = Object.fromEntries(new FormData($('#dlgForm')));
+          try { const out = await api('POST', '/contracts/preview-body', { tenantId: tenant.id, ...f }); $('#ctrBody', b).value = out.body; delete $('#ctrBody', b).dataset.touched; }
+          catch (ex) { toast(ex.message, true); }
+        };
+        $('#ctrFill', b).onclick = fill;
+        $('#ctrBody', b).addEventListener('input', (e) => { e.target.dataset.touched = 1; });
+        $$('input, select', b).forEach((el) => el.addEventListener('change', () => { if (!$('#ctrBody', b).dataset.touched) fill(); }));
+        if (!existing) fill();
+      },
+      onOk: async (d) => {
+        if (existing) { await api('PUT', `/contracts/${existing.id}`, d); toast('Kontrak diperbarui.'); route(); return; }
+        const c = await api('POST', '/contracts', { tenantId: tenant.id, renewedFrom: renewFrom?.id, ...d });
+        toast(`Kontrak ${c.number} dibuat.`); route();
+        setTimeout(() => shareContract(tenant, c), 80);
+      },
+    });
+  }
+  function shareContract(tenant, c) {
+    const msg = `Horas ${tenant.name}, kontrak sewa kamar Anda (${c.number}, ${tglPanjang(c.startDate)} s.d. ${tglPanjang(c.endDate)}) sudah tersedia di dashboard penghuni Bonaasina. Mohon dibaca lalu disetujui di menu Kontrak:\n${SITE}/penghuni/#kontrak\n\nTerima kasih.`;
+    openDialog({
+      title: 'Kabari penghuni',
+      body: `<p class="muted">Kontrak sudah muncul di dashboard ${esc(tenant.name)}. Kirim pemberitahuan supaya segera dibaca dan disetujui.</p><div class="preview" id="ctrMsg">${esc(msg)}</div>
+        <div class="btn-row mt">${tenant.phone ? `<a class="btn btn--green" href="${esc(waMe(tenant.phone, msg))}" target="_blank" rel="noopener">Kirim lewat WhatsApp</a>` : ''}<button type="button" class="btn btn--ghost" id="ctrCopy">Salin pesan</button></div>`,
+      onOpen: (b) => { $('#ctrCopy', b).onclick = () => copyText($('#ctrMsg', b)); },
+    });
+  }
+  async function viewContract(c) {
+    try {
+      const full = await BonaLoader.during('Membuka kontrak…', () => api('GET', `/contracts/${c.id}`));
+      openDialog({
+        wide: true, title: `Kontrak ${full.number}`,
+        body: `<p class="muted"><span class="pill pill--${full.phase}">${PHASE[full.phase]}</span> ${tglPanjang(full.startDate)} s.d. ${tglPanjang(full.endDate)}, ${rp(full.rentAmount)} per ${cycleWord(full.rentCycle)}${full.acceptedAt ? `. Disetujui ${esc(full.acceptedName || '')} pada ${WAKTU.format(new Date(full.acceptedAt))} WIB` : ''}.</p>
+          <div class="doc-text mt">${docHtml(full.body)}</div>
+          <div class="btn-row mt"><button type="button" class="btn btn--ghost" id="ctrPdf">Unduh PDF${full.hasPdf ? '' : ' (draf)'}</button></div>`,
+        onOpen: (b) => { $('#ctrPdf', b).onclick = () => download(`/contracts/${full.id}/pdf`, `kontrak-${safeName(full.number)}.pdf`); },
+      });
+    } catch (ex) { toast(ex.message, true); }
+  }
+  // Tombol aksi kontrak, dipakai di menu Kontrak dan halaman detail penghuni.
+  function contractButtons(c, t) {
+    const b = [`<button class="btn btn--ghost btn--sm" data-ctr-view="${c.id}">Lihat</button>`];
+    if (c.phase === 'menunggu') {
+      b.push(`<button class="btn btn--ghost btn--sm" data-ctr-edit="${c.id}">Ubah</button>`, `<button class="btn btn--ghost btn--sm" data-ctr-cancel="${c.id}">Batalkan</button>`);
+      if (t?.phone) b.push(`<button class="btn btn--green btn--sm" data-ctr-share="${c.id}">Ingatkan via WA</button>`);
+    } else b.push(`<button class="btn btn--ghost btn--sm" data-ctr-pdf="${c.id}">PDF</button>`);
+    if (c.decision && !c.decisionHandledAt) {
+      if (c.decision === 'perpanjang') b.push(`<button class="btn btn--red btn--sm" data-ctr-renew="${c.id}">Buat kontrak lanjutan</button>`);
+      b.push(`<button class="btn btn--ghost btn--sm" data-ctr-handled="${c.id}">Tandai selesai</button>`);
+    } else if (c.phase === 'akan_habis' && !c.decision && t?.phone) b.push(`<button class="btn btn--green btn--sm" data-ctr-ask="${c.id}">Tanyakan via WA</button>`);
+    return b.join('');
+  }
+  async function contractClick(e, contracts, tenantOf) {
+    const el = e.target.closest('[data-ctr-view],[data-ctr-pdf],[data-ctr-edit],[data-ctr-cancel],[data-ctr-share],[data-ctr-renew],[data-ctr-handled],[data-ctr-ask]');
+    if (!el) return false;
+    const id = Object.entries(el.dataset).find(([k]) => k.startsWith('ctr'))[1];
+    const c = contracts.find((x) => x.id === id); const t = tenantOf(c);
+    if (el.dataset.ctrView) viewContract(c);
+    if (el.dataset.ctrPdf) download(`/contracts/${c.id}/pdf`, `kontrak-${safeName(c.number)}.pdf`);
+    if (el.dataset.ctrEdit) { try { contractDialog(t, await BonaLoader.during('Membuka kontrak…', () => api('GET', `/contracts/${c.id}`))); } catch (ex) { toast(ex.message, true); } }
+    if (el.dataset.ctrCancel) { if (await askConfirm('Batalkan kontrak', `Kontrak ${c.number} akan dibatalkan dan hilang dari dashboard penghuni.`, 'Batalkan kontrak')) { await api('POST', `/contracts/${c.id}/cancel`); toast('Kontrak dibatalkan.'); route(); } }
+    if (el.dataset.ctrShare) shareContract(t, c);
+    if (el.dataset.ctrRenew) contractDialog(t, null, c);
+    if (el.dataset.ctrHandled) { await api('POST', `/contracts/${c.id}/handled`); toast('Ditandai sudah ditindaklanjuti.'); route(); }
+    if (el.dataset.ctrAsk) {
+      const msg = `Horas ${t.name}, kontrak sewa kamar Anda berakhir ${tglPanjang(c.endDate)}. Mohon pilih perpanjang atau berhenti di menu Kontrak pada dashboard penghuni:\n${SITE}/penghuni/#kontrak\n\nTerima kasih.`;
+      window.open(waMe(t.phone, msg), '_blank', 'noopener');
+    }
+    return true;
+  }
+
+  // ========== KONTRAK ==========
+  let ctrFilter = 'tindakan';
+  const needsAction = (c) => c.phase === 'menunggu' || (c.phase === 'akan_habis' && !c.decision) || (c.decision && !c.decisionHandledAt);
+  async function kontrak() {
+    const [list, s, tenants] = await Promise.all([get('/contracts'), get('/summary'), get('/tenants')]);
+    const tm = new Map(tenants.map((t) => [t.id, t]));
+    const counts = { tindakan: list.filter(needsAction).length, aktif: list.filter((c) => ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase)).length, semua: list.length };
+    if (ctrFilter === 'tindakan' && !counts.tindakan && !kontrak.visited) ctrFilter = 'aktif';
+    kontrak.visited = true;
+    const rows = list.filter((c) => ctrFilter === 'semua' || (ctrFilter === 'tindakan' ? needsAction(c) : ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase)));
+    main.innerHTML = head('Kontrak', 'Kontrak sewa digital. Penghuni membaca dan menyetujui di dashboard mereka; PDF tersimpan otomatis.') +
+      (s.tenantsWithoutContract ? `<div class="notice"><p><strong>${s.tenantsWithoutContract} penghuni aktif belum punya kontrak berjalan.</strong> Buat kontrak dari halaman detail penghuni.</p><a class="btn btn--sm" href="#penghuni">Lihat penghuni</a></div>` : '') + `
+      <div class="toolbar"><div class="seg" id="ctrSeg">${[['tindakan', 'Perlu tindakan'], ['aktif', 'Berjalan'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${ctrFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
+      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Penghuni</th><th>Nomor</th><th>Masa sewa</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((c) => `<tr>
+        <td data-label="Penghuni"><a href="#penghuni?id=${c.tenantId}"><strong>${esc(c.tenantName)}</strong></a><span class="sub">Kamar ${esc(c.roomCode)}, ${esc(c.propertyName)}</span></td>
+        <td data-label="Nomor">${esc(c.number)}<span class="sub">${rp(c.rentAmount)} / ${cycleWord(c.rentCycle)}</span></td>
+        <td data-label="Masa sewa">${tgl(c.startDate)} – ${tgl(c.endDate)}${c.daysLeft !== null && c.daysLeft >= 0 && c.phase !== 'menunggu' ? `<span class="sub">${c.daysLeft} hari lagi</span>` : ''}</td>
+        <td data-label="Status"><span class="pill pill--${c.phase}">${PHASE[c.phase]}</span>${c.decision ? ` <span class="pill pill--${c.decision}">${DECISION[c.decision]}</span>` : ''}${c.decisionNote ? `<span class="sub">"${esc(c.decisionNote)}"</span>` : ''}</td>
+        <td class="actions act-wrap">${contractButtons(c, tm.get(c.tenantId))}</td></tr>`).join('')}</tbody></table>`
+        : `<div class="empty ${ctrFilter === 'tindakan' ? 'empty--ok' : ''}">${ctrFilter === 'tindakan' ? 'Tidak ada kontrak yang perlu ditindaklanjuti.' : 'Belum ada kontrak. Buat dari halaman detail penghuni.'}</div>`}</div>`;
+    $('#ctrSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; ctrFilter = b.dataset.k; route(); };
+    main.onclick = (e) => contractClick(e, list, (c) => tm.get(c.tenantId) || { id: c.tenantId, name: c.tenantName, phone: c.tenantPhone });
+  }
+
+  // ========== DETAIL PENGHUNI ==========
+  async function penghuniDetail(id) {
+    const [d, s] = await Promise.all([get(`/tenants/${id}/detail`), get('/settings')]);
+    cache.settings = s;
+    const t = d.tenant; const active = t.status === 'aktif';
+    const tLite = { ...t, room: d.room };
+    const masuk = d.inspections.find((x) => x.kind === 'masuk'); const keluar = d.inspections.find((x) => x.kind === 'keluar');
+    const running = d.contracts.find((c) => ['aktif', 'akan_habis'].includes(c.phase));
+    const inspCard = (kind, x) => {
+      const bad = x ? x.items.filter((i) => i.condition !== 'baik').length : 0;
+      return `<div class="list__item"><div><strong>Saat ${kind}</strong>${x ? ` <span class="pill pill--${x.tenantAckAt ? 'disetujui' : 'menunggu'}">${x.tenantAckAt ? 'Disetujui penghuni' : 'Menunggu persetujuan'}</span>` : ''}
+          <span class="sub">${x ? `${tgl(x.date)}, ${x.items.length} bagian diperiksa, ${bad ? `${bad} bermasalah` : 'semua baik'}${x.depositDeduction ? `, potongan deposit ${rp(x.depositDeduction)}` : ''}` : kind === 'masuk' ? 'Belum dicatat. Sebaiknya diisi saat penghuni baru masuk.' : 'Diisi saat penghuni keluar, sebagai dasar pengembalian deposit.'}</span>
+          ${x?.tenantNote ? `<span class="sub">Catatan penghuni: "${esc(x.tenantNote)}"</span>` : ''}</div>
+        <div class="btn-row">${x ? `<button class="btn btn--ghost btn--sm" data-insp-view="${kind}">Lihat</button>` : ''}<button class="btn btn--${x ? 'ghost' : 'red'} btn--sm" data-insp-edit="${kind}">${x ? 'Ubah' : 'Isi sekarang'}</button></div></div>`;
+    };
+    main.innerHTML = `<a class="back" href="#penghuni">← Semua penghuni</a>` + head(esc(t.name), `${d.room ? `Kamar ${esc(d.room.code)}, ${esc(d.property?.name || '')}` : 'Belum ada kamar'} · ${active ? `penghuni sejak ${tglPanjang(t.startDate)}` : `keluar ${tglPanjang(t.endDate)}`}`,
+      `${active ? '' : '<span class="pill pill--keluar">Sudah keluar</span>'}<button class="btn btn--ghost" data-edit-t>Ubah data</button>${active ? '<button class="btn btn--ghost" data-out-t>Catat keluar</button>' : ''}`) + `
+      <div class="detail-grid">
+        <section class="panel"><h2>Akun login dashboard</h2>
+          ${t.username ? `<dl class="kv"><dt>Username</dt><dd>${esc(t.username)}</dd><dt>Status</dt><dd>${t.loginEnabled && active ? '<span class="pill pill--aktif">Aktif</span>' : '<span class="pill pill--nonaktif">Tidak aktif</span>'}</dd><dt>Terakhir masuk</dt><dd>${t.lastLoginAt ? `${WAKTU.format(new Date(t.lastLoginAt))} WIB` : 'Belum pernah'}</dd></dl>`
+            : '<p class="muted">Belum ada akun. Buat akun supaya penghuni bisa melihat tagihan, kuitansi, kontrak, pengumuman, dan piket.</p>'}
+          ${active ? `<div class="panel-actions"><button class="btn btn--${t.username ? 'ghost' : 'red'} btn--sm" data-account>${t.username ? 'Ubah akun / reset kata sandi' : 'Buat akun login'}</button></div>` : ''}
+        </section>
+        <section class="panel"><h2>Kartu penghuni</h2>
+          ${idCardHtml({ name: t.name, propertyName: d.property?.name || 'Bonaasina', roomCode: d.room?.code || '-', since: t.startDate, until: running?.endDate, photoUrl: d.photoUrl, qrSvg: d.card?.qrSvg, code: d.card?.code, active })}
+          <div class="panel-actions"><button class="btn btn--ghost btn--sm" data-card-pdf>Unduh PDF</button><label class="btn btn--ghost btn--sm">${d.photoUrl ? 'Ganti foto' : 'Unggah foto'}<input type="file" accept="image/jpeg,image/png" id="photoIn" hidden></label></div>
+          <p class="hint mt">Foto biasanya diunggah sendiri oleh penghuni dari menu Profil. QR di kartu membuka halaman cek keaslian.</p>
+        </section>
+      </div>
+      <section class="panel mt"><h2>Kontrak sewa ${active ? `<span class="actions"><button class="btn btn--red btn--sm" data-ctr-new>Buat kontrak</button></span>` : ''}</h2>
+        ${d.contracts.length ? `<div class="list">${d.contracts.map((c) => `<div class="list__item"><div><strong>${esc(c.number)}</strong> <span class="pill pill--${c.phase}">${PHASE[c.phase]}</span>${c.decision ? ` <span class="pill pill--${c.decision}">${DECISION[c.decision]}</span>` : ''}
+            <span class="sub">${tgl(c.startDate)} – ${tgl(c.endDate)}, ${rp(c.rentAmount)}/${cycleWord(c.rentCycle)}${c.acceptedAt ? `, disetujui ${tgl(c.acceptedAt)}` : ''}${c.phase === 'akan_habis' ? `, ${c.daysLeft} hari lagi` : ''}</span>${c.decisionNote ? `<span class="sub">Catatan penghuni: "${esc(c.decisionNote)}"</span>` : ''}</div>
+            <div class="btn-row">${contractButtons(c, t)}</div></div>`).join('')}</div>` : `<p class="muted">Belum ada kontrak.${active ? ' Tekan Buat kontrak; isinya diambil dari templat di Pengaturan dan bisa diubah sebelum dikirim.' : ''}</p>`}
+      </section>
+      <section class="panel mt"><h2>Kondisi kamar</h2><div class="split2">${inspCard('masuk', masuk)}${inspCard('keluar', keluar)}</div>
+        <p class="hint mt">Catatan kondisi dengan foto per bagian kamar. Penghuni ikut memeriksa dan menyetujuinya di dashboard, sehingga potongan deposit punya dasar yang jelas.</p></section>
+      <section class="panel mt"><h2>Tagihan <a class="small" href="#tagihan">Semua tagihan</a></h2>
+        ${d.invoices.length ? `<table><tbody>${d.invoices.slice(0, 12).map((i) => `<tr>
+          <td data-label="Periode"><strong>${esc(i.periodLabel)}</strong><span class="sub">Jatuh tempo ${tgl(i.dueDate)}</span></td>
+          <td class="num" data-label="Jumlah">${rp(i.amount)}</td>
+          <td data-label="Status">${i.status === 'lunas' ? `<span class="pill pill--lunas">Lunas ${tgl(i.paidAt)}</span>` : i.overdue ? '<span class="pill pill--terlambat">Terlambat</span>' : '<span class="pill pill--belum">Belum bayar</span>'}${i.receiptNo ? `<span class="sub">${esc(i.receiptNo)}</span>` : ''}</td>
+          <td class="actions">${i.status === 'lunas' ? `<button class="btn btn--ghost btn--sm" data-receipt="${i.id}">Kuitansi</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Belum ada tagihan.</p>'}
+      </section>`;
+    $('#topTitle').textContent = t.name;
+    document.title = `${t.name} — Admin Bonaasina`;
+    $('#photoIn')?.addEventListener('change', async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      try { await BonaLoader.during('Mengunggah foto…', async () => api('POST', `/tenants/${t.id}/photo`, undefined, await shrink(f, 900))); toast('Foto kartu diperbarui.'); route(); }
+      catch (ex) { toast(ex.message, true); }
+    });
+    main.onclick = async (e) => {
+      if (await contractClick(e, d.contracts, () => t)) return;
+      if (e.target.closest('[data-account]')) accountDialog(tLite);
+      if (e.target.closest('[data-card-pdf]')) download(`/tenants/${t.id}/card.pdf`, `kartu-penghuni-${safeName(t.name)}.pdf`);
+      if (e.target.closest('[data-ctr-new]')) {
+        const pend = d.contracts.find((c) => c.phase === 'menunggu');
+        if (pend) return toast(`Kontrak ${pend.number} masih menunggu persetujuan. Ubah atau batalkan dulu.`, true);
+        contractDialog(t, null, running && running.daysLeft <= 60 ? running : null);
+      }
+      if (e.target.closest('[data-edit-t]')) tenantDialog(t, await get('/rooms'));
+      if (e.target.closest('[data-out-t]')) checkoutDialog(tLite, !!keluar);
+      const r = e.target.closest('[data-receipt]'); if (r) { const i = d.invoices.find((x) => x.id === r.dataset.receipt); download(`/invoices/${i.id}/receipt.pdf`, `kuitansi-${safeName(t.name)}-${safeName(i.periodLabel)}.pdf`); }
+      const iv = e.target.closest('[data-insp-view]'); if (iv) inspectionView(iv.dataset.inspView === 'masuk' ? masuk : keluar, masuk);
+      const ie = e.target.closest('[data-insp-edit]'); if (ie) inspectionDialog(tLite, ie.dataset.inspEdit, ie.dataset.inspEdit === 'masuk' ? masuk : keluar, masuk, s);
+    };
+  }
+  function checkoutDialog(t, hasKeluar) {
+    openDialog({
+      title: `${t.name} keluar`, ok: 'Simpan', body: `<p class="muted">Kamar ${esc(t.room?.code || '')} akan menjadi kosong dan akun login penghuni ditutup. Tagihan yang belum dibayar untuk periode setelah tanggal keluar dihapus; tunggakan sebelumnya tetap tercatat.</p>
+        <label class="mt">Tanggal keluar<input type="date" name="endDate" value="${today()}"></label>
+        ${t.deposit ? `<p class="hint">Deposit ${rp(t.deposit)} perlu dikembalikan atau diperhitungkan${hasKeluar ? ' sesuai catatan kondisi keluar' : ''}.</p>` : ''}
+        ${hasKeluar ? '' : '<p class="info-box info-box--warn mt">Kondisi kamar saat keluar belum dicatat. Sebaiknya isi dulu dari halaman detail penghuni sebelum mencatat keluar.</p>'}`,
+      onOk: async (d) => {
+        const out = await api('POST', `/tenants/${t.id}/checkout`, d);
+        toast(`${t.name} tercatat keluar.${out.waitlistMatched ? ` ${out.waitlistMatched} orang di daftar tunggu perlu dikabari.` : ''}`);
+        route();
+      },
+    });
+  }
+
+  // ---------- kondisi kamar ----------
+  function inspectionView(x, masuk) {
+    if (!x) return;
+    const was = (name) => masuk && x.kind === 'keluar' ? masuk.items.find((m) => m.name === name) : null;
+    openDialog({
+      wide: true, title: `Kondisi kamar saat ${x.kind}`,
+      body: `<p class="muted">Diperiksa ${tglPanjang(x.date)}. ${x.tenantAckAt ? `Disetujui penghuni ${WAKTU.format(new Date(x.tenantAckAt))} WIB.` : 'Belum disetujui penghuni.'}</p>
+        <div class="insp-view mt">${x.items.map((i) => { const w = was(i.name); return `<div class="insp-view__row"><strong>${esc(i.name)}</strong><span class="pill pill--${i.condition}">${CONDITION[i.condition]}</span>
+          ${i.note ? `<span class="sub">${esc(i.note)}</span>` : ''}${w ? `<span class="sub">Saat masuk: ${CONDITION[w.condition]}${w.note ? `, ${esc(w.note)}` : ''}</span>` : ''}
+          ${(i.photoUrls || []).length ? `<div class="thumbs">${i.photoUrls.filter(Boolean).map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto ${esc(i.name)}"></a>`).join('')}</div>` : ''}</div>`; }).join('')}</div>
+        ${x.note ? `<p class="mt"><strong>Catatan:</strong> ${esc(x.note)}</p>` : ''}
+        ${x.kind === 'keluar' ? `<p class="mt"><strong>Potongan deposit:</strong> ${rp(x.depositDeduction)}${x.deductionNote ? ` (${esc(x.deductionNote)})` : ''}</p>` : ''}
+        ${x.tenantNote ? `<p class="mt"><strong>Catatan penghuni:</strong> ${esc(x.tenantNote)}</p>` : ''}`,
+    });
+  }
+  function inspectionDialog(t, kind, existing, masuk, s) {
+    const base = (s.inspectionItems?.length ? s.inspectionItems : s.defaultInspectionItems) || [];
+    const rows = existing ? existing.items.map((i) => ({ name: i.name, condition: i.condition, note: i.note || '', photos: (i.photos || []).map((p, k) => ({ path: p, url: i.photoUrls?.[k] || '' })) }))
+      : kind === 'keluar' && masuk ? masuk.items.map((i) => ({ name: i.name, condition: 'baik', note: '', photos: [] }))
+        : base.map((n) => ({ name: n, condition: 'baik', note: '', photos: [] }));
+    const was = (name) => (kind === 'keluar' && masuk ? masuk.items.find((m) => m.name === name) : null);
+    const rowHtml = (r, i) => { const w = was(r.name); return `<div class="insp-row" data-i="${i}">
+        <input data-f="name" value="${esc(r.name)}" placeholder="Bagian kamar" aria-label="Bagian kamar">
+        <select data-f="condition" aria-label="Kondisi">${Object.entries(CONDITION).map(([k, l]) => `<option value="${k}" ${r.condition === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <input class="insp-note" data-f="note" value="${esc(r.note)}" placeholder="Catatan (mis. retak kecil di sudut)" aria-label="Catatan">
+        <button type="button" class="icon-btn" data-rm-row aria-label="Hapus baris">✕</button>
+        ${w ? `<span class="was">Saat masuk: ${CONDITION[w.condition]}${w.note ? `, ${esc(w.note)}` : ''}</span>` : ''}
+        <div class="photos">${r.photos.map((p, k) => `<figure><img src="${esc(p.url)}" alt=""><button type="button" data-rm-photo="${k}" aria-label="Hapus foto">✕</button></figure>`).join('')}
+          <label class="upload">+ Foto<input type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div></div>`; };
+    openDialog({
+      wide: true, title: `${existing ? 'Ubah' : 'Catat'} kondisi kamar saat ${kind}`, ok: 'Simpan & minta persetujuan penghuni',
+      body: `<div class="fields fields--3"><label>Tanggal pemeriksaan<input type="date" name="date" value="${existing?.date || today()}"></label></div>
+        <p class="fieldset-title mt">Bagian kamar</p><div class="list mt" id="inspRows">${rows.map(rowHtml).join('')}</div>
+        <div class="btn-row mt"><button type="button" class="btn btn--ghost btn--sm" id="inspAdd">Tambah bagian</button></div>
+        <div class="fields fields--2 mt"><label class="span-all">Catatan umum<textarea name="note" rows="2">${esc(existing?.note || '')}</textarea></label>
+        ${kind === 'keluar' ? `<label>Potongan deposit<input type="number" name="depositDeduction" value="${existing?.depositDeduction || 0}" min="0" step="1000"><span class="hint">Deposit penghuni: ${rp(t.deposit)}</span></label>
+          <label>Alasan potongan<input name="deductionNote" value="${esc(existing?.deductionNote || '')}" placeholder="Mis. ganti kunci hilang"></label>` : ''}</div>
+        <p class="hint mt">${existing?.tenantAckAt ? 'Menyimpan perubahan membuat penghuni perlu menyetujui ulang.' : 'Setelah disimpan, penghuni melihat catatan ini di dashboard dan diminta menyetujuinya.'}</p>`,
+      onOpen: (b) => {
+        const wrap = $('#inspRows', b);
+        const redraw = () => { wrap.innerHTML = rows.map(rowHtml).join(''); };
+        wrap.addEventListener('input', (e) => { const row = e.target.closest('[data-i]'); const f = e.target.dataset.f; if (row && f) rows[row.dataset.i][f] = e.target.value; });
+        wrap.addEventListener('change', async (e) => {
+          const row = e.target.closest('[data-i]'); if (!row) return;
+          if (e.target.dataset.f) { rows[row.dataset.i][e.target.dataset.f] = e.target.value; return; }
+          if (e.target.type !== 'file') return;
+          const r = rows[row.dataset.i];
+          for (const f of e.target.files) {
+            try {
+              const out = await BonaLoader.during('Mengunggah foto…', async () => api('POST', `/upload-private?kind=kondisi&tenant=${encodeURIComponent(t.id)}`, undefined, await shrink(f, 1400)));
+              r.photos.push(out);
+            } catch (ex) { toast(ex.message, true); }
+          }
+          redraw();
+        });
+        wrap.addEventListener('click', (e) => {
+          const row = e.target.closest('[data-i]'); if (!row) return;
+          if (e.target.closest('[data-rm-row]')) { rows.splice(Number(row.dataset.i), 1); redraw(); }
+          const rp_ = e.target.closest('[data-rm-photo]'); if (rp_) { rows[row.dataset.i].photos.splice(Number(rp_.dataset.rmPhoto), 1); redraw(); }
+        });
+        $('#inspAdd', b).onclick = () => { rows.push({ name: '', condition: 'baik', note: '', photos: [] }); redraw(); $$('[data-f="name"]', wrap).pop()?.focus(); };
+      },
+      onOk: async (d) => {
+        const items = rows.filter((r) => r.name.trim()).map((r) => ({ name: r.name.trim(), condition: r.condition, note: r.note.trim(), photos: r.photos.map((p) => p.path) }));
+        if (!items.length) throw new Error('Isi minimal satu bagian kamar.');
+        await api('POST', '/inspections', { tenantId: t.id, kind, date: d.date, items, note: d.note, depositDeduction: d.depositDeduction, deductionNote: d.deductionNote });
+        toast('Catatan kondisi kamar disimpan.'); route();
+      },
+    });
+  }
+
+  // ========== PENGUMUMAN ==========
+  async function pengumuman() {
+    const list = await get('/announcements');
+    main.innerHTML = head('Pengumuman', 'Tampil di dashboard penghuni. Terlihat siapa yang sudah membaca.', '<button class="btn btn--red" data-ann-new>Buat pengumuman</button>') +
+      (list.length ? list.map((a) => {
+        const pct = a.audienceCount ? Math.round((a.read.length / a.audienceCount) * 100) : 0;
+        const expired = a.expiresOn && a.expiresOn < today();
+        return `<article class="ann ${a.priority === 'penting' ? 'ann--penting' : ''}">
+          <div class="ann__head"><div><h3>${esc(a.title)}</h3><p class="ann__meta">${esc(a.propertyName)} · ${WAKTU.format(new Date(a.createdAt))} WIB${a.expiresOn ? ` · ${expired ? 'berakhir' : 'tampil sampai'} ${tgl(a.expiresOn)}` : ''}</p></div>
+            <div class="btn-row">${a.priority === 'penting' ? '<span class="pill pill--penting">Penting</span>' : ''}${a.pinned ? '<span class="pill pill--info">Disematkan</span>' : ''}${expired ? '<span class="pill pill--berakhir">Tidak tampil lagi</span>' : ''}</div></div>
+          ${a.body ? `<p class="ann__body">${esc(a.body)}</p>` : ''}
+          <div class="readbar" role="img" aria-label="${a.read.length} dari ${a.audienceCount} penghuni sudah membaca"><span style="width:${pct}%"></span></div>
+          <p class="ann__meta">Sudah dibaca ${a.read.length} dari ${a.audienceCount} penghuni.</p>
+          ${a.unread.length ? `<details><summary class="small" style="cursor:pointer;font-weight:600">Belum membaca (${a.unread.length})</summary><div class="who mt">${a.unread.map((u) => u.waUrl ? `<a href="${esc(u.waUrl)}" target="_blank" rel="noopener" title="Ingatkan lewat WhatsApp">${esc(u.name)} · WA</a>` : `<span>${esc(u.name)}</span>`).join('')}</div></details>` : ''}
+          ${a.read.length ? `<details><summary class="small" style="cursor:pointer">Sudah membaca (${a.read.length})</summary><div class="who mt">${a.read.map((u) => `<span>${esc(u.name)}</span>`).join('')}</div></details>` : ''}
+          <div class="btn-row"><a class="btn btn--green btn--sm" href="${esc(waShare(`PENGUMUMAN BONAASINA\n${a.title}\n\n${a.body}\n\nBaca juga di dashboard penghuni: ${SITE}/penghuni/#pengumuman`))}" target="_blank" rel="noopener">Bagikan ke grup WA</a>
+            <button class="btn btn--ghost btn--sm" data-ann-edit="${a.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-ann-del="${a.id}">Hapus</button></div>
+        </article>`;
+      }).join('') : '<div class="panel empty">Belum ada pengumuman. Contoh: jadwal air mati, kerja bakti, atau perubahan aturan kos.</div>');
+    main.onclick = async (e) => {
+      if (e.target.closest('[data-ann-new]')) annDialog(null);
+      const ed = e.target.closest('[data-ann-edit]'); if (ed) annDialog(list.find((a) => a.id === ed.dataset.annEdit));
+      const del = e.target.closest('[data-ann-del]');
+      if (del && (await askConfirm('Hapus pengumuman', 'Pengumuman ini akan hilang dari dashboard penghuni.', 'Hapus'))) { await api('DELETE', `/announcements/${del.dataset.annDel}`); toast('Pengumuman dihapus.'); route(); }
+    };
+  }
+  function annDialog(a) {
+    openDialog({
+      title: a ? 'Ubah pengumuman' : 'Buat pengumuman', ok: a ? 'Simpan' : 'Terbitkan',
+      body: `<div class="fields fields--2">
+        <label class="span-all">Judul<input name="title" value="${esc(a?.title || '')}" placeholder="Mis. Air mati Sabtu pagi" required></label>
+        <label class="span-all">Isi<textarea name="body" rows="6" placeholder="Jelaskan apa, kapan, dan apa yang perlu dilakukan penghuni.">${esc(a?.body || '')}</textarea></label>
+        <label>Untuk<select name="propertyId"><option value="">Semua kos</option>${cache.properties.map((p) => `<option value="${p.id}" ${a?.propertyId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+        <label>Tingkat<select name="priority"><option value="biasa">Biasa</option><option value="penting" ${a?.priority === 'penting' ? 'selected' : ''}>Penting</option></select></label>
+        <label>Tampil sampai <span class="hint">opsional</span><input type="date" name="expiresOn" value="${a?.expiresOn || ''}"></label>
+        <label style="align-self:end"><input type="checkbox" name="pinned" ${a?.pinned ? 'checked' : ''}>Sematkan di atas</label>
+        ${a ? '<label class="span-all"><input type="checkbox" name="resetReads">Isinya berubah penting: minta semua penghuni membaca ulang</label>' : ''}
+      </div>`,
+      onOk: async (d) => {
+        const body = { ...d, pinned: d.pinned === 'on', resetReads: d.resetReads === 'on' };
+        if (a) await api('PUT', `/announcements/${a.id}`, body); else await api('POST', '/announcements', body);
+        toast(a ? 'Pengumuman diperbarui.' : 'Pengumuman terbit di dashboard penghuni.'); route();
+      },
+    });
+  }
+
+  // ========== PIKET ==========
+  const FREQ = { harian: 'Setiap hari', mingguan: 'Setiap minggu', dua_mingguan: 'Dua minggu sekali', bulanan: 'Setiap bulan' };
+  const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const hariOf = (s) => { const [y, m, d] = s.split('-').map(Number); return HARI[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]; };
+  const CHORE_STATUS = { selesai: 'Selesai', terlewat: 'Terlewat', hari_ini: 'Hari ini', akan_datang: 'Akan datang' };
+  let choreTab = 'datang';
+  async function piket() {
+    const d = await get('/chores');
+    const items = d.items.filter((i) => (choreTab === 'datang' ? i.date >= d.today && i.date <= addDays(d.today, 14) : i.date < d.today)).sort((a, b) => (choreTab === 'datang' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date)));
+    const byDate = items.reduce((m, i) => { (m[i.date] ||= []).push(i); return m; }, {});
+    const missed = d.items.filter((i) => i.status === 'terlewat' && i.date >= addDays(d.today, -7)).length;
+    main.innerHTML = head('Piket', 'Jadwal kebersihan bergilir otomatis di antara penghuni aktif. Penghuni yang bertugas mengirim foto bukti dari dashboard.', '<button class="btn btn--red" data-chore-new>Tambah jadwal piket</button>') + `
+      <section class="panel"><h2>Tugas piket</h2>${d.tasks.length ? `<div class="list">${d.tasks.map((t) => `<div class="list__item"><div><strong>${esc(t.name)}</strong> ${t.active ? '' : '<span class="pill pill--nonaktif">Nonaktif</span>'}
+          <span class="sub">${esc(t.propertyName)} · ${FREQ[t.frequency]}${t.frequency === 'harian' ? '' : `, mulai ${hariOf(t.startDate)} ${tgl(t.startDate)}`} · ${t.mode === 'bersama' ? 'semua penghuni bersama' : `${t.peoplePerTurn} orang per giliran`}</span>${t.description ? `<span class="sub">${esc(t.description)}</span>` : ''}</div>
+          <div class="btn-row"><button class="btn btn--ghost btn--sm" data-chore-edit="${t.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-chore-del="${t.id}">Hapus</button></div></div>`).join('')}</div>`
+        : '<p class="muted">Belum ada jadwal. Contoh: "Sapu & pel lorong" setiap minggu 2 orang bergilir, atau "Kerja bakti" setiap bulan semua penghuni.</p>'}</section>
+      <div class="toolbar mt"><div class="seg" id="chSeg">${[['datang', 'Jadwal 14 hari ke depan'], ['riwayat', `Riwayat${missed ? ` (${missed} terlewat)` : ''}`]].map(([k, l]) => `<button aria-pressed="${choreTab === k}" data-k="${k}">${l}</button>`).join('')}</div></div>
+      <section class="panel">${Object.keys(byDate).length ? Object.entries(byDate).map(([date, list]) => `<div class="day"><p class="day__label ${date === d.today ? 'is-today' : ''}">${date === d.today ? 'Hari ini, ' : ''}${hariOf(date)} ${tglPanjang(date)}</p><div class="list">${list.map((i) => `<div class="list__item"><div><strong>${esc(i.name)}</strong> <span class="pill pill--${i.status}">${CHORE_STATUS[i.status]}</span>
+          <span class="sub">${esc(i.propertyName)} · ${i.assigned.length ? esc(i.assigned.join(', ')) : 'Belum ada penghuni aktif'}</span>
+          ${i.report ? `<span class="sub">Dilaporkan ${esc(i.report.by)}, ${WAKTU.format(new Date(i.report.at))} WIB${i.report.note ? `: "${esc(i.report.note)}"` : ''}</span><div class="thumbs">${i.report.photos.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto piket ${esc(i.name)}"></a>`).join('')}</div>` : ''}</div></div>`).join('')}</div></div>`).join('')
+        : `<p class="muted">${choreTab === 'datang' ? 'Tidak ada jadwal piket dalam 14 hari ke depan.' : 'Belum ada riwayat piket.'}</p>`}</section>`;
+    $('#chSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; choreTab = b.dataset.k; route(); };
+    main.onclick = async (e) => {
+      if (e.target.closest('[data-chore-new]')) choreDialog(null);
+      const ed = e.target.closest('[data-chore-edit]'); if (ed) choreDialog(d.tasks.find((t) => t.id === ed.dataset.choreEdit));
+      const del = e.target.closest('[data-chore-del]');
+      if (del && (await askConfirm('Hapus jadwal piket', 'Jadwal dan riwayat laporannya akan dihapus.', 'Hapus'))) { await api('DELETE', `/chores/${del.dataset.choreDel}`); toast('Jadwal piket dihapus.'); route(); }
+    };
+  }
+  function choreDialog(t) {
+    openDialog({
+      title: t ? `Ubah piket "${t.name}"` : 'Tambah jadwal piket', ok: t ? 'Simpan' : 'Tambah',
+      body: `<div class="fields fields--2">
+        <label>Kos<select name="propertyId" ${t ? 'disabled' : ''}>${cache.properties.map((p) => `<option value="${p.id}" ${t?.propertyId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+        <label>Nama tugas<input name="name" value="${esc(t?.name || '')}" placeholder="Mis. Sapu & pel lorong" required></label>
+        <label class="span-all">Rincian <span class="hint">opsional</span><textarea name="description" rows="2" placeholder="Apa saja yang dibersihkan dan foto apa yang perlu dikirim">${esc(t?.description || '')}</textarea></label>
+        <label>Seberapa sering<select name="frequency">${Object.entries(FREQ).map(([k, l]) => `<option value="${k}" ${(t?.frequency || 'mingguan') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>Mulai tanggal<input type="date" name="startDate" id="chStart" value="${t?.startDate || today()}"><span class="hint" id="chDay"></span></label>
+        <label>Cara piket<select name="mode" id="chMode"><option value="bergilir">Bergilir (beberapa orang per giliran)</option><option value="bersama" ${t?.mode === 'bersama' ? 'selected' : ''}>Bersama (semua penghuni)</option></select></label>
+        <label id="chPplWrap">Orang per giliran<input type="number" name="peoplePerTurn" min="1" max="20" value="${t?.peoplePerTurn || 1}"></label>
+        ${t ? `<label class="span-all"><input type="checkbox" name="active" ${t.active ? 'checked' : ''}>Aktif</label>` : ''}
+        <p class="hint span-all">Giliran diatur otomatis berdasarkan urutan kamar penghuni aktif. Bila ada penghuni masuk atau keluar, urutan giliran menyesuaikan.</p>
+      </div>`,
+      onOpen: (b) => {
+        const sync = () => { $('#chPplWrap', b).hidden = $('#chMode', b).value === 'bersama'; const v = $('#chStart', b).value; $('#chDay', b).textContent = v ? `Hari piket: ${hariOf(v)}` : ''; };
+        $('#chMode', b).onchange = sync; $('#chStart', b).oninput = sync; sync();
+      },
+      onOk: async (d) => {
+        const body = { ...d, active: t ? d.active === 'on' : true };
+        if (t) await api('PUT', `/chores/${t.id}`, body); else await api('POST', '/chores', body);
+        toast(t ? 'Jadwal piket diperbarui.' : 'Jadwal piket dibuat dan langsung tampil di dashboard penghuni.'); route();
+      },
+    });
+  }
+
+  // ========== DAFTAR TUNGGU ==========
+  const WL = { perlu_dikabari: 'Perlu dikabari', menunggu: 'Menunggu kamar', dikabari: 'Sudah dikabari', selesai: 'Selesai', batal: 'Batal' };
+  let wlFilter = 'perlu_dikabari';
+  async function tunggu() {
+    const list = await get('/waitlist');
+    const counts = Object.fromEntries(['perlu_dikabari', 'menunggu', 'dikabari'].map((k) => [k, list.filter((w) => w.status === k).length]));
+    counts.semua = list.length;
+    if (wlFilter === 'perlu_dikabari' && !counts.perlu_dikabari && !tunggu.visited) wlFilter = counts.menunggu ? 'menunggu' : 'semua';
+    tunggu.visited = true;
+    const rows = list.filter((w) => wlFilter === 'semua' || w.status === wlFilter);
+    main.innerHTML = head('Daftar tunggu', 'Calon penyewa yang mendaftar saat kos penuh. Begitu ada kamar kosong, mereka otomatis ditandai "Perlu dikabari".') + `
+      <div class="toolbar"><div class="seg" id="wlSeg">${[['perlu_dikabari', 'Perlu dikabari'], ['menunggu', 'Menunggu kamar'], ['dikabari', 'Sudah dikabari'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${wlFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
+      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Calon penyewa</th><th>Minat</th><th>Didaftar</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((w) => `<tr>
+        <td data-label="Calon penyewa"><strong>${esc(w.name)}</strong><span class="sub">${esc(w.phone)}</span></td>
+        <td data-label="Minat" class="wrap">${esc(w.propertyName)}${w.roomPref ? `<span class="sub">${esc(w.roomPref)}</span>` : ''}${w.budget ? `<span class="sub">Anggaran ${rp(w.budget)}/bulan</span>` : ''}${w.moveDate ? `<span class="sub">Rencana masuk ${tgl(w.moveDate)}</span>` : ''}${w.note ? `<span class="sub">"${esc(w.note)}"</span>` : ''}</td>
+        <td data-label="Didaftar">${tgl(w.createdAt)}</td>
+        <td data-label="Status"><select class="inline" data-wl-status="${w.id}" aria-label="Status ${esc(w.name)}">${Object.entries(WL).map(([k, l]) => `<option value="${k}" ${w.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${w.matchedRoom ? `<span class="sub">Kamar ${esc(w.matchedRoom.code)} ${esc(w.matchedRoom.propertyName || '')} ${w.matchedRoom.status === 'kosong' ? 'kosong' : `(${STATUS_KAMAR[w.matchedRoom.status] || w.matchedRoom.status})`}</span>` : ''}${w.notifiedAt ? `<span class="sub">Dikabari ${tgl(w.notifiedAt)}</span>` : ''}</td>
+        <td class="actions"><a class="btn btn--green btn--sm" href="${esc(w.waUrl)}" target="_blank" rel="noopener" data-wl-wa="${w.id}">${w.status === 'perlu_dikabari' ? 'Kabari via WA' : 'Hubungi'}</a>${w.status === 'perlu_dikabari' ? `<button class="btn btn--ghost btn--sm" data-wl-done="${w.id}">Tandai dikabari</button>` : ''}<button class="btn btn--ghost btn--sm" data-wl-del="${w.id}">Hapus</button></td></tr>`).join('')}</tbody></table>`
+        : `<div class="empty">${wlFilter === 'perlu_dikabari' ? 'Tidak ada calon penyewa yang perlu dikabari sekarang.' : 'Belum ada yang mendaftar. Formulir daftar tunggu ada di website.'}</div>`}</div>`;
+    $('#wlSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; wlFilter = b.dataset.k; route(); };
+    main.onchange = async (e) => { const s = e.target.closest('[data-wl-status]'); if (!s) return; try { await api('PUT', `/waitlist/${s.dataset.wlStatus}`, { status: s.value }); toast('Status diperbarui.'); route(); } catch (ex) { toast(ex.message, true); } };
+    main.onclick = async (e) => {
+      const done = e.target.closest('[data-wl-done]'); if (done) { await api('PUT', `/waitlist/${done.dataset.wlDone}`, { status: 'dikabari' }); toast('Ditandai sudah dikabari.'); route(); }
+      const del = e.target.closest('[data-wl-del]');
+      if (del && (await askConfirm('Hapus dari daftar tunggu', 'Data calon penyewa ini akan dihapus.', 'Hapus'))) { await api('DELETE', `/waitlist/${del.dataset.wlDel}`); toast('Dihapus dari daftar tunggu.'); route(); }
+    };
+  }
+
   // ========== PENGATURAN ==========
   async function pengaturan() {
     const s = await get('/settings'); cache.settings = s;
     const faq = s.faq || [];
-    main.innerHTML = head('Pengaturan', 'Informasi umum website dan pesan pengingat.') + `
+    main.innerHTML = head('Pengaturan', 'Informasi umum website, pesan pengingat, templat kontrak, dan daftar periksa kamar.') + `
       <form class="settings-grid" id="setForm">
         <div class="panel fields fields--2">
           <p class="fieldset-title span-all">Kontak & pembayaran</p>
@@ -860,6 +1352,18 @@
           <div><button type="button" class="btn btn--ghost btn--sm" id="tplReset">Kembalikan pesan bawaan</button></div>
           <div class="preview" id="tplPreview" aria-live="polite"></div>
         </div>
+        <div class="panel fields span-all">
+          <p class="fieldset-title">Templat kontrak sewa</p>
+          <label>Isi templat<textarea class="doc-edit" name="contractTemplate" id="ctrTpl" rows="14">${esc(s.contractTemplate || s.defaultContractTemplate)}</textarea>
+            <span class="hint">Baris berawalan "## " menjadi judul pasal. Diganti otomatis: {tanggal_kontrak} {pemilik} {kos} {alamat_kos} {nama_penghuni} {telepon_penghuni} {asal} {kamar} {tipe_kamar} {mulai} {selesai} {harga} {siklus} {deposit} {aturan} {cara_bayar}</span></label>
+          <p class="hint">Draf ini disiapkan sebagai titik awal, bukan nasihat hukum. Baca ulang dan sesuaikan dengan kebiasaan dan aturan kos Anda. Kontrak yang sudah dibuat tidak ikut berubah bila templat diubah.</p>
+          <div><button type="button" class="btn btn--ghost btn--sm" id="ctrTplReset">Kembalikan templat bawaan</button></div>
+        </div>
+        <div class="panel fields">
+          <p class="fieldset-title">Daftar periksa kondisi kamar</p>
+          <label>Bagian kamar yang diperiksa <span class="hint">satu per baris</span><textarea name="inspectionItems" rows="9">${lines(s.inspectionItems?.length ? s.inspectionItems : s.defaultInspectionItems)}</textarea></label>
+          <p class="hint">Dipakai sebagai daftar awal saat mencatat kondisi kamar penghuni yang masuk.</p>
+        </div>
         <div class="panel fields">
           <p class="fieldset-title">Tanya jawab di website</p>
           <div id="faqRows" class="fields">${faq.map(faqRow).join('')}</div>
@@ -875,6 +1379,7 @@
     };
     preview(); $('#tpl').oninput = preview; $('[name=paymentInfo]').addEventListener('input', preview);
     $('#tplReset').onclick = () => { $('#tpl').value = s.defaultReminderTemplate; preview(); };
+    $('#ctrTplReset').onclick = () => { $('#ctrTpl').value = s.defaultContractTemplate; };
     $('#faqAdd').onclick = () => { $('#faqRows').insertAdjacentHTML('beforeend', faqRow({ q: '', a: '' })); $('#faqRows .faq-row:last-child input').focus(); };
     $('#faqRows').onclick = (e) => { const b = e.target.closest('[data-rm-faq]'); if (b) b.closest('.faq-row').remove(); };
     $('#expBtn').addEventListener('click', async () => {

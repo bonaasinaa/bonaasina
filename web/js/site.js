@@ -63,6 +63,7 @@
     renderRooms();
     renderLokasi();
     renderForm();
+    renderWaitForm();
     renderFaq();
     renderFooter();
     $('#year').textContent = new Date().getFullYear();
@@ -180,14 +181,13 @@
     const free = rooms.filter((r) => r.status === 'kosong').length;
     $('#kamarNote').textContent = `${free} dari ${rooms.length} kamar yang ditampilkan sedang kosong. Status diperbarui langsung oleh pemilik.`;
     if (!rooms.length) {
-      $('#roomList').innerHTML = `<li class="rooms__empty">Belum ada kamar kosong untuk pilihan ini. Tanyakan lewat WhatsApp — kami kabari saat ada yang kosong.</li>`;
+      $('#roomList').innerHTML = `<li class="rooms__empty">Belum ada kamar kosong untuk pilihan ini. <a href="#tunggu" data-wait="${state.prop === 'semua' ? '' : esc(state.prop)}">Masuk daftar tunggu</a>, kami kabari begitu ada yang kosong.</li>`;
       return;
     }
     const row = (r) => {
       const kos = propName(r.propertyId);
       const avail = r.status === 'kosong';
       const ask = `Horas, saya mau tanya kamar ${r.code} di ${kos}. Apakah masih kosong untuk sewa ${state.cycle}?`;
-      const waitlist = `Horas, saya tertarik kamar ${r.code} di ${kos}. Tolong kabari saya kalau kamar ini atau yang serupa kosong.`;
       return `<li class="room ${avail ? '' : 'is-unavailable'}">
         <div class="room__code">${esc(r.code)}<span class="room__kos">${esc(kos)}</span>${(r.photos || []).length ? `<button type="button" class="room__thumb" data-lightbox="room:${r.id}" data-index="0" aria-label="Lihat ${r.photos.length} foto kamar ${esc(r.code)}"><img src="${esc(r.photos[0])}" alt="" loading="lazy"><span>${r.photos.length} foto</span></button>` : ''}</div>
         <div class="room__info">
@@ -201,7 +201,7 @@
           ${avail
             ? `<a class="btn btn--red btn--sm" href="${esc(wa(ask))}" target="_blank" rel="noopener">Tanya kamar ini</a>
                <a class="btn btn--ghost btn--sm" href="#survei" data-survey="${r.propertyId}" data-room="${r.id}">Jadwalkan survei</a>`
-            : `<a class="btn btn--ghost btn--sm" href="${esc(wa(waitlist))}" target="_blank" rel="noopener">Kabari saya</a>`}
+            : `<a class="btn btn--ghost btn--sm" href="#tunggu" data-wait="${r.propertyId}" data-pref="${esc(`Seperti kamar ${r.code} (${r.type || ''})`.replace(' ()', ''))}">Kabari saya bila kosong</a>`}
         </div>
       </li>`;
     };
@@ -246,6 +246,12 @@
   document.addEventListener('click', (e) => {
     const f = e.target.closest('[data-filter]');
     if (f) { state.prop = f.dataset.filter; state.onlyAvailable = true; $('#onlyAvailable').checked = true; renderChips(); renderRooms(); }
+    const w = e.target.closest('[data-wait]');
+    if (w && state.data) {
+      $('#wProperty').value = w.dataset.wait || '';
+      if (w.dataset.pref) $('#wPref').value = w.dataset.pref;
+      if (!$('#waitForm').hidden) setTimeout(() => $('#waitForm [name=name]').focus({ preventScroll: true }), 600);
+    }
     const s = e.target.closest('[data-survey]');
     if (s) {
       $('#fProperty').value = s.dataset.survey; fillRoomOptions();
@@ -314,6 +320,39 @@
     } finally {
       btn.disabled = false; btn.textContent = 'Kirim permintaan survei';
     }
+  });
+
+  // ---------- formulir daftar tunggu ----------
+  function renderWaitForm() {
+    $('#wProperty').innerHTML = '<option value="">Kos mana saja</option>' + state.data.properties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const d = new Date(); const pad = (n) => String(n).padStart(2, '0');
+    $('#wDate').min = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    $('#waitDoneWa').href = wa('Horas, saya baru masuk daftar tunggu Bonaasina. ');
+  }
+  $('#waitForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target; const err = $('#waitError'); const btn = $('#waitSubmit');
+    $$('[aria-invalid]', form).forEach((x) => x.removeAttribute('aria-invalid'));
+    const body = Object.fromEntries(new FormData(form));
+    const missing = ['name', 'phone'].filter((k) => !String(body[k] || '').trim());
+    if (missing.length) {
+      missing.forEach((k) => form.elements[k].setAttribute('aria-invalid', 'true'));
+      err.textContent = 'Lengkapi nama dan nomor WhatsApp.'; err.hidden = false; form.elements[missing[0]].focus(); return;
+    }
+    btn.disabled = true; btn.textContent = 'Mengirim…'; err.hidden = true;
+    try {
+      const res = await fetch(API + '/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || 'Pendaftaran belum terkirim.');
+      const kos = body.propertyId ? propName(body.propertyId) : 'Bonaasina';
+      $('#waitDoneText').textContent = out.available
+        ? `Kabar baik, ${body.name}: saat ini ada kamar kosong di ${kos}. Kami akan segera menghubungi ${body.phone}, atau langsung jadwalkan survei di atas.`
+        : `Terima kasih, ${body.name}. Begitu ada kamar kosong di ${kos}, kami kabari ${body.phone} lewat WhatsApp.`;
+      window.bonaEvent?.('generate_lead', { form: 'daftar_tunggu', kos });
+      form.hidden = true; const done = $('#waitDone'); done.hidden = false; done.focus();
+    } catch (ex) {
+      err.textContent = ex.message + ' Atau hubungi kami langsung lewat WhatsApp.'; err.hidden = false;
+    } finally { btn.disabled = false; btn.textContent = 'Masuk daftar tunggu'; }
   });
 
   // ---------- tanya jawab (akordeon dengan tinggi teranimasi) ----------

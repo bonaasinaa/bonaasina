@@ -1,7 +1,8 @@
 /* Google Analytics 4 untuk semua halaman Bonaasina.
    - Page view dikirim manual dengan alamat bersih (tanpa #hash dan ?query), supaya token portal
      penghuni dan isian lain tidak pernah terkirim ke Google.
-   - Admin memakai menu berbasis #hash: admin.js memanggil bonaTrack('/admin/<menu>') saat pindah menu.
+   - Admin & dashboard penghuni memakai menu berbasis #hash: skripnya memanggil bonaTrack('/admin/<menu>')
+     atau bonaTrack('/penghuni/<menu>') saat pindah menu.
    - Tidak aktif di localhost. */
 (() => {
   const id = window.BONA_CONFIG?.ga4Id;
@@ -14,7 +15,7 @@
   window.gtag = gtag;
 
   const path = location.pathname;
-  const area = path.startsWith('/admin') ? 'Admin' : path.startsWith('/portal') ? 'Portal penghuni' : 'Website';
+  const area = path.startsWith('/admin') ? 'Admin' : path.startsWith('/penghuni') ? 'Dashboard penghuni' : path.startsWith('/cek') ? 'Cek kartu' : 'Website';
   const clean = (p) => location.origin + p;
 
   gtag('js', new Date());
@@ -23,10 +24,10 @@
   window.bonaTrack = (p, title) => gtag('event', 'page_view', { page_location: clean(p), page_title: title || document.title, content_group: area });
   window.bonaEvent = (name, params = {}) => gtag('event', name, { content_group: area, ...params });
 
-  // Halaman biasa: satu page view saat dibuka. Admin mengirim sendiri per menu.
+  // Halaman biasa: satu page view saat dibuka. Admin & dashboard penghuni mengirim sendiri per menu.
   // Halaman 404 dicatat sebagai /404 dengan alamat yang dicari, supaya tautan rusak mudah ditemukan.
   if (document.documentElement.dataset.page === '404') window.bonaEvent('page_not_found', { missing_path: path.slice(0, 100) });
-  if (area !== 'Admin') window.bonaTrack(document.documentElement.dataset.page === '404' ? '/404' : path, document.title);
+  if (area !== 'Admin' && area !== 'Dashboard penghuni') window.bonaTrack(document.documentElement.dataset.page === '404' ? '/404' : path, document.title);
 
   // Klik penting di website: hubungi lewat WhatsApp.
   document.addEventListener('click', (e) => {

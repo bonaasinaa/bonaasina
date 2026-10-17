@@ -12,8 +12,8 @@
   <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
   <link rel="preload" href="/fonts/libre-caslon-display-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/css/fonts.css?v=20261017b">
-  <link rel="stylesheet" href="/css/site.css?v=20261017b">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261017c">
+  <link rel="stylesheet" href="/css/site.css?v=20261017c">
 </head>
 <body>
   <a class="skip" href="#kamar">Langsung ke daftar kamar</a>
@@ -189,6 +189,53 @@
       </div>
     </section>
 
+    <!-- DAFTAR TUNGGU -->
+    <section class="section survei tunggu" id="tunggu" aria-labelledby="tungguTitle">
+      <div class="survei__intro">
+        <h2 id="tungguTitle">Kamar yang Anda mau penuh?</h2>
+        <p>Masuk daftar tunggu. Begitu ada kamar kosong yang cocok, kami kabari Anda lewat WhatsApp lebih dulu, sebelum diiklankan.</p>
+        <p class="survei__hours">Gratis dan tanpa kewajiban.</p>
+      </div>
+      <form class="form" id="waitForm" novalidate>
+        <div class="form__row">
+          <label>Kos yang diminati
+            <select name="propertyId" id="wProperty"></select>
+          </label>
+          <label>Kamar yang dicari <span class="opt">(opsional)</span>
+            <input name="roomPref" id="wPref" maxlength="120" placeholder="Mis. kamar mandi dalam, lantai 1">
+          </label>
+        </div>
+        <div class="form__row">
+          <label>Nama
+            <input name="name" autocomplete="name" required maxlength="80">
+          </label>
+          <label>Nomor WhatsApp
+            <input name="phone" inputmode="tel" autocomplete="tel" placeholder="0812 3456 7890" required maxlength="20">
+          </label>
+        </div>
+        <div class="form__row">
+          <label>Anggaran per bulan <span class="opt">(opsional)</span>
+            <input name="budget" type="number" inputmode="numeric" min="0" step="50000" placeholder="Mis. 600000">
+          </label>
+          <label>Rencana mulai tinggal <span class="opt">(opsional)</span>
+            <input name="moveDate" type="date" id="wDate">
+          </label>
+        </div>
+        <label>Catatan <span class="opt">(opsional)</span>
+          <textarea name="note" rows="2" maxlength="600" placeholder="Mis. mahasiswi, bawa motor, ingin sewa tahunan."></textarea>
+        </label>
+        <label class="hp" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
+        <p class="form__error" id="waitError" role="alert" hidden></p>
+        <button class="btn btn--red btn--block" type="submit" id="waitSubmit">Masuk daftar tunggu</button>
+      </form>
+      <div class="form__done" id="waitDone" hidden tabindex="-1">
+        <img src="/assets/img/mark.webp" alt="" width="120" height="82">
+        <h3>Anda sudah di daftar tunggu</h3>
+        <p id="waitDoneText">Kami akan mengabari Anda lewat WhatsApp begitu ada kamar kosong yang cocok.</p>
+        <a class="btn btn--ink" id="waitDoneWa" href="#" target="_blank" rel="noopener">Tanya langsung lewat WhatsApp</a>
+      </div>
+    </section>
+
     <!-- TANYA JAWAB -->
     <section class="section tanya" id="tanya" aria-labelledby="tanyaTitle">
       <div class="section__head">
@@ -205,7 +252,7 @@
       <img src="/assets/img/logo-bona.webp" alt="Logo Kos Bona" width="300" height="324" loading="lazy">
     </div>
     <div class="footer__info" id="footerInfo"></div>
-    <p class="footer__small">© <span id="year"></span> Bonaasina. Sudah ngekos di sini? Buka portal penghuni dari link WhatsApp yang dikirim pemilik. <a href="/admin/">Masuk sebagai pemilik</a></p>
+    <p class="footer__small">© <span id="year"></span> Bonaasina. Sudah ngekos di sini? <a href="/penghuni/">Masuk ke dashboard penghuni</a>. <a href="/admin/">Masuk sebagai pemilik</a></p>
   </footer>
 
   <a class="wa-float" id="waFloat" href="#" target="_blank" rel="noopener" aria-label="Chat WhatsApp pemilik kos">
@@ -213,11 +260,11 @@
     <span>Chat pemilik</span>
   </a>
 
-  <script src="/js/config.js?v=20261017b"></script>
+  <script src="/js/config.js?v=20261017c"></script>
   <script src="/vendor/gsap.min.js" defer></script>
   <script src="/vendor/ScrollTrigger.min.js" defer></script>
   <script src="/vendor/lenis.min.js" defer></script>
-  <script src="/js/site.js?v=20261017b" defer></script>
-  <script src="/js/analytics.js?v=20261017b" defer></script>
+  <script src="/js/site.js?v=20261017c" defer></script>
+  <script src="/js/analytics.js?v=20261017c" defer></script>
 </body>
 </html>

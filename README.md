@@ -1,12 +1,15 @@
 # Bonaasina — Kos Asina & Kos Bona
 
-Website untuk calon penyewa, admin untuk pemilik, dan portal untuk penghuni.
+Website untuk calon penyewa, admin untuk pemilik, dan dashboard untuk penghuni.
 
 | Bagian | Alamat | Untuk siapa |
 | --- | --- | --- |
-| Website | `/` | Calon penyewa: kamar kosong, harga bulanan/tahunan, fasilitas, lokasi, aturan, survei |
-| Admin | `/admin/` | Pemilik: kamar, penghuni, tagihan, bukti bayar, kerusakan, survei, laporan |
-| Portal penghuni | `/portal/#…` | Penghuni: lihat tagihan, unggah bukti bayar, lapor kerusakan |
+| Website | `/` | Calon penyewa: kamar kosong, harga bulanan/tahunan, fasilitas, lokasi, aturan, survei, daftar tunggu |
+| Admin | `/admin/` | Pemilik: kamar, penghuni & akun login, kontrak, kondisi kamar, tagihan & kuitansi, pengumuman, piket, kerusakan, survei, daftar tunggu, laporan, log |
+| Dashboard penghuni | `/penghuni/` | Penghuni: tagihan & kuitansi PDF, kontrak digital, kondisi kamar, piket, pengumuman, lapor kerusakan, kartu penghuni |
+| Cek keaslian | `/cek/?k=…` | Siapa saja: memindai QR kartu penghuni/kuitansi |
+
+`/portal/` lama hanya mengalihkan ke `/penghuni/` (link portal lama sudah tidak berlaku).
 
 ## Arsitektur
 
@@ -18,21 +21,25 @@ Supabase Edge Function "api"  ──  supabase/functions/api/index.ts
         │  kunci rahasia (hanya di server)
         ▼
 Supabase Postgres (RLS aktif, tanpa akses langsung dari browser)
-Supabase Storage: photos (publik) · private (bukti bayar & foto kerusakan)
+Supabase Storage: photos (publik) · private (bukti bayar, foto kerusakan/kondisi/piket/profil, PDF kontrak)
 Supabase Auth: login admin
 ```
 
 - Browser **tidak pernah** membaca tabel langsung. Semua lewat fungsi `api`, yang memeriksa siapa pemanggilnya.
 - **Admin** masuk dengan email + kata sandi (Supabase Auth). Email harus terdaftar di tabel `admins`.
-- **Penghuni** tidak perlu akun. Pemilik membuat link portal pribadi (`/portal/#token`) dari menu Penghuni lalu mengirimnya lewat WhatsApp. Token hanya disimpan dalam bentuk hash; membuat link baru mematikan link lama; link mati otomatis saat penghuni dicatat keluar.
+- **Penghuni** masuk dengan username + kata sandi yang dibuat admin (menu Penghuni → Buat akun, atau saat menambah penghuni). Kata sandi disimpan sebagai hash bcrypt; sesi berupa token acak di header `X-Tenant-Session` (hash di tabel `tenant_sessions`, berlaku 30 hari, diperpanjang otomatis). Mengganti kata sandi, menonaktifkan akun, atau mencatat penghuni keluar langsung mengakhiri semua sesinya. Halaman login admin juga menerima username penghuni dan mengarahkannya ke `/penghuni/`. Login penghuni dibatasi 10 percobaan gagal per 15 menit per IP.
+- **Kontrak digital**: admin membuat kontrak dari templat (Pengaturan → Templat kontrak; tanda `{nama_penghuni}` dsb. diisi otomatis), penghuni menyetujui di dashboard (centang + ketik nama), lalu PDF final disimpan beserta waktu, perangkat, dan IP. 30 hari sebelum berakhir penghuni diminta memilih perpanjang/berhenti; admin melihatnya di Ringkasan & menu Kontrak. Templat bawaan adalah draf umum, **bukan nasihat hukum** — sebaiknya ditinjau sebelum dipakai.
+- **Kuitansi PDF** bernomor (`BNS/KW/tahun/urut`) terbit otomatis saat admin menandai tagihan lunas; berisi QR ke `/cek/`. Nomor kontrak `BNS/KTR/tahun/urut`.
+- **Daftar tunggu**: calon penyewa mendaftar di website; saat kamar kosong (penghuni keluar atau status kamar diubah ke Kosong) pendaftar otomatis ditandai *Perlu dikabari* dan admin mengabari lewat tombol WhatsApp.
+- **Piket**: tugas per kos (harian/mingguan/2 mingguan/bulanan), bergilir N orang per giliran atau bersama; penghuni mengirim foto bukti.
 - Bukti bayar & foto kerusakan disimpan privat dan hanya bisa dilihat admin lewat tautan sementara (5 menit).
 
 ## Deploy
 
 ### 1. Supabase
 1. Buat proyek **bonaasina** (region Singapore `ap-southeast-1`).
-2. Jalankan `supabase/migrations/20261016000001_init.sql`, lalu `supabase/seed.sql`.
-3. Deploy fungsi `supabase/functions/api` dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri).
+2. Jalankan semua file di `supabase/migrations/` berurutan, lalu `supabase/seed.sql`.
+3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR.
 4. Buat kode penyiapan admin sekali pakai (berlaku 24 jam), lalu buka `/admin/` → *Pertama kali masuk* untuk membuat kata sandi:
    ```sql
    insert into public.setup_codes (email, code_hash, expires_at)
@@ -78,5 +85,5 @@ Lalu arahkan `web/js/config.js` ke alamat lokal itu dan buka folder `web/` denga
 Penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 2 ayat 3) dan diperlakukan sebagai penghasilan usaha. Pajak daerah (PBJT) bergantung Perda setempat. Pastikan ke KPP/konsultan.
 
 ## Analitik & log aktivitas
-- **Google Analytics 4**: ID di `web/js/config.js` (`ga4Id`). `web/js/analytics.js` mengirim page view dengan alamat bersih (tanpa `#` dan `?`), jadi token portal penghuni tidak pernah terkirim. Admin mengirim page view per menu (`/admin/<menu>`). Event: `generate_lead` (formulir survei terkirim), `contact_whatsapp` (klik tautan WA), `page_not_found`.
-- **Log aktivitas** (menu admin *Log aktivitas*, tabel `activity_log`): login/keluar dan percobaan gagal, semua perubahan data oleh admin, unduhan & bukti bayar yang dibuka, akses portal penghuni, dan permintaan survei. Disimpan 180 hari, dihapus otomatis.
+- **Google Analytics 4**: ID di `web/js/config.js` (`ga4Id`). `web/js/analytics.js` mengirim page view dengan alamat bersih (tanpa `#` dan `?`), jadi parameter seperti kode `?k=` tidak terkirim. Dashboard penghuni mengirim page view per menu (`/penghuni/<menu>`). Admin mengirim page view per menu (`/admin/<menu>`). Event: `generate_lead` (formulir survei terkirim), `contact_whatsapp` (klik tautan WA), `page_not_found`.
+- **Log aktivitas** (menu admin *Log aktivitas*, tabel `activity_log`): login/keluar dan percobaan gagal, semua perubahan data oleh admin, unduhan & bukti bayar yang dibuka, aktivitas penghuni di dashboard (login, bukti bayar, persetujuan kontrak, piket, unduhan), serta permintaan survei & daftar tunggu. Disimpan 180 hari, dihapus otomatis.
