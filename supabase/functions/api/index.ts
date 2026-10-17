@@ -204,8 +204,10 @@ function writeLog(req: Request, actorType: ActorType, actor: string, e: LogEntry
     if (roomIdForTarget && !e.target) e.target = (await one('rooms', roomIdForTarget))?.code;
     if (e.dedupeMinutes) {
       const since = new Date(Date.now() - e.dedupeMinutes * 60e3).toISOString();
-      const { count } = await sb.from('activity_log').select('id', { count: 'exact', head: true })
+      let dq = sb.from('activity_log').select('id', { count: 'exact', head: true })
         .eq('action', e.action).eq('actor', actor).eq('ip', ip).gte('created_at', since);
+      if (e.target) dq = dq.eq('target', e.target);
+      const { count } = await dq;
       if ((count ?? 0) > 0) return;
     }
     const { error } = await sb.from('activity_log').insert({
@@ -611,7 +613,7 @@ on('GET', '/admin/file', async ({ url }, log) => {
   if (!/^(proofs|issues)\/[\w-]+\/[\w.-]+$/.test(path)) throw bad('Alamat file tidak valid.');
   const out = { url: await signedUrl(path) };
   const tenant = await one('tenants', path.split('/')[1]);
-  log({ action: 'file.view', summary: `Melihat ${path.startsWith('proofs') ? 'bukti bayar' : 'foto kerusakan'} ${tenant?.name || ''}`.trim(), dedupeMinutes: 5 });
+  log({ action: 'file.view', summary: `Melihat ${path.startsWith('proofs') ? 'bukti bayar' : 'foto kerusakan'} ${tenant?.name || ''}`.trim() });
   return out;
 });
 
