@@ -164,6 +164,7 @@ tr.flash td { animation: flash 1.4s ease; }
 .table--log .actor { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .table--rooms { table-layout: fixed; width: max(100%, 980px); }
 .table--rooms td { overflow: hidden; text-overflow: ellipsis; }
+.table--rooms td .sub { white-space: normal; }
 @media (min-width: 761px) {
   .row--fail td { background: rgba(244, 220, 214, .35); }
   .table--log td:first-child { width: 1%; }
