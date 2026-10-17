@@ -104,6 +104,16 @@ function normalizePhone(p?: string) {
 const rupiah = (n: number) => 'Rp' + Number(n || 0).toLocaleString('id-ID');
 const waLink = (phone: string, text: string) => `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(text)}`;
 
+// Pembuatan tagihan otomatis cukup sekali per beberapa menit per instance; perubahan data oleh admin
+// mereset jeda ini (lihat Deno.serve), jadi tagihan baru tetap langsung muncul setelah data penghuni berubah.
+let lastAutoGen = 0;
+async function generateInvoicesThrottled() {
+  if (Date.now() - lastAutoGen < 5 * 60e3) return 0;
+  const n = await generateInvoices();
+  lastAutoGen = Date.now();
+  return n;
+}
+
 // Buat tagihan yang sudah waktunya (idempoten: unik per penghuni + awal periode).
 async function generateInvoices(tenantId?: string) {
   const settings = await getSettings();
@@ -162,9 +172,61 @@ async function signedUrl(path: string) {
 }
 const okPhoto = (u: string) => u.startsWith(PHOTO_PREFIX) || u.startsWith('/assets/');
 
+// ---------------------------------------------------------------- log aktivitas
+// Dicatat: login/keluar admin, semua perubahan data oleh admin, akses berkas & unduhan,
+// akses portal penghuni, permintaan survei, dan percobaan akses yang gagal.
+// Kunjungan halaman publik tidak dicatat di sini (itu tugas Google Analytics).
+type ActorType = 'admin' | 'penghuni' | 'publik';
+type LogEntry = { action: string; summary: string; target?: string | null; ok?: boolean; meta?: Row; dedupeMinutes?: number };
+const LOG_KEEP_DAYS = 180;
+
+function describeUA(ua: string | null) {
+  const s = ua || '';
+  if (!s) return '';
+  const browser = /Edg\//.test(s) ? 'Edge' : /OPR\/|Opera/.test(s) ? 'Opera' : /SamsungBrowser/.test(s) ? 'Samsung Internet'
+    : /Firefox\//.test(s) ? 'Firefox' : /Chrome\//.test(s) ? 'Chrome' : /Safari\//.test(s) ? 'Safari' : /bot|crawl|spider/i.test(s) ? 'Bot' : 'Peramban lain';
+  const os = /Android/.test(s) ? 'Android' : /iPhone|iPad|iPod/.test(s) ? 'iPhone/iPad' : /Windows/.test(s) ? 'Windows'
+    : /Mac OS X|Macintosh/.test(s) ? 'macOS' : /Linux/.test(s) ? 'Linux' : '';
+  return os ? `${browser} di ${os}` : browser;
+}
+function clientInfo(req: Request) {
+  const ip = (req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || req.headers.get('x-forwarded-for') || '').split(',')[0].trim().slice(0, 64);
+  return { ip, ua: describeUA(req.headers.get('user-agent')) };
+}
+// Jalankan di latar belakang supaya respons ke pengguna tidak menunggu penulisan log.
+function background(p: Promise<unknown>) {
+  const safe = p.catch((e) => console.error('log', e));
+  try { (globalThis as any).EdgeRuntime?.waitUntil?.(safe); } catch { /* tetap jalan */ }
+}
+function writeLog(req: Request, actorType: ActorType, actor: string, e: LogEntry, roomIdForTarget?: string) {
+  const { ip, ua } = clientInfo(req);
+  background((async () => {
+    if (roomIdForTarget && !e.target) e.target = (await one('rooms', roomIdForTarget))?.code;
+    if (e.dedupeMinutes) {
+      const since = new Date(Date.now() - e.dedupeMinutes * 60e3).toISOString();
+      const { count } = await sb.from('activity_log').select('id', { count: 'exact', head: true })
+        .eq('action', e.action).eq('actor', actor).eq('ip', ip).gte('created_at', since);
+      if ((count ?? 0) > 0) return;
+    }
+    const { error } = await sb.from('activity_log').insert({
+      actor_type: actorType, actor: str(actor, 200) || '-', action: e.action, summary: str(e.summary, 300),
+      target: e.target ? str(e.target, 120) : null, ok: e.ok !== false, ip, user_agent: ua, meta: e.meta ?? null,
+    });
+    if (error) console.error('log', error);
+    // Bersihkan log lama sesekali.
+    if (Math.random() < 0.02) await sb.from('activity_log').delete().lt('created_at', new Date(Date.now() - LOG_KEEP_DAYS * DAY).toISOString());
+  })());
+}
+const STATUS_LABEL: Record<string, string> = { kosong: 'Kosong', terisi: 'Terisi', dipesan: 'Dipesan', perbaikan: 'Perbaikan', baru: 'Baru', dikonfirmasi: 'Dikonfirmasi', selesai: 'Selesai', batal: 'Batal', dikerjakan: 'Sedang dikerjakan' };
+async function invoiceDesc(id: string) {
+  const r = await q<Row | null>(sb.from('invoices').select('period_label, amount, tenants(name), rooms(code)').eq('id', id).maybeSingle());
+  return r ? { text: `${r.tenants?.name || 'penghuni'}, ${r.period_label} (${rupiah(r.amount)})`, target: r.rooms?.code || null } : { text: 'tagihan', target: null };
+}
+
 // ---------------------------------------------------------------- router
-type Ctx = { req: Request; url: URL; params: Record<string, string>; body: Row; tenant?: Row; adminEmail?: string };
-type Handler = (c: Ctx) => Promise<unknown> | unknown;
+type Ctx = { req: Request; url: URL; params: Record<string, string>; body: Row; tenant?: Row; adminEmail?: string; log?: LogEntry | null };
+// Handler memanggil log({...}) untuk mencatat aktivitasnya; catatan ditulis setelah handler berhasil.
+type Handler = (c: Ctx, log: (e: LogEntry) => void) => Promise<unknown> | unknown;
 const routes: { method: string; re: RegExp; keys: string[]; area: 'public' | 'portal' | 'admin'; raw: boolean; fn: Handler }[] = [];
 function on(method: string, path: string, fn: Handler, opts: { raw?: boolean } = {}) {
   const keys: string[] = [];
@@ -192,7 +254,7 @@ on('GET', '/public', async () => {
   };
 });
 
-on('POST', '/surveys', async ({ body: b }) => {
+on('POST', '/surveys', async ({ body: b }, log) => {
   if (b.website) return { ok: true }; // honeypot
   const name = str(b.name, 80), phone = str(b.phone, 20), propertyId = str(b.propertyId, 40);
   if (!name) throw bad('Isi nama Anda.');
@@ -207,11 +269,14 @@ on('POST', '/surveys', async ({ body: b }) => {
     propertyId, roomId, name, phone, date: b.date, time: str(b.time, 20), occupation: str(b.occupation, 80),
     duration: ['bulanan', 'tahunan', 'belum tahu'].includes(b.duration) ? b.duration : 'belum tahu', note: str(b.note, 600),
   });
+  const prop = await one('properties', propertyId);
+  log({ action: 'survey.create', summary: `Mengirim permintaan survei ${prop?.name || ''} untuk ${tanggal(b.date)}`, target: rec.roomId ? (await one('rooms', rec.roomId))?.code : null, meta: { name } });
   return created({ ok: true, id: rec.id });
 });
 
 // ================================================================ PORTAL PENGHUNI (Fase 2)
-on('GET', '/portal/me', async ({ tenant: t }) => {
+on('GET', '/portal/me', async ({ tenant: t }, log) => {
+  log({ action: 'portal.open', summary: 'Membuka portal penghuni', dedupeMinutes: 30 });
   await generateInvoices(t!.id);
   const [s, room, invoices, issues] = await Promise.all([
     getSettings(), one('rooms', t!.roomId),
@@ -234,7 +299,7 @@ on('GET', '/portal/me', async ({ tenant: t }) => {
   };
 });
 
-on('POST', '/portal/invoices/:id/proof', async ({ req, params, tenant: t }) => {
+on('POST', '/portal/invoices/:id/proof', async ({ req, params, tenant: t }, log) => {
   const inv = await one('invoices', params.id);
   if (!inv || inv.tenantId !== t!.id) throw notFound('Tagihan tidak ditemukan.');
   if (inv.status === 'lunas') throw bad('Tagihan ini sudah lunas.');
@@ -242,11 +307,12 @@ on('POST', '/portal/invoices/:id/proof', async ({ req, params, tenant: t }) => {
   const path = `proofs/${t!.id}/${inv.id}-${Date.now()}.${ext}`;
   await putFile('private', path, buf, type);
   const rec = await update('invoices', inv.id, { proofPath: path, proofStatus: 'menunggu', proofNote: null, proofUploadedAt: new Date().toISOString() });
+  log({ action: 'portal.proof', summary: `Mengunggah bukti bayar ${inv.periodLabel} (${rupiah(inv.amount)})` });
   return pick(rec, ['id', 'proofStatus', 'proofUploadedAt']);
 }, { raw: true });
 
 const ISSUE_CATS = ['Listrik', 'Air & kamar mandi', 'Pintu & kunci', 'Perabot', 'WiFi', 'Kebersihan', 'Lainnya'];
-on('POST', '/portal/issues', async ({ body: b, tenant: t }) => {
+on('POST', '/portal/issues', async ({ body: b, tenant: t }, log) => {
   const title = str(b.title, 120);
   if (!title) throw bad('Tulis singkat apa yang rusak.');
   const { count } = await sb.from('issues').select('id', { count: 'exact', head: true }).eq('tenant_id', t!.id).gte('created_at', new Date(Date.now() - DAY).toISOString());
@@ -256,26 +322,36 @@ on('POST', '/portal/issues', async ({ body: b, tenant: t }) => {
     tenantId: t!.id, roomId: t!.roomId, propertyId: room?.propertyId ?? null,
     category: ISSUE_CATS.includes(b.category) ? b.category : 'Lainnya', title, description: str(b.description, 1500),
   });
+  log({ action: 'portal.issue', summary: `Melaporkan kerusakan: ${title}`, target: room?.code });
   return created(pick(rec, ['id', 'category', 'title', 'description', 'status', 'createdAt']));
 });
-on('POST', '/portal/issues/:id/photo', async ({ req, params, tenant: t }) => {
+on('POST', '/portal/issues/:id/photo', async ({ req, params, tenant: t }, log) => {
   const iss = await one('issues', params.id);
   if (!iss || iss.tenantId !== t!.id) throw notFound('Laporan tidak ditemukan.');
   const { buf, type, ext } = await readImage(req);
   const path = `issues/${t!.id}/${iss.id}-${Date.now()}.${ext}`;
   await putFile('private', path, buf, type);
   await update('issues', iss.id, { photoPath: path });
+  log({ action: 'portal.issue_photo', summary: `Menambah foto laporan "${iss.title}"` });
   return { ok: true };
 }, { raw: true });
 
 // ================================================================ ADMIN — login
-on('POST', '/admin/login', async ({ body: b }) => {
+on('POST', '/admin/login', async ({ req, body: b }, log) => {
   const email = str(b.email, 200).toLowerCase();
-  if (!(await q<Row | null>(sb.from('admins').select('email').eq('email', email).maybeSingle()))) throw new HttpError(401, 'Email atau kata sandi salah.');
+  const fail = (why: string) => { writeLog(req, 'admin', email || '(tanpa email)', { action: 'login.failed', summary: `Gagal masuk: ${why}`, ok: false }); return new HttpError(401, 'Email atau kata sandi salah.'); };
+  if (!(await q<Row | null>(sb.from('admins').select('email').eq('email', email).maybeSingle()))) throw fail('email tidak terdaftar sebagai admin');
   const auth = createClient(SUPABASE_URL, PUBLISHABLE, { auth: { persistSession: false } });
   const { data, error } = await auth.auth.signInWithPassword({ email, password: String(b.password || '') });
-  if (error || !data.session) throw new HttpError(401, 'Email atau kata sandi salah.');
+  if (error || !data.session) throw fail('kata sandi salah');
+  log({ action: 'login', summary: 'Masuk ke admin' });
   return sessionOut(data.session);
+});
+on('POST', '/admin/logout', async (_c, log) => { log({ action: 'logout', summary: 'Keluar dari admin' }); return { ok: true }; });
+on('POST', '/admin/activity/view', async ({ body: b }, log) => {
+  const view = str(b.view, 40); const label = str(b.label, 60) || view;
+  if (view) log({ action: 'view', summary: `Membuka menu ${label}`, target: view, dedupeMinutes: 15 });
+  return { ok: true };
 });
 on('POST', '/admin/refresh', async ({ body: b }) => {
   const auth = createClient(SUPABASE_URL, PUBLISHABLE, { auth: { persistSession: false } });
@@ -284,11 +360,14 @@ on('POST', '/admin/refresh', async ({ body: b }) => {
   return sessionOut(data.session);
 });
 // Buat/ganti kata sandi admin dengan kode penyiapan sekali pakai (dibuat pemilik proyek lewat SQL).
-on('POST', '/admin/setup', async ({ body: b }) => {
+on('POST', '/admin/setup', async ({ req, body: b }, log) => {
   const email = str(b.email, 200).toLowerCase(); const code = str(b.code, 64); const password = String(b.password || '');
   if (password.length < 10) throw bad('Kata sandi minimal 10 karakter.');
   const row = toCamel(await q(sb.from('setup_codes').select('*').eq('email', email).maybeSingle()));
-  if (!row || row.expiresAt < new Date().toISOString() || row.codeHash !== (await sha256(code))) throw new HttpError(401, 'Kode penyiapan salah atau sudah kedaluwarsa.');
+  if (!row || row.expiresAt < new Date().toISOString() || row.codeHash !== (await sha256(code))) {
+    writeLog(req, 'admin', email || '(tanpa email)', { action: 'setup.failed', summary: 'Gagal mengatur kata sandi: kode penyiapan salah atau kedaluwarsa', ok: false });
+    throw new HttpError(401, 'Kode penyiapan salah atau sudah kedaluwarsa.');
+  }
   const { data: list } = await sb.auth.admin.listUsers({ page: 1, perPage: 200 });
   const user = list?.users.find((u) => (u.email || '').toLowerCase() === email);
   const res = user
@@ -296,13 +375,14 @@ on('POST', '/admin/setup', async ({ body: b }) => {
     : await sb.auth.admin.createUser({ email, password, email_confirm: true });
   if (res.error) { console.error(res.error); throw bad('Gagal menyimpan kata sandi. Coba kata sandi lain.'); }
   await q(sb.from('setup_codes').delete().eq('email', email));
+  log({ action: 'setup', summary: 'Mengatur kata sandi admin dengan kode penyiapan' });
   return { ok: true };
 });
 function sessionOut(s: Row) { return { accessToken: s.access_token, refreshToken: s.refresh_token, expiresAt: s.expires_at }; }
 
 // ================================================================ ADMIN — ringkasan
 on('GET', '/admin/summary', async () => {
-  const createdCount = await generateInvoices();
+  const createdCount = await generateInvoicesThrottled();
   const today = todayStr(); const month = today.slice(0, 7);
   const [props, rooms, tenants, invs, exps, surveys, issues, s] = await Promise.all([
     all('properties'), all('rooms'), all('tenants'), all('invoices'), all('expenses'), all('surveys'), all('issues'), getSettings(),
@@ -329,12 +409,14 @@ on('GET', '/admin/summary', async () => {
 
 // ================================================================ ADMIN — kos & kamar
 on('GET', '/admin/properties', async () => (await all('properties')).sort(bySort));
-on('PUT', '/admin/properties/:id', async ({ params, body: b }) => {
+on('PUT', '/admin/properties/:id', async ({ params, body: b }, log) => {
   const patch: Row = pick(b, ['name', 'gender', 'tagline', 'description', 'address', 'mapsQuery']);
   for (const k of Object.keys(patch)) patch[k] = str(patch[k], k === 'description' ? 1500 : 300);
   for (const k of ['facilities', 'rules', 'nearby']) if (b[k] !== undefined) patch[k] = strList(b[k]);
   if (b.photos !== undefined) patch.photos = strList(b.photos, 12).filter(okPhoto);
-  return update('properties', params.id, patch);
+  const rec = await update('properties', params.id, patch);
+  log({ action: 'property.update', summary: `Mengubah info ${rec.name}`, target: rec.name });
+  return rec;
 });
 
 const STATUS_KAMAR = ['kosong', 'terisi', 'dipesan', 'perbaikan'];
@@ -353,14 +435,30 @@ on('GET', '/admin/rooms', async () => {
   const occ = new Map((tenants || []).map((t) => [t.room_id, { id: t.id, name: t.name }]));
   return rooms.map((r) => ({ ...r, effectiveStatus: occ.has(r.id) ? 'terisi' : r.status, tenant: occ.get(r.id) ?? null })).sort(byCode);
 });
-on('POST', '/admin/rooms', async ({ body }) => {
+on('POST', '/admin/rooms', async ({ body }, log) => {
   const r = roomFromBody(body);
   if (!r.code) throw bad('Isi nomor/kode kamar.');
-  if (!(await one('properties', r.propertyId))) throw bad('Pilih kos untuk kamar ini.');
-  return created(await insert('rooms', { status: 'kosong', ...r }));
+  const prop = await one('properties', r.propertyId);
+  if (!prop) throw bad('Pilih kos untuk kamar ini.');
+  const rec = await insert('rooms', { status: 'kosong', ...r });
+  log({ action: 'room.create', summary: `Menambah kamar ${rec.code} di ${prop.name}`, target: rec.code });
+  return created(rec);
 });
-on('PUT', '/admin/rooms/:id', async ({ params, body }) => { const r = roomFromBody(body); delete r.propertyId; return update('rooms', params.id, r); });
-on('DELETE', '/admin/rooms/:id', async ({ params }) => remove('rooms', params.id));
+on('PUT', '/admin/rooms/:id', async ({ params, body }, log) => {
+  const r = roomFromBody(body); delete r.propertyId;
+  const rec = await update('rooms', params.id, r);
+  const keys = Object.keys(r);
+  log(keys.length === 1 && keys[0] === 'status'
+    ? { action: 'room.status', summary: `Mengubah status kamar ${rec.code} menjadi ${STATUS_LABEL[rec.status] || rec.status}`, target: rec.code }
+    : { action: 'room.update', summary: `Mengubah data kamar ${rec.code}`, target: rec.code });
+  return rec;
+});
+on('DELETE', '/admin/rooms/:id', async ({ params }, log) => {
+  const cur = await one('rooms', params.id);
+  const out = await remove('rooms', params.id);
+  log({ action: 'room.delete', summary: `Menghapus kamar ${cur?.code || ''}`, target: cur?.code });
+  return out;
+});
 
 // ================================================================ ADMIN — penghuni
 function tenantFromBody(b: Row) {
@@ -388,7 +486,7 @@ on('GET', '/admin/tenants', async () => {
     };
   }).sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'aktif' ? -1 : 1));
 });
-on('POST', '/admin/tenants', async ({ body }) => {
+on('POST', '/admin/tenants', async ({ body }, log) => {
   const t = tenantFromBody(body);
   if (!t.name) throw bad('Isi nama penghuni.');
   const room = t.roomId ? await one('rooms', t.roomId) : null;
@@ -400,9 +498,10 @@ on('POST', '/admin/tenants', async ({ body }) => {
   const rec = await insert('tenants', { status: 'aktif', ...t });
   await update('rooms', room.id, { status: 'terisi' });
   await generateInvoices(rec.id);
+  log({ action: 'tenant.create', summary: `Menambah penghuni ${rec.name} di kamar ${room.code}`, target: room.code });
   return created({ ...rec, portalTokenHash: undefined });
 });
-on('PUT', '/admin/tenants/:id', async ({ params, body }) => {
+on('PUT', '/admin/tenants/:id', async ({ params, body }, log) => {
   const t = tenantFromBody(body); const cur = await one('tenants', params.id);
   if (!cur) throw notFound('Penghuni tidak ditemukan.');
   if (t.roomId && t.roomId !== cur.roomId) {
@@ -410,41 +509,49 @@ on('PUT', '/admin/tenants/:id', async ({ params, body }) => {
     await update('rooms', cur.roomId, { status: 'kosong' }); await update('rooms', t.roomId, { status: 'terisi' });
   }
   const rec = await update('tenants', params.id, t);
+  log({ action: 'tenant.update', summary: `Mengubah data penghuni ${rec.name}` });
   return { ...rec, portalTokenHash: undefined };
 });
-on('POST', '/admin/tenants/:id/checkout', async ({ params, body }) => {
+on('POST', '/admin/tenants/:id/checkout', async ({ params, body }, log) => {
   const cur = await one('tenants', params.id); if (!cur) throw notFound('Penghuni tidak ditemukan.');
   const endDate = isDate(body.endDate) ? body.endDate : todayStr();
   await update('tenants', cur.id, { status: 'keluar', endDate, portalTokenHash: null });
   await update('rooms', cur.roomId, { status: 'kosong' });
   await q(sb.from('invoices').delete().eq('tenant_id', cur.id).eq('status', 'belum').gte('period_start', endDate));
+  const room = await one('rooms', cur.roomId);
+  log({ action: 'tenant.checkout', summary: `Mencatat ${cur.name} keluar per ${tanggal(endDate)}`, target: room?.code });
   return { ok: true };
 });
 // Buat link portal baru (link lama otomatis tidak berlaku)
-on('POST', '/admin/tenants/:id/portal', async ({ params }) => {
+on('POST', '/admin/tenants/:id/portal', async ({ params }, log) => {
   const t = await one('tenants', params.id); if (!t) throw notFound('Penghuni tidak ditemukan.');
   if (t.status !== 'aktif') throw bad('Penghuni ini sudah keluar.');
   const token = randomToken();
   await update('tenants', t.id, { portalTokenHash: await sha256(token), portalCreatedAt: new Date().toISOString() });
+  log({ action: 'tenant.portal', summary: `Membuat link portal baru untuk ${t.name} (link lama tidak berlaku)` });
   return { token };
 });
 
 // ================================================================ ADMIN — tagihan
 on('GET', '/admin/invoices', async () => {
-  await generateInvoices();
+  await generateInvoicesThrottled();
   const [invs, tenants, rooms] = await Promise.all([all('invoices', 'due_date'), all('tenants'), all('rooms')]);
   const tm = new Map(tenants.map((t) => [t.id, t])); const rm = new Map(rooms.map((r) => [r.id, r]));
   return invs.map((i): Row => ({ ...decorate(i), tenantName: tm.get(i.tenantId)?.name || '(dihapus)', tenantPhone: tm.get(i.tenantId)?.phone || '', roomCode: rm.get(i.roomId)?.code || '-' }))
     .sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === 'belum' ? -1 : 1));
 });
-on('POST', '/admin/invoices', async ({ body: b }) => {
+on('POST', '/admin/invoices', async ({ body: b }, log) => {
   const t = await one('tenants', str(b.tenantId, 40)); if (!t) throw bad('Pilih penghuni.');
   if (!num(b.amount)) throw bad('Isi jumlah tagihan.'); if (!isDate(b.dueDate)) throw bad('Isi tanggal jatuh tempo.');
   const room = await one('rooms', t.roomId);
-  return created(await insert('invoices', { tenantId: t.id, roomId: t.roomId, propertyId: room?.propertyId ?? null, periodStart: null, periodLabel: str(b.label, 120) || 'Tagihan tambahan', cycle: 'manual', dueDate: b.dueDate, amount: num(b.amount), status: 'belum', note: str(b.note, 300) }));
+  const rec = await insert('invoices', { tenantId: t.id, roomId: t.roomId, propertyId: room?.propertyId ?? null, periodStart: null, periodLabel: str(b.label, 120) || 'Tagihan tambahan', cycle: 'manual', dueDate: b.dueDate, amount: num(b.amount), status: 'belum', note: str(b.note, 300) });
+  log({ action: 'invoice.create', summary: `Membuat tagihan tambahan untuk ${t.name}: ${rec.periodLabel} (${rupiah(rec.amount)})`, target: room?.code });
+  return created(rec);
 });
-on('POST', '/admin/invoices/:id/pay', async ({ params, body: b }) => {
+on('POST', '/admin/invoices/:id/pay', async ({ params, body: b }, log) => {
   const inv = await one('invoices', params.id); if (!inv) throw notFound('Tagihan tidak ditemukan.');
+  const d = await invoiceDesc(inv.id);
+  log({ action: 'invoice.pay', summary: `Menandai lunas tagihan ${d.text}${inv.proofStatus === 'menunggu' ? ' (bukti diterima)' : ''}`, target: d.target });
   return update('invoices', inv.id, {
     status: 'lunas', paidAt: isDate(b.paidAt) ? b.paidAt : todayStr(),
     paidAmount: b.paidAmount !== undefined && b.paidAmount !== '' ? num(b.paidAmount) : inv.amount,
@@ -453,20 +560,36 @@ on('POST', '/admin/invoices/:id/pay', async ({ params, body: b }) => {
     proofStatus: inv.proofPath ? 'diterima' : inv.proofStatus,
   });
 });
-on('POST', '/admin/invoices/:id/unpay', async ({ params }) => update('invoices', params.id, { status: 'belum', paidAt: null, paidAmount: null, method: null, proofStatus: null }));
-on('POST', '/admin/invoices/:id/reject-proof', async ({ params, body }) => {
-  const note = str(body.note, 300); if (!note) throw bad('Tulis alasan agar penghuni tahu apa yang perlu diperbaiki.');
-  return update('invoices', params.id, { proofStatus: 'ditolak', proofNote: note });
+on('POST', '/admin/invoices/:id/unpay', async ({ params }, log) => {
+  const rec = await update('invoices', params.id, { status: 'belum', paidAt: null, paidAmount: null, method: null, proofStatus: null });
+  const d = await invoiceDesc(params.id);
+  log({ action: 'invoice.unpay', summary: `Membatalkan status lunas tagihan ${d.text}`, target: d.target });
+  return rec;
 });
-on('PUT', '/admin/invoices/:id', async ({ params, body: b }) => {
+on('POST', '/admin/invoices/:id/reject-proof', async ({ params, body }, log) => {
+  const note = str(body.note, 300); if (!note) throw bad('Tulis alasan agar penghuni tahu apa yang perlu diperbaiki.');
+  const rec = await update('invoices', params.id, { proofStatus: 'ditolak', proofNote: note });
+  const d = await invoiceDesc(params.id);
+  log({ action: 'invoice.reject_proof', summary: `Menolak bukti bayar ${d.text}: ${note}`, target: d.target });
+  return rec;
+});
+on('PUT', '/admin/invoices/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.amount !== undefined) patch.amount = num(b.amount);
   if (b.dueDate !== undefined) { if (!isDate(b.dueDate)) throw bad('Format tanggal tidak benar.'); patch.dueDate = b.dueDate; }
   if (b.note !== undefined) patch.note = str(b.note, 300);
-  return update('invoices', params.id, patch);
+  const rec = await update('invoices', params.id, patch);
+  const d = await invoiceDesc(params.id);
+  log({ action: 'invoice.update', summary: `Mengubah tagihan ${d.text}`, target: d.target });
+  return rec;
 });
-on('DELETE', '/admin/invoices/:id', async ({ params }) => remove('invoices', params.id));
-on('GET', '/admin/invoices/:id/reminder', async ({ params, url }) => {
+on('DELETE', '/admin/invoices/:id', async ({ params }, log) => {
+  const d = await invoiceDesc(params.id);
+  const out = await remove('invoices', params.id);
+  log({ action: 'invoice.delete', summary: `Menghapus tagihan ${d.text}`, target: d.target });
+  return out;
+});
+on('GET', '/admin/invoices/:id/reminder', async ({ params, url }, log) => {
   const inv = await one('invoices', params.id); if (!inv) throw notFound('Tagihan tidak ditemukan.');
   const [t, room, s] = await Promise.all([one('tenants', inv.tenantId), one('rooms', inv.roomId), getSettings()]);
   if (!t?.phone) throw bad('Penghuni ini belum punya nomor WhatsApp.');
@@ -479,13 +602,17 @@ on('GET', '/admin/invoices/:id/reminder', async ({ params, url }) => {
     .replaceAll('{keterlambatan}', d.overdue ? ` Saat ini sudah lewat ${d.overdueDays} hari.` : '')
     .replaceAll('{rekening}', s.paymentInfo || '-').replaceAll('{portal}', site ? `${site}/portal/` : '');
   await update('invoices', inv.id, { lastRemindedAt: new Date().toISOString() });
+  log({ action: 'invoice.remind', summary: `Membuat pengingat WhatsApp untuk ${t.name}, ${inv.periodLabel}`, target: room?.code });
   return { text, url: waLink(t.phone, text) };
 });
 // Tautan sementara (5 menit) untuk melihat bukti bayar / foto kerusakan
-on('GET', '/admin/file', async ({ url }) => {
+on('GET', '/admin/file', async ({ url }, log) => {
   const path = str(url.searchParams.get('path'), 300);
   if (!/^(proofs|issues)\/[\w-]+\/[\w.-]+$/.test(path)) throw bad('Alamat file tidak valid.');
-  return { url: await signedUrl(path) };
+  const out = { url: await signedUrl(path) };
+  const tenant = await one('tenants', path.split('/')[1]);
+  log({ action: 'file.view', summary: `Melihat ${path.startsWith('proofs') ? 'bukti bayar' : 'foto kerusakan'} ${tenant?.name || ''}`.trim(), dedupeMinutes: 5 });
+  return out;
 });
 
 // ================================================================ ADMIN — survei, kerusakan, pengeluaran
@@ -497,13 +624,20 @@ on('GET', '/admin/surveys', async () => {
     waUrl: waLink(s.phone, `Horas ${s.name}, terima kasih sudah mendaftar survei di ${pm.get(s.propertyId) || 'Bonaasina'} untuk ${tanggal(s.date)}${s.time ? ' ' + s.time : ''}. `),
   })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 });
-on('PUT', '/admin/surveys/:id', async ({ params, body: b }) => {
+on('PUT', '/admin/surveys/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.status !== undefined) { if (!['baru', 'dikonfirmasi', 'selesai', 'batal'].includes(b.status)) throw bad('Status tidak dikenal.'); patch.status = b.status; }
   if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 600);
-  return update('surveys', params.id, patch);
+  const rec = await update('surveys', params.id, patch);
+  log({ action: 'survey.update', summary: `Mengubah status survei ${rec.name} menjadi ${STATUS_LABEL[rec.status] || rec.status}` });
+  return rec;
 });
-on('DELETE', '/admin/surveys/:id', async ({ params }) => remove('surveys', params.id));
+on('DELETE', '/admin/surveys/:id', async ({ params }, log) => {
+  const cur = await one('surveys', params.id);
+  const out = await remove('surveys', params.id);
+  log({ action: 'survey.delete', summary: `Menghapus permintaan survei ${cur?.name || ''}`.trim() });
+  return out;
+});
 
 on('GET', '/admin/issues', async () => {
   const [list, tenants, rooms, props] = await Promise.all([all('issues'), all('tenants'), all('rooms'), all('properties')]);
@@ -513,20 +647,29 @@ on('GET', '/admin/issues', async () => {
     waUrl: tm.get(i.tenantId)?.phone ? waLink(tm.get(i.tenantId)!.phone, `Horas ${tm.get(i.tenantId)!.name}, soal laporan "${i.title}" di kamar ${rm.get(i.roomId) || ''}: `) : null,
   })).sort((a, b) => (a.status === 'selesai') === (b.status === 'selesai') ? b.createdAt.localeCompare(a.createdAt) : a.status === 'selesai' ? 1 : -1);
 });
-on('PUT', '/admin/issues/:id', async ({ params, body: b }) => {
+on('PUT', '/admin/issues/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.status !== undefined) { if (!['baru', 'dikerjakan', 'selesai'].includes(b.status)) throw bad('Status tidak dikenal.'); patch.status = b.status; }
   if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 600);
-  return update('issues', params.id, patch);
+  const rec = await update('issues', params.id, patch);
+  log({ action: 'issue.update', summary: `Memperbarui laporan "${rec.title}" menjadi ${STATUS_LABEL[rec.status] || rec.status}` });
+  return rec;
 });
 
 on('GET', '/admin/expenses', async () => (await all('expenses')).sort((a, b) => b.date.localeCompare(a.date)));
-on('POST', '/admin/expenses', async ({ body: b }) => {
+on('POST', '/admin/expenses', async ({ body: b }, log) => {
   if (!isDate(b.date)) throw bad('Isi tanggal pengeluaran.'); if (!num(b.amount)) throw bad('Isi jumlah pengeluaran.');
   const propertyId = b.propertyId && (await one('properties', str(b.propertyId, 40))) ? str(b.propertyId, 40) : null;
-  return created(await insert('expenses', { date: b.date, amount: num(b.amount), category: str(b.category, 60) || 'Lainnya', propertyId, note: str(b.note, 300) }));
+  const rec = await insert('expenses', { date: b.date, amount: num(b.amount), category: str(b.category, 60) || 'Lainnya', propertyId, note: str(b.note, 300) });
+  log({ action: 'expense.create', summary: `Mencatat pengeluaran ${rec.category} ${rupiah(rec.amount)} (${tanggal(rec.date)})` });
+  return created(rec);
 });
-on('DELETE', '/admin/expenses/:id', async ({ params }) => remove('expenses', params.id));
+on('DELETE', '/admin/expenses/:id', async ({ params }, log) => {
+  const cur = await one('expenses', params.id);
+  const out = await remove('expenses', params.id);
+  log({ action: 'expense.delete', summary: `Menghapus pengeluaran ${cur?.category || ''} ${cur ? rupiah(cur.amount) : ''}`.trim() });
+  return out;
+});
 
 // ================================================================ ADMIN — laporan
 async function report(year: string) {
@@ -545,8 +688,9 @@ async function report(year: string) {
 }
 const yearOf = (url: URL) => (/^\d{4}$/.test(url.searchParams.get('year') || '') ? url.searchParams.get('year')! : todayStr().slice(0, 4));
 on('GET', '/admin/reports', async ({ url }) => { const r = await report(yearOf(url)); delete (r as Row)._raw; return r; });
-on('GET', '/admin/reports.csv', async ({ url }) => {
+on('GET', '/admin/reports.csv', async ({ url }, log) => {
   const year = yearOf(url); const r = await report(year);
+  log({ action: 'report.download', summary: `Mengunduh laporan keuangan ${year} (CSV)` });
   const [tenants, rooms, props] = await Promise.all([all('tenants'), all('rooms'), all('properties')]);
   const tm = new Map(tenants.map((t) => [t.id, t.name])); const rm = new Map(rooms.map((x) => [x.id, x.code])); const pm = new Map(props.map((p) => [p.id, p.name]));
   const esc = (v: unknown) => `"${String(v ?? '').replaceAll('"', '""')}"`;
@@ -561,7 +705,7 @@ on('GET', '/admin/reports.csv', async ({ url }) => {
 // ================================================================ ADMIN — pengaturan, unggah, cadangan
 const SETTING_FIELDS = ['siteName', 'tagline', 'ownerName', 'whatsapp', 'paymentInfo', 'paymentMethods', 'depositInfo', 'reminderTemplate', 'invoiceLeadDays', 'surveyHours'];
 on('GET', '/admin/settings', async () => ({ ...(await getSettings()), defaultReminderTemplate: DEFAULT_TEMPLATE }));
-on('PUT', '/admin/settings', async ({ body: b }) => {
+on('PUT', '/admin/settings', async ({ body: b }, log) => {
   const cur = await getSettings(); const patch: Row = {};
   for (const k of SETTING_FIELDS) if (b[k] !== undefined) patch[k] = k === 'invoiceLeadDays' ? Math.min(num(b[k]), 60) : str(b[k], 2000);
   if (b.heroWords !== undefined) patch.heroWords = strList(b.heroWords, 8);
@@ -572,19 +716,45 @@ on('PUT', '/admin/settings', async ({ body: b }) => {
   }
   const data = { ...cur, ...patch };
   await q(sb.from('settings').upsert({ id: 1, data }));
+  log(Object.keys(patch).length === 1 && 'isSample' in patch
+    ? { action: 'settings.sample', summary: 'Menyembunyikan pengingat data contoh' }
+    : { action: 'settings.update', summary: 'Mengubah pengaturan website' });
   return data;
 });
-on('POST', '/admin/upload', async ({ req }) => {
+on('POST', '/admin/upload', async ({ req }, log) => {
   const { buf, type, ext } = await readImage(req);
   const path = `${new Date().getFullYear()}/${Date.now()}-${randomToken(6)}.${ext}`;
   await putFile('photos', path, buf, type);
+  log({ action: 'photo.upload', summary: 'Mengunggah foto kos/kamar' });
   return created({ url: PHOTO_PREFIX + path });
 }, { raw: true });
-on('GET', '/admin/export', async () => {
+on('GET', '/admin/export', async (_c, log) => {
+  log({ action: 'export', summary: 'Mengunduh cadangan seluruh data' });
   const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues'];
   const out: Row = { exportedAt: new Date().toISOString() };
   for (const t of tables) out[t] = (await q<Row[]>(sb.from(t).select('*'))).map((r) => ({ ...r, portal_token_hash: undefined }));
   return out;
+});
+
+// ================================================================ ADMIN — log aktivitas
+on('GET', '/admin/activity', async ({ url }) => {
+  const type = url.searchParams.get('type') || 'semua';
+  const term = str(url.searchParams.get('q'), 80).replace(/[%,()]/g, ' ').trim();
+  const before = Number(url.searchParams.get('before')) || 0;
+  const limit = 100;
+  let query = sb.from('activity_log').select('*').order('id', { ascending: false }).limit(limit + 1);
+  if (['admin', 'penghuni', 'publik'].includes(type)) query = query.eq('actor_type', type);
+  if (type === 'gagal') query = query.eq('ok', false);
+  if (before) query = query.lt('id', before);
+  if (term) query = query.or(`summary.ilike.%${term}%,actor.ilike.%${term}%,target.ilike.%${term}%,ip.ilike.%${term}%`);
+  const since = new Date(Date.now() - 30 * DAY).toISOString();
+  const count = (f: (x: any) => any) => f(sb.from('activity_log').select('id', { count: 'exact', head: true }).gte('created_at', since)).then((r: any) => r.count ?? 0);
+  const [rows, all30, admin, penghuni, publik, gagal] = await Promise.all([
+    q<Row[]>(query), count((x) => x), count((x) => x.eq('actor_type', 'admin')), count((x) => x.eq('actor_type', 'penghuni')),
+    count((x) => x.eq('actor_type', 'publik')), count((x) => x.eq('ok', false)),
+  ]);
+  const list = (rows || []).map((r) => toCamel(r)!);
+  return { items: list.slice(0, limit), hasMore: list.length > limit, counts: { semua: all30, admin, penghuni, publik, gagal }, keepDays: LOG_KEEP_DAYS };
 });
 
 // ---------------------------------------------------------------- server
@@ -592,25 +762,39 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-portal-token',
+  'Access-Control-Expose-Headers': 'x-sb-edge-region',
   'Access-Control-Max-Age': '86400',
 };
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
 
+// Token yang sudah diverifikasi disimpan sebentar (60 detik) di memori instance, supaya setiap klik menu
+// tidak perlu dua perjalanan tambahan ke server Auth dan tabel admins.
+const adminCache = new Map<string, { email: string; until: number }>();
 async function requireAdmin(req: Request) {
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   if (!token) throw new HttpError(401, 'Silakan masuk dulu.');
+  const hit = adminCache.get(token);
+  if (hit && hit.until > Date.now()) return hit.email;
   const { data, error } = await sb.auth.getUser(token);
   const email = data?.user?.email?.toLowerCase();
   if (error || !email) throw new HttpError(401, 'Sesi berakhir. Silakan masuk lagi.');
-  if (!(await q<Row | null>(sb.from('admins').select('email').eq('email', email).maybeSingle()))) throw new HttpError(403, 'Akun ini bukan admin Bonaasina.');
+  if (!(await q<Row | null>(sb.from('admins').select('email').eq('email', email).maybeSingle()))) {
+    writeLog(req, 'admin', email, { action: 'access.denied', summary: 'Akun yang bukan admin mencoba membuka admin', ok: false, dedupeMinutes: 10 });
+    throw new HttpError(403, 'Akun ini bukan admin Bonaasina.');
+  }
+  if (adminCache.size > 200) adminCache.clear();
+  adminCache.set(token, { email, until: Date.now() + 60e3 });
   return email;
 }
 async function requireTenant(req: Request) {
   const token = req.headers.get('x-portal-token') || '';
   if (token.length < 20) throw new HttpError(401, 'Link portal tidak berlaku. Minta link baru ke pemilik lewat WhatsApp.');
   const t = toCamel(await q(sb.from('tenants').select('*').eq('portal_token_hash', await sha256(token)).eq('status', 'aktif').maybeSingle()));
-  if (!t) throw new HttpError(401, 'Link portal tidak berlaku. Minta link baru ke pemilik lewat WhatsApp.');
+  if (!t) {
+    writeLog(req, 'publik', 'Pengunjung', { action: 'portal.denied', summary: 'Membuka portal dengan link yang tidak berlaku', ok: false, dedupeMinutes: 10 });
+    throw new HttpError(401, 'Link portal tidak berlaku. Minta link baru ke pemilik lewat WhatsApp.');
+  }
   return t;
 }
 
@@ -632,7 +816,14 @@ Deno.serve(async (req) => {
         if (text.length > 200_000) throw new HttpError(413, 'Data terlalu besar.');
         try { ctx.body = text ? JSON.parse(text) : {}; } catch { throw bad('Data yang dikirim tidak bisa dibaca.'); }
       }
-      const out = await r.fn(ctx);
+      const out = await r.fn(ctx, (e) => { ctx.log = e; });
+      if (ctx.log) {
+        const type: ActorType = path.startsWith('/admin') ? 'admin' : path.startsWith('/portal') ? 'penghuni' : 'publik';
+        const actor = ctx.adminEmail || ctx.tenant?.name || str(ctx.body.email, 200).toLowerCase() || str(ctx.body.name, 80) || 'Pengunjung';
+        writeLog(req, type, actor, ctx.log, type === 'penghuni' ? ctx.tenant?.roomId : undefined);
+      }
+      // Perubahan data oleh admin bisa memengaruhi tagihan otomatis: buat ulang pada permintaan berikutnya.
+      if (req.method !== 'GET' && r.area === 'admin') lastAutoGen = 0;
       if (out instanceof Response) { for (const [k, v] of Object.entries(CORS)) out.headers.set(k, v); return out; }
       if (out && typeof out === 'object' && (out as Row).__status) return json((out as Row).__status, (out as Row).body);
       return json(200, out ?? { ok: true });

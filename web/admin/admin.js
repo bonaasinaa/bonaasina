@@ -43,8 +43,32 @@
     if (res.status === 401 && !PUBLIC_PATHS.includes(path)) { setSession(null); showLogin(); throw new Error('Silakan masuk dulu.'); }
     const data = res.headers.get('content-type')?.includes('json') ? await res.json() : res.headers.get('content-type')?.includes('csv') ? await res.blob() : await res.text();
     if (!res.ok) throw new Error(data.error || 'Terjadi kesalahan.');
+    // Setiap perubahan data membuat cache usang; halaman berikutnya diambil ulang dari server.
+    if (method !== 'GET' && !PUBLIC_PATHS.includes(path)) { for (const v of store.values()) v.stale = true; forceFresh = true; }
     return data;
   }
+
+  // ---------- cache data (supaya pindah menu terasa instan) ----------
+  // Data terakhir tiap alamat disimpan di memori. Menu dibuka langsung dari cache, lalu diperbarui
+  // dari server di latar belakang; tampilan hanya digambar ulang bila datanya memang berubah.
+  const store = new Map(); // path → { data, json, t, stale }
+  const inflight = new Map();
+  let forceFresh = false;
+  function fetchFresh(path) {
+    if (inflight.has(path)) return inflight.get(path);
+    const p = api('GET', path).then((data) => {
+      const json = JSON.stringify(data); const prev = store.get(path);
+      store.set(path, { data, json, t: Date.now(), stale: false });
+      return { changed: !prev || prev.json !== json };
+    }).finally(() => inflight.delete(path));
+    inflight.set(path, p); return p;
+  }
+  // Dipakai oleh halaman: data dari cache (selalu terisi oleh route sebelum halaman digambar).
+  async function get(path) {
+    if (!store.has(path)) await fetchFresh(path);
+    return store.get(path).data;
+  }
+  const isFresh = (path, maxAge = 30000) => { const c = store.get(path); return c && !c.stale && Date.now() - c.t < maxAge; };
   function saveBlob(blob, name) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -92,7 +116,7 @@
   function showTextDialog(title, note, text) {
     openDialog({
       title, body: `<p class="muted">${esc(note)}</p><textarea id="txtOut" rows="12" readonly style="font-size:12px;margin-top:10px">${esc(text)}</textarea>
-        <div style="margin-top:10px"><button type="button" class="btn btn--ghost btn--sm" id="txtCopy">Salin semua</button></div>`,
+        <div class="btn-row mt"><button type="button" class="btn btn--ghost btn--sm" id="txtCopy">Salin semua</button></div>`,
       onOpen: (b) => { $('#txtCopy', b).onclick = () => copyText($('#txtOut', b)); },
     });
   }
@@ -125,41 +149,128 @@
       f.reset(); toast('Kata sandi disimpan.'); start();
     } catch (ex) { $('#setupErr').textContent = ex.message; $('#setupErr').hidden = false; }
   });
-  $('#logout').addEventListener('click', () => { setSession(null); showLogin(); });
+  $('#logout').addEventListener('click', async () => {
+    try { await rawFetch('POST', '/logout'); } catch { /* tetap keluar */ }
+    setSession(null); store.clear(); showLogin();
+  });
 
   async function start() {
     $('#login').hidden = true; $('#app').hidden = false;
-    [cache.properties, cache.settings] = await Promise.all([api('GET', '/properties'), api('GET', '/settings')]);
-    route();
+    main.innerHTML = skeleton();
+    try { [cache.properties, cache.settings] = await Promise.all([get('/properties'), get('/settings')]); }
+    catch (ex) { if (ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; return; }
+    await route();
+    prefetchAll();
   }
 
   // ---------- router ----------
-  const views = { ringkasan, tagihan, penghuni, kamar, survei, kerusakan, laporan, pengaturan };
+  const views = { ringkasan, tagihan, penghuni, kamar, survei, kerusakan, laporan, aktivitas, pengaturan };
+  const TITLES = { ringkasan: 'Ringkasan', tagihan: 'Tagihan', penghuni: 'Penghuni', kamar: 'Kamar & kos', survei: 'Survei', kerusakan: 'Kerusakan', laporan: 'Laporan', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan' };
+  // Data yang dibutuhkan tiap menu; diambil bersamaan sebelum halaman digambar.
+  const deps = (name) => ({
+    ringkasan: ['/summary', '/invoices'], tagihan: ['/invoices', '/tenants'], penghuni: ['/tenants', '/rooms'],
+    kamar: ['/rooms', '/properties'], survei: ['/surveys'], kerusakan: ['/issues'],
+    laporan: [`/reports?year=${repYear}`, '/expenses'], aktivitas: [activityPath()], pengaturan: ['/settings'],
+  }[name] || []);
+  const currentView = () => { const n = (location.hash.slice(1) || 'ringkasan').split('?')[0]; return views[n] ? n : 'ringkasan'; };
+  let routeSeq = 0, shownView = null;
+
   async function route() {
-    const name = (location.hash.slice(1) || 'ringkasan').split('?')[0];
-    const view = views[name] || ringkasan;
+    const seq = ++routeSeq;
+    const name = currentView(); const view = views[name];
+    const paths = deps(name);
+    const fresh = forceFresh; forceFresh = false;
+    const isNewView = shownView !== name;
     $$('#sideNav a').forEach((a) => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
-    main.onclick = null; main.onchange = null;
-    main.classList.remove('is-in'); void main.offsetWidth; main.classList.add('is-in');
-    try { await view(); } catch (ex) { if (ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; }
+    $('#topTitle').textContent = TITLES[name];
+    document.title = `${TITLES[name]} — Admin Bonaasina`;
+    closeNav();
+    if (isNewView) { window.bonaTrack?.(`/admin/${name}`, `Admin: ${TITLES[name]}`); trackView(name); }
+
+    const draw = async () => {
+      main.onclick = null; main.onchange = null;
+      const y = isNewView ? 0 : scrollY;
+      await view();
+      shownView = name;
+      if (isNewView) { main.classList.remove('is-in'); void main.offsetWidth; main.classList.add('is-in'); scrollTo(0, 0); } else scrollTo(0, y);
+    };
+    const fail = (ex) => { if (seq === routeSeq && ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; };
+
+    // 1) Gambar langsung dari cache bila ada (kecuali tepat setelah data diubah).
+    const cached = !fresh && paths.every((p) => store.has(p));
+    if (cached) { try { await draw(); } catch (ex) { fail(ex); } }
+    else if (isNewView) main.innerHTML = skeleton();
+    else progress(true);
+    renderBadges();
+
+    // 2) Ambil data terbaru; gambar ulang hanya bila berubah dan pengguna tidak sedang mengisi sesuatu.
+    const need = paths.filter((p) => !(cached && isFresh(p, 5000)));
+    if (!need.length) return;
+    progress(true);
+    try {
+      const results = await Promise.all(need.map(fetchFresh));
+      if (seq !== routeSeq) return;
+      const changed = !cached || results.some((r) => r.changed);
+      const busy = dlg.open || (main.contains(document.activeElement) && document.activeElement.matches('input:not(.search), textarea'));
+      if (changed && busy && dlg.open) dlg.dataset.refresh = '1';
+      else if (changed && !busy) await draw();
+    } catch (ex) { if (!cached) fail(ex); }
+    finally { if (seq === routeSeq) progress(false); }
     refreshBadges();
   }
-  addEventListener('hashchange', route);
-  async function refreshBadges() {
-    try {
-      const s = await api('GET', '/summary');
-      const b1 = $('#badgeTagihan'); b1.textContent = s.overdue; b1.hidden = !s.overdue;
-      const b2 = $('#badgeSurvei'); b2.textContent = s.newSurveys; b2.hidden = !s.newSurveys;
-      const b3 = $('#badgeKerusakan'); b3.textContent = s.openIssues; b3.hidden = !s.openIssues;
-      const n1 = s.overdue + s.proofsPending; b1.textContent = n1; b1.hidden = !n1;
-    } catch { /* abaikan */ }
+  addEventListener('hashchange', () => route());
+
+  // Ambil data semua menu di latar belakang setelah masuk, supaya klik pertama ke tiap menu juga instan.
+  async function prefetchAll() {
+    const list = [...new Set(Object.keys(views).flatMap(deps))].filter((p) => !store.has(p));
+    for (let i = 0; i < list.length; i += 3) {
+      await Promise.all(list.slice(i, i + 3).map((p) => fetchFresh(p).catch(() => {})));
+    }
   }
+  // Arahkan kursor/jari ke menu → mulai ambil datanya lebih dulu.
+  const warm = (e) => { const a = e.target.closest('#sideNav a'); if (!a) return; deps(a.dataset.view).filter((p) => !isFresh(p)).forEach((p) => fetchFresh(p).catch(() => {})); };
+  $('#sideNav').addEventListener('pointerenter', warm, true);
+  $('#sideNav').addEventListener('touchstart', warm, { passive: true, capture: true });
+
+  // Catat menu yang dibuka (paling sering sekali per 15 menit per menu).
+  const viewLogged = {};
+  function trackView(name) {
+    if (Date.now() - (viewLogged[name] || 0) < 15 * 60e3) return;
+    viewLogged[name] = Date.now();
+    rawFetch('POST', '/activity/view', { view: name, label: TITLES[name] }).catch(() => {});
+  }
+
+  function progress(on) { $('#progress').classList.toggle('is-on', on); }
+  function skeleton() {
+    return `<div class="skeleton" aria-busy="true" aria-label="Memuat"><div class="sk sk--title"></div><div class="sk sk--line"></div>
+      <div class="grid grid--stats" style="margin-top:22px">${'<div class="sk sk--card"></div>'.repeat(4)}</div><div class="sk sk--table"></div></div>`;
+  }
+
+  function renderBadges() {
+    const s = store.get('/summary')?.data; if (!s) return;
+    const set = (id, n) => { const b = $(id); b.textContent = n; b.hidden = !n; };
+    set('#badgeTagihan', s.overdue + s.proofsPending); set('#badgeSurvei', s.newSurveys); set('#badgeKerusakan', s.openIssues);
+    const total = s.overdue + s.proofsPending + s.newSurveys + s.openIssues;
+    $('#navDot').hidden = !total;
+  }
+  async function refreshBadges() {
+    if (isFresh('/summary')) return renderBadges();
+    try { await fetchFresh('/summary'); renderBadges(); } catch { /* abaikan */ }
+  }
+
+  // ---------- menu di layar kecil ----------
+  const nav = $('#side');
+  function openNav() { nav.classList.add('is-open'); $('#navScrim').hidden = false; $('#menuBtn').setAttribute('aria-expanded', 'true'); document.body.classList.add('nav-open'); }
+  function closeNav() { nav.classList.remove('is-open'); $('#navScrim').hidden = true; $('#menuBtn').setAttribute('aria-expanded', 'false'); document.body.classList.remove('nav-open'); }
+  $('#menuBtn').addEventListener('click', () => (nav.classList.contains('is-open') ? closeNav() : openNav()));
+  $('#navScrim').addEventListener('click', closeNav);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && nav.classList.contains('is-open')) closeNav(); });
   const propName = (id) => cache.properties.find((p) => p.id === id)?.name || '-';
   const head = (title, sub, actions = '') => `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div><div class="actions">${actions}</div></div>`;
 
   // ========== RINGKASAN ==========
   async function ringkasan() {
-    const [s, inv] = await Promise.all([api('GET', '/summary'), api('GET', '/invoices')]);
+    const [s, inv] = await Promise.all([get('/summary'), get('/invoices')]);
     const overdue = inv.filter((i) => i.status === 'belum' && i.overdue).slice(0, 6);
     const soon = inv.filter((i) => i.status === 'belum' && !i.overdue).slice(0, 6);
     const proofs = inv.filter((i) => i.status === 'belum' && i.proofStatus === 'menunggu');
@@ -184,17 +295,17 @@
         <div class="panel stat"><p class="stat__label">Uang masuk bulan ini</p><p class="stat__value">${rp(s.incomeThisMonth)}</p><p class="stat__sub">Pengeluaran ${rp(s.expensesThisMonth)}</p></div>
         <div class="panel stat ${s.proofsPending ? 'stat--alert' : ''}"><p class="stat__label">Perlu dicek</p><p class="stat__value">${s.proofsPending + s.openIssues + s.newSurveys}</p><p class="stat__sub"><a href="#tagihan">${s.proofsPending} bukti bayar</a>, <a href="#kerusakan">${s.openIssues} kerusakan</a>, <a href="#survei">${s.newSurveys} survei</a></p></div>
       </div>
-      ${proofs.length ? `<div class="panel" style="margin-top:14px"><h2>Bukti bayar menunggu dicek</h2><table><tbody>${proofs.map((i) => `<tr>
+      ${proofs.length ? `<div class="panel mt"><h2>Bukti bayar menunggu dicek</h2><table><tbody>${proofs.map((i) => `<tr>
         <td data-label="Penghuni"><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></td>
         <td data-label="Dikirim" class="nowrap">${tgl(i.proofUploadedAt)}</td>
         <td class="num" data-label="Jumlah">${rp(i.amount)}</td>
         <td class="actions"><button class="btn btn--red btn--sm" data-proof="${i.id}">Cek bukti</button></td></tr>`).join('')}</tbody></table></div>` : ''}
-      <div class="grid grid--2" style="margin-top:14px">
+      <div class="grid grid--2 mt">
         <div class="panel"><h2>Hunian kamar</h2><div class="occ">${occ}</div>
           <div class="legend"><span><i class="c-terisi"></i>Terisi</span><span><i class="c-dipesan"></i>Dipesan</span><span><i class="c-kosong"></i>Kosong</span><span><i class="c-perbaikan"></i>Perbaikan</span></div></div>
         <div class="panel"><h2>Perlu ditagih sekarang <a class="small" href="#tagihan">Semua tagihan</a></h2>${invRows(overdue, 'Tidak ada tunggakan. Semua penghuni membayar tepat waktu.')}</div>
       </div>
-      <div class="panel" style="margin-top:14px"><h2>Akan jatuh tempo</h2>${invRows(soon, 'Belum ada tagihan yang akan jatuh tempo dalam waktu dekat.')}</div>`;
+      <div class="panel mt"><h2>Akan jatuh tempo</h2>${invRows(soon, 'Belum ada tagihan yang akan jatuh tempo dalam waktu dekat.')}</div>`;
     $('#clearSample')?.addEventListener('click', async () => {
       if (!(await askConfirm('Data sudah diperbarui?', 'Pengingat ini akan disembunyikan. Pastikan harga, nomor WhatsApp, dan rekening sudah benar.', 'Ya, sembunyikan'))) return;
       cache.settings = await api('PUT', '/settings', { isSample: false }); toast('Pengingat disembunyikan.'); route();
@@ -215,14 +326,14 @@
             body: `<p class="muted">${esc(inv.tenantName)}, kamar ${esc(inv.roomCode)}, ${esc(inv.periodLabel)}. Tagihan <strong>${rp(inv.amount)}</strong>. Dikirim ${tgl(inv.proofUploadedAt)}.</p>
               <a href="${esc(url)}" target="_blank" rel="noopener" class="proof-img"><img src="${esc(url)}" alt="Bukti bayar ${esc(inv.tenantName)}"></a>
               <p class="hint">Cocokkan nominal dan nama pengirim dengan mutasi rekening sebelum menerima.</p>
-              <div class="fields fields--2" style="margin-top:12px">
+              <div class="fields fields--2 mt">
                 <label>Tanggal uang masuk<input type="date" name="paidAt" value="${today()}" max="${today()}"></label>
                 <label>Jumlah diterima<input type="number" name="paidAmount" value="${inv.amount}" min="0" step="1000"></label>
                 <label>Cara bayar<select name="method"><option value="transfer">Transfer bank</option><option value="qris">QRIS</option><option value="lainnya">Lainnya</option></select></label>
               </div>
               <details class="reject"><summary>Tolak bukti ini</summary>
-                <label style="margin-top:10px">Alasan (dikirim ke portal penghuni)<input id="rejectNote" placeholder="Contoh: nominal kurang Rp50.000"></label>
-                <button type="button" class="btn btn--ghost btn--sm" id="rejectBtn" style="margin-top:10px">Tolak bukti</button></details>`,
+                <label class="mt">Alasan (dikirim ke portal penghuni)<input id="rejectNote" placeholder="Contoh: nominal kurang Rp50.000"></label>
+                <button type="button" class="btn btn--ghost btn--sm mt" id="rejectBtn">Tolak bukti</button></details>`,
             onOpen: (b) => {
               $('#rejectBtn', b).onclick = async () => {
                 try { await api('POST', `/invoices/${inv.id}/reject-proof`, { note: $('#rejectNote', b).value }); dlg.close(); toast('Bukti ditolak. Penghuni akan melihat alasannya di portal.'); route(); }
@@ -241,7 +352,7 @@
             title: 'Pengingat WhatsApp',
             body: `<p class="muted">Periksa pesannya, lalu tekan Buka WhatsApp dan kirim dari sana.</p>
               <div class="preview" id="remText">${esc(out.text)}</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <div class="btn-row mt">
                 <a class="btn btn--green" href="${esc(out.url)}" target="_blank" rel="noopener">Buka WhatsApp</a>
                 <button type="button" class="btn btn--ghost" id="remCopy">Salin pesan</button></div>`,
             onOpen: (b) => { $('#remCopy', b).onclick = () => copyText($('#remText', b)); },
@@ -253,7 +364,7 @@
         openDialog({
           title: 'Tandai lunas', ok: 'Tandai lunas', okClass: 'btn--green',
           body: `<p class="muted">${esc(inv.tenantName)}, kamar ${esc(inv.roomCode)}, ${esc(inv.periodLabel)}. Tagihan ${rp(inv.amount)}.</p>
-            <div class="fields fields--2" style="margin-top:14px">
+            <div class="fields fields--2 mt">
               <label>Tanggal bayar<input type="date" name="paidAt" value="${today()}" max="${today()}"></label>
               <label>Jumlah dibayar<input type="number" name="paidAmount" value="${inv.amount}" min="0" step="1000"></label>
               <label>Cara bayar<select name="method"><option value="transfer">Transfer bank</option><option value="qris">QRIS</option><option value="tunai">Tunai</option><option value="lainnya">Lainnya</option></select></label>
@@ -276,7 +387,7 @@
   // ========== TAGIHAN ==========
   let invFilter = 'belum', invQuery = '';
   async function tagihan() {
-    const [inv, tenants] = await Promise.all([api('GET', '/invoices'), api('GET', '/tenants')]);
+    const [inv, tenants] = await Promise.all([get('/invoices'), get('/tenants')]);
     const counts = { bukti: inv.filter((i) => i.status === 'belum' && i.proofStatus === 'menunggu').length, belum: inv.filter((i) => i.status === 'belum').length, terlambat: inv.filter((i) => i.overdue).length, lunas: inv.filter((i) => i.status === 'lunas').length, semua: inv.length };
     if (invFilter === 'belum' && counts.bukti && !tagihan.visited) invFilter = 'bukti';
     tagihan.visited = true;
@@ -315,7 +426,7 @@
       openDialog({
         title: 'Tagihan tambahan', ok: 'Buat tagihan',
         body: `<p class="muted">Untuk biaya di luar sewa, misalnya listrik tambahan, denda keterlambatan, atau ganti kerusakan.</p>
-          <div class="fields fields--2" style="margin-top:14px">
+          <div class="fields fields--2 mt">
             <label class="span-all">Penghuni<select name="tenantId">${active.map((t) => `<option value="${t.id}">${esc(t.name)} (${esc(t.room?.code || '-')})</option>`).join('')}</select></label>
             <label class="span-all">Keterangan<input name="label" placeholder="Contoh: Denda telat bayar September" required></label>
             <label>Jumlah<input type="number" name="amount" min="0" step="1000" required></label>
@@ -329,7 +440,7 @@
   // ========== PENGHUNI ==========
   let tenantFilter = 'aktif';
   async function penghuni() {
-    const [tenants, rooms] = await Promise.all([api('GET', '/tenants'), api('GET', '/rooms')]);
+    const [tenants, rooms] = await Promise.all([get('/tenants'), get('/rooms')]);
     const draw = () => {
       const list = tenants.filter((t) => tenantFilter === 'semua' || t.status === tenantFilter);
       $('#tnTable').innerHTML = list.length ? `<table><thead><tr><th>Nama</th><th>Kamar</th><th>Sewa</th><th>Mulai</th><th>Tagihan</th><th></th></tr></thead><tbody>${list.map((t) => `<tr>
@@ -356,7 +467,7 @@
         openDialog({
           title: `Portal ${t.name}`, ok: t.hasPortal ? 'Buat link baru' : 'Buat link portal',
           body: `<p>Lewat portal, penghuni bisa melihat tagihan, mengunggah bukti bayar, dan melaporkan kerusakan tanpa perlu akun atau kata sandi.</p>
-            ${t.hasPortal ? '<p class="hint" style="margin-top:10px">Penghuni ini sudah punya link. Link tidak bisa ditampilkan ulang karena hanya disimpan dalam bentuk tersandi. Membuat link baru akan mematikan link lama.</p>' : ''}
+            ${t.hasPortal ? '<p class="hint mt">Penghuni ini sudah punya link. Link tidak bisa ditampilkan ulang karena hanya disimpan dalam bentuk tersandi. Membuat link baru akan mematikan link lama.</p>' : ''}
             <div id="portalOut"></div>`,
           onOk: async (_d, body) => {
             const { token } = await api('POST', `/tenants/${t.id}/portal`);
@@ -365,7 +476,7 @@
             const wa = t.phone ? `https://wa.me/${normPhone(t.phone)}?text=${encodeURIComponent(msg)}` : null;
             t.hasPortal = true; dlg.dataset.refresh = '1';
             $('#portalOut', body).innerHTML = `<div class="preview" id="portalLink" style="word-break:break-all">${esc(link)}</div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${wa ? `<a class="btn btn--green" href="${esc(wa)}" target="_blank" rel="noopener">Kirim lewat WhatsApp</a>` : '<span class="hint">Nomor WA penghuni belum diisi.</span>'}
+              <div class="btn-row mt">${wa ? `<a class="btn btn--green" href="${esc(wa)}" target="_blank" rel="noopener">Kirim lewat WhatsApp</a>` : '<span class="hint">Nomor WA penghuni belum diisi.</span>'}
               <button type="button" class="btn btn--ghost" id="portalCopy">Salin link</button></div>`;
             $('#portalCopy', body).onclick = () => copyText($('#portalLink', body));
             $('#dlgOk').hidden = true; $('.dlg__foot .btn--ghost').textContent = 'Selesai';
@@ -379,7 +490,7 @@
         const t = tenants.find((x) => x.id === out.dataset.out);
         openDialog({
           title: `${t.name} keluar`, ok: 'Simpan', body: `<p class="muted">Kamar ${esc(t.room?.code)} akan menjadi kosong. Tagihan yang belum dibayar untuk periode setelah tanggal keluar akan dihapus; tunggakan sebelumnya tetap tercatat.</p>
-            <label style="margin-top:14px">Tanggal keluar<input type="date" name="endDate" value="${today()}"></label>
+            <label class="mt">Tanggal keluar<input type="date" name="endDate" value="${today()}"></label>
             ${t.deposit ? `<p class="hint">Ingat: deposit ${rp(t.deposit)} perlu dikembalikan atau diperhitungkan.</p>` : ''}`,
           onOk: async (d) => { await api('POST', `/tenants/${t.id}/checkout`, d); toast(`${t.name} tercatat keluar.`); route(); },
         });
@@ -434,14 +545,14 @@
 
   // ========== KAMAR & KOS ==========
   async function kamar() {
-    const [rooms, props] = await Promise.all([api('GET', '/rooms'), api('GET', '/properties')]);
+    const [rooms, props] = await Promise.all([get('/rooms'), get('/properties')]);
     cache.properties = props;
     main.innerHTML = head('Kamar & kos', 'Ubah status, harga, foto, dan informasi yang tampil di website.', '<button class="btn btn--red" data-add-room>Tambah kamar</button>') +
       `<div class="prop-cards">${props.map((p) => `<div class="panel prop-card"><img src="${esc(p.logo)}" alt=""><div style="flex:1"><strong>${esc(p.name)}</strong><p class="small muted">${esc(p.gender ? 'Kos ' + p.gender.toLowerCase() + ', ' : '')}${(p.photos || []).length} foto, ${p.mapsQuery ? 'peta sudah diatur' : 'peta belum diatur'}</p></div><button class="btn btn--ghost btn--sm" data-edit-prop="${p.id}">Ubah info kos</button></div>`).join('')}</div>` +
       props.map((p) => {
         const list = rooms.filter((r) => r.propertyId === p.id);
         return `<div class="room-head"><h2>${esc(p.name)}</h2><span class="muted small">${list.filter((r) => r.effectiveStatus === 'kosong').length} kosong dari ${list.length} kamar</span></div>
-        <div class="table-wrap">${list.length ? `<table><thead><tr><th>Kamar</th><th>Tipe</th><th class="num">Bulanan</th><th class="num">Tahunan</th><th>Status</th><th>Penghuni</th><th></th></tr></thead><tbody>${list.map((r) => `<tr>
+        <div class="table-wrap">${list.length ? `<table class="table--rooms"><colgroup><col style="width:10%"><col style="width:22%"><col style="width:12%"><col style="width:13%"><col style="width:15%"><col style="width:18%"><col style="width:10%"></colgroup><thead><tr><th>Kamar</th><th>Tipe</th><th class="num">Bulanan</th><th class="num">Tahunan</th><th>Status</th><th>Penghuni</th><th></th></tr></thead><tbody>${list.map((r) => `<tr>
           <td data-label="Kamar"><strong>${esc(r.code)}</strong>${r.hidden ? '<span class="sub">Disembunyikan dari website</span>' : ''}</td>
           <td data-label="Tipe">${esc(r.type)}<span class="sub">${[r.sizeM2, r.floor].filter(Boolean).map(esc).join(', ')}${(r.photos || []).length ? `, ${r.photos.length} foto` : ''}</span></td>
           <td class="num" data-label="Bulanan">${rp(r.priceMonthly)}</td>
@@ -555,13 +666,13 @@
 
   // ========== SURVEI ==========
   async function survei() {
-    const list = await api('GET', '/surveys');
+    const list = await get('/surveys');
     main.innerHTML = head('Survei', 'Permintaan survei dari website. Hubungi lewat WhatsApp, lalu ubah statusnya.') +
       `<div class="table-wrap">${list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Jadwal</th><th>Catatan</th><th>Status</th><th></th></tr></thead><tbody>${list.map((s) => `<tr>
         <td data-label="Calon penyewa"><strong>${esc(s.name)}</strong><span class="sub">${esc(s.phone)}${s.occupation ? `, ${esc(s.occupation)}` : ''}</span></td>
         <td data-label="Kos & kamar">${esc(s.propertyName)}<span class="sub">${s.roomCode ? `Kamar ${esc(s.roomCode)}` : 'Kamar belum dipilih'}, sewa ${esc(s.duration)}</span></td>
         <td data-label="Jadwal">${tgl(s.date)}<span class="sub">${esc(s.time)}</span></td>
-        <td data-label="Catatan" style="max-width:260px">${esc(s.note) || '<span class="muted">-</span>'}</td>
+        <td data-label="Catatan" class="wrap">${esc(s.note) || '<span class="muted">-</span>'}</td>
         <td data-label="Status"><select class="inline" data-sv="${s.id}" aria-label="Status survei ${esc(s.name)}">${Object.entries(STATUS_SURVEI).map(([k, l]) => `<option value="${k}" ${s.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td class="actions"><a class="btn btn--green btn--sm" href="${esc(s.waUrl)}" target="_blank" rel="noopener">Balas di WA</a><button class="btn btn--ghost btn--sm" data-del-sv="${s.id}" aria-label="Hapus">Hapus</button></td></tr>`).join('')}</tbody></table>`
         : '<div class="empty">Belum ada permintaan survei. Permintaan dari formulir di website akan muncul di sini.</div>'}</div>`;
@@ -580,11 +691,11 @@
   const STATUS_ISSUE = { baru: 'Baru', dikerjakan: 'Sedang dikerjakan', selesai: 'Selesai' };
   let issueFilter = 'terbuka';
   async function kerusakan() {
-    const list = await api('GET', '/issues');
+    const list = await get('/issues');
     const draw = () => {
       const rows = list.filter((i) => issueFilter === 'semua' || (issueFilter === 'terbuka' ? i.status !== 'selesai' : i.status === 'selesai'));
       $('#issTable').innerHTML = rows.length ? `<table><thead><tr><th>Laporan</th><th>Kamar</th><th>Dilaporkan</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((i) => `<tr>
-        <td data-label="Laporan" style="max-width:340px"><strong>${esc(i.title)}</strong><span class="sub">${esc(i.category)}${i.description ? `: ${esc(i.description)}` : ''}</span>${i.ownerNote ? `<span class="sub">Catatan Anda: ${esc(i.ownerNote)}</span>` : ''}</td>
+        <td data-label="Laporan" class="wrap"><strong>${esc(i.title)}</strong><span class="sub">${esc(i.category)}${i.description ? `: ${esc(i.description)}` : ''}</span>${i.ownerNote ? `<span class="sub">Catatan Anda: ${esc(i.ownerNote)}</span>` : ''}</td>
         <td data-label="Kamar">${esc(i.roomCode)}<span class="sub">${esc(i.propertyName)}, ${esc(i.tenantName)}</span></td>
         <td data-label="Dilaporkan" class="nowrap">${tgl(i.createdAt)}</td>
         <td data-label="Status"><span class="pill pill--${i.status === 'selesai' ? 'selesai' : i.status === 'baru' ? 'baru' : 'dikonfirmasi'}">${STATUS_ISSUE[i.status]}</span></td>
@@ -620,7 +731,7 @@
   // ========== LAPORAN ==========
   let repYear = String(new Date().getFullYear());
   async function laporan() {
-    const [rep, exps] = await Promise.all([api('GET', `/reports?year=${repYear}`), api('GET', '/expenses')]);
+    const [rep, exps] = await Promise.all([get(`/reports?year=${repYear}`), get('/expenses')]);
     const max = Math.max(1, ...rep.months.map((m) => Math.max(m.income, m.expense)));
     const yearOpts = Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i));
     const yExp = exps.filter((e) => e.date.startsWith(repYear));
@@ -634,18 +745,18 @@
         <div class="panel stat"><p class="stat__label">Selisih</p><p class="stat__value">${rp(rep.totals.net)}</p></div>
         <div class="panel stat"><p class="stat__label">Pembayaran tercatat</p><p class="stat__value">${rep.months.reduce((s, m) => s + m.payments, 0)}</p></div>
       </div>
-      <div class="panel" style="margin-top:14px"><h2>Per bulan</h2>
+      <div class="panel mt"><h2>Per bulan</h2>
         <div class="bars" role="img" aria-label="Grafik uang masuk dan pengeluaran per bulan">${rep.months.map((m, i) => `<div class="bars__col" title="${BULAN[i]}: masuk ${rp(m.income)}, keluar ${rp(m.expense)}"><div class="bars__pair"><span class="bars__in" style="height:${(m.income / max) * 100}%"></span><span class="bars__out" style="height:${(m.expense / max) * 100}%"></span></div><span class="bars__lbl">${BULAN[i]}</span></div>`).join('')}</div>
         <div class="legend"><span><i class="c-terisi"></i>Uang masuk</span><span><i class="c-perbaikan"></i>Pengeluaran</span></div>
       </div>
-      <div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Bulan</th>${rep.properties.map((p) => `<th class="num">${esc(p.name)}</th>`).join('')}<th class="num">Total masuk</th><th class="num">Pengeluaran</th><th class="num">Selisih</th></tr></thead><tbody>
+      <div class="table-wrap mt"><table class="table--keep"><thead><tr><th>Bulan</th>${rep.properties.map((p) => `<th class="num">${esc(p.name)}</th>`).join('')}<th class="num">Total masuk</th><th class="num">Pengeluaran</th><th class="num">Selisih</th></tr></thead><tbody>
         ${rep.months.map((m, i) => `<tr><td data-label="Bulan">${BULAN[i]} ${repYear}</td>${rep.properties.map((p) => `<td class="num" data-label="${esc(p.name)}">${rp(m.byProp[p.id]?.income)}</td>`).join('')}<td class="num" data-label="Total masuk"><strong>${rp(m.income)}</strong></td><td class="num" data-label="Pengeluaran">${rp(m.expense)}</td><td class="num" data-label="Selisih">${rp(m.net)}</td></tr>`).join('')}
       </tbody></table></div>
       <div class="room-head"><h2>Pengeluaran ${repYear}</h2></div>
       <div class="table-wrap">${yExp.length ? `<table><thead><tr><th>Tanggal</th><th>Kategori</th><th>Kos</th><th>Keterangan</th><th class="num">Jumlah</th><th></th></tr></thead><tbody>${yExp.map((e) => `<tr>
         <td data-label="Tanggal">${tgl(e.date)}</td><td data-label="Kategori">${esc(e.category)}</td><td data-label="Kos">${e.propertyId ? esc(propName(e.propertyId)) : 'Umum'}</td><td data-label="Keterangan">${esc(e.note) || '-'}</td><td class="num" data-label="Jumlah">${rp(e.amount)}</td>
         <td class="actions"><button class="btn btn--ghost btn--sm" data-del-exp="${e.id}">Hapus</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada pengeluaran tercatat tahun ini.</div>'}</div>
-      <p class="small muted" style="margin-top:16px">Catatan pajak: penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 2 ayat 3), jadi diperlakukan sebagai penghasilan usaha. Pastikan skema yang berlaku untuk Anda ke KPP atau konsultan pajak.</p>`;
+      <p class="small muted mt">Catatan pajak: penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 2 ayat 3), jadi diperlakukan sebagai penghasilan usaha. Pastikan skema yang berlaku untuk Anda ke KPP atau konsultan pajak.</p>`;
     $('#repYear').onchange = (e) => { repYear = e.target.value; route(); };
     $('#csvBtn').addEventListener('click', async () => {
       try { saveBlob(await api('GET', `/reports.csv?year=${repYear}`), `laporan-bonaasina-${repYear}.csv`); }
@@ -668,12 +779,65 @@
     };
   }
 
+  // ========== LOG AKTIVITAS ==========
+  let actFilter = 'semua', actQuery = '';
+  function activityPath(before) {
+    const p = new URLSearchParams({ type: actFilter }); if (actQuery) p.set('q', actQuery); if (before) p.set('before', before);
+    return `/activity?${p}`;
+  }
+  const WAKTU = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const ACTOR = { admin: 'Admin', penghuni: 'Penghuni', publik: 'Publik' };
+  const relTime = (iso) => {
+    const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (m < 1) return 'baru saja'; if (m < 60) return `${m} menit lalu`;
+    const h = Math.round(m / 60); if (h < 24) return `${h} jam lalu`;
+    const d = Math.round(h / 24); return d < 8 ? `${d} hari lalu` : '';
+  };
+  const actRows = (items) => items.map((a) => `<tr class="${a.ok ? '' : 'row--fail'}">
+      <td data-label="Waktu" class="nowrap">${esc(WAKTU.format(new Date(a.createdAt)))}<span class="sub">${esc(relTime(a.createdAt))}</span></td>
+      <td data-label="Pengguna"><span class="pill pill--${a.actorType}">${ACTOR[a.actorType] || esc(a.actorType)}</span><span class="sub actor">${esc(a.actor)}</span></td>
+      <td data-label="Aktivitas" class="wrap">${a.ok ? '' : '<span class="pill pill--terlambat">Gagal</span> '}${esc(a.summary)}${a.target ? `<span class="sub">Kamar/objek: ${esc(a.target)}</span>` : ''}</td>
+      <td data-label="Perangkat" class="wrap">${esc(a.userAgent || '-')}<span class="sub mono">${esc(a.ip || '')}</span></td></tr>`).join('');
+
+  async function aktivitas() {
+    const data = await get(activityPath());
+    const c = data.counts;
+    main.innerHTML = head('Log aktivitas', `Siapa melakukan apa di admin, portal penghuni, dan formulir website. Disimpan ${data.keepDays} hari.`) + `
+      <div class="grid grid--stats">
+        <div class="panel stat"><p class="stat__label">Aktivitas 30 hari</p><p class="stat__value">${c.semua}</p><p class="stat__sub">semua pengguna</p></div>
+        <div class="panel stat"><p class="stat__label">Oleh admin</p><p class="stat__value">${c.admin}</p><p class="stat__sub">masuk, ubah data, unduh</p></div>
+        <div class="panel stat"><p class="stat__label">Penghuni & publik</p><p class="stat__value">${c.penghuni + c.publik}</p><p class="stat__sub">${c.penghuni} portal, ${c.publik} website</p></div>
+        <div class="panel stat ${c.gagal ? 'stat--alert' : ''}"><p class="stat__label">Percobaan gagal</p><p class="stat__value">${c.gagal}</p><p class="stat__sub">login salah, link tidak berlaku</p></div>
+      </div>
+      <div class="toolbar mt">
+        <div class="seg" id="actSeg">${[['semua', 'Semua'], ['admin', 'Admin'], ['penghuni', 'Penghuni'], ['publik', 'Publik'], ['gagal', 'Gagal']].map(([k, l]) => `<button aria-pressed="${actFilter === k}" data-k="${k}">${l}</button>`).join('')}</div>
+        <input class="search" type="search" placeholder="Cari nama, aktivitas, kamar, atau IP" value="${esc(actQuery)}" id="actSearch" aria-label="Cari aktivitas">
+      </div>
+      <div class="table-wrap">${data.items.length ? `<table class="table--log"><thead><tr><th>Waktu (WIB)</th><th>Pengguna</th><th>Aktivitas</th><th>Perangkat & IP</th></tr></thead><tbody id="actBody">${actRows(data.items)}</tbody></table>`
+        : `<div class="empty">${actQuery || actFilter !== 'semua' ? 'Tidak ada aktivitas yang cocok.' : 'Belum ada aktivitas tercatat. Aktivitas baru akan muncul di sini.'}</div>`}</div>
+      ${data.hasMore ? '<div class="more"><button class="btn btn--ghost" id="actMore">Muat lebih banyak</button></div>' : ''}
+      <p class="small muted mt">Kunjungan halaman website oleh calon penyewa dicatat di Google Analytics, bukan di sini. IP dan perangkat dicatat untuk keamanan akun.</p>`;
+    $('#actSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; actFilter = b.dataset.k; route(); };
+    let t; $('#actSearch').oninput = (e) => { clearTimeout(t); t = setTimeout(() => { actQuery = e.target.value.trim(); route().then(() => { const i = $('#actSearch'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 400); };
+    let last = data.items[data.items.length - 1]?.id;
+    $('#actMore')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true;
+      try {
+        const more = await api('GET', activityPath(last));
+        $('#actBody').insertAdjacentHTML('beforeend', actRows(more.items));
+        last = more.items[more.items.length - 1]?.id;
+        if (!more.hasMore) btn.parentElement.remove();
+      } catch (ex) { toast(ex.message, true); }
+      finally { btn.disabled = false; }
+    });
+  }
+
   // ========== PENGATURAN ==========
   async function pengaturan() {
-    const s = await api('GET', '/settings'); cache.settings = s;
+    const s = await get('/settings'); cache.settings = s;
     const faq = s.faq || [];
     main.innerHTML = head('Pengaturan', 'Informasi umum website dan pesan pengingat.') + `
-      <form class="grid" id="setForm" style="max-width:820px">
+      <form class="settings-grid" id="setForm">
         <div class="panel fields fields--2">
           <p class="fieldset-title span-all">Kontak & pembayaran</p>
           <label>Nama pemilik / pengelola<input name="ownerName" value="${esc(s.ownerName)}"></label>
@@ -701,7 +865,7 @@
           <div id="faqRows" class="fields">${faq.map(faqRow).join('')}</div>
           <div><button type="button" class="btn btn--ghost btn--sm" id="faqAdd">Tambah pertanyaan</button></div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn--red" type="submit">Simpan pengaturan</button><button type="button" class="btn btn--ghost" id="expBtn">Unduh cadangan data</button></div>
+        <div class="form-actions"><button class="btn btn--red" type="submit">Simpan pengaturan</button><button type="button" class="btn btn--ghost" id="expBtn">Unduh cadangan data</button></div>
       </form>`;
     const preview = () => {
       $('#tplPreview').textContent = $('#tpl').value
@@ -731,5 +895,6 @@
   }
 
   // ---------- mulai ----------
-  fetch('/api/admin/me').then((r) => (r.ok ? start() : showLogin())).catch(showLogin);
+  // Ada sesi tersimpan → langsung masuk (api() akan memperpanjang atau mengarahkan ke login bila sesi sudah mati).
+  if (getSession()?.refreshToken) start().catch(() => {}); else showLogin();
 })();

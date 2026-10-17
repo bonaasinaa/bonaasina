@@ -41,7 +41,16 @@
 
   <!-- Aplikasi -->
   <div class="app" id="app" hidden>
-    <aside class="side">
+    <div class="progress" id="progress" aria-hidden="true"></div>
+    <header class="topbar">
+      <button class="topbar__menu" id="menuBtn" type="button" aria-expanded="false" aria-controls="side" aria-label="Buka menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z"/></svg><span class="nav-dot" id="navDot" hidden></span>
+      </button>
+      <strong class="topbar__title" id="topTitle">Ringkasan</strong>
+      <a class="topbar__brand" href="/" target="_blank" rel="noopener" aria-label="Buka website"><img src="/assets/img/mark.webp" alt="" width="40" height="27"></a>
+    </header>
+    <div class="nav-scrim" id="navScrim" hidden></div>
+    <aside class="side" id="side">
       <a class="side__brand" href="/" target="_blank" rel="noopener" title="Buka website">
         <img src="/assets/img/mark.webp" alt="" width="44" height="30"><span>Bonaasina</span>
       </a>
@@ -53,6 +62,7 @@
         <a href="#survei" data-view="survei"><svg viewBox="0 0 24 24"><path d="M7 2v2H4v18h16V4h-3V2h-2v2H9V2H7Zm-1 8h12v10H6V10Z"/></svg>Survei<span class="badge" id="badgeSurvei" hidden></span></a>
         <a href="#kerusakan" data-view="kerusakan"><svg viewBox="0 0 24 24"><path d="M22.7 19 13.6 9.9a6 6 0 0 0-7.9-7.6l3.9 3.9-2.8 2.8-4-3.9A6 6 0 0 0 10.4 13l9.1 9.1a1 1 0 0 0 1.4 0l1.8-1.8a1 1 0 0 0 0-1.3Z"/></svg>Kerusakan<span class="badge" id="badgeKerusakan" hidden></span></a>
         <a href="#laporan" data-view="laporan"><svg viewBox="0 0 24 24"><path d="M4 20V10h3v10H4Zm6 0V4h3v16h-3Zm6 0v-7h3v7h-3Z"/></svg>Laporan</a>
+        <a href="#aktivitas" data-view="aktivitas"><svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9L9 12H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3Zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12Z"/></svg>Log aktivitas</a>
         <a href="#pengaturan" data-view="pengaturan"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4L19.4 13ZM13 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z"/></svg>Pengaturan</a>
       </nav>
       <button class="side__logout" id="logout" type="button">Keluar</button>
@@ -74,6 +84,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/js/config.js"></script>
+  <script src="/js/analytics.js" defer></script>
   <script src="/admin/admin.js" defer></script>
 </body>
 </html>

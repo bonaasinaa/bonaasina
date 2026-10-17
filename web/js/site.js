@@ -307,6 +307,7 @@
       const tgl = new Date(body.date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
       $('#doneText').textContent = `Kami akan menghubungi ${body.name} di ${body.phone} untuk konfirmasi survei ${kos} pada ${tgl}, ${body.time}.`;
       $('#doneWa').href = wa(`Horas, saya ${body.name}. Saya baru mengisi formulir survei ${kos} untuk ${tgl} jam ${body.time}.`);
+      window.bonaEvent?.('generate_lead', { form: 'survei', kos, durasi: body.duration || '' });
       form.hidden = true; const done = $('#surveyDone'); done.hidden = false; done.focus();
     } catch (ex) {
       err.textContent = ex.message + ' Atau hubungi kami langsung lewat WhatsApp.'; err.hidden = false;
