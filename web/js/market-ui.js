@@ -23,11 +23,11 @@
 
   const STATUS = {
     baru: 'Menunggu konfirmasi', menunggu_dp: 'Menunggu DP', dp_dikirim: 'Bukti DP dikirim', dp_diterima: 'DP diterima',
-    berhasil: 'Booking berhasil', ditolak: 'Tidak tersedia', batal: 'Dibatalkan', kedaluwarsa: 'Kedaluwarsa',
+    berhasil: 'Booking berhasil', ditolak: 'Tidak tersedia', batal: 'Dibatalkan', kedaluwarsa: 'Batas bayar lewat',
   };
   const PERIOD = { harian: 'Harian', bulanan: 'Bulanan', semesteran: '6 bulanan', tahunan: 'Tahunan' };
   const PER = { harian: 'malam', bulanan: 'bulan', semesteran: '6 bulan', tahunan: 'tahun' };
-  const FEE = { belum: 'Fee belum dibayar', dikirim: 'Bukti fee dikirim', diterima: 'Fee diterima', ditolak: 'Bukti fee ditolak', bebas: 'Tanpa fee', dikembalikan: 'Fee dikembalikan' };
+  const FEE = { belum: 'Biaya layanan belum dibayar', dikirim: 'Bukti biaya layanan dikirim', diterima: 'Biaya layanan lunas', ditolak: 'Bukti biaya layanan ditolak', bebas: 'Tanpa biaya layanan', dikembalikan: 'Biaya layanan dikembalikan' };
   const REFUND = { diminta: 'Refund diminta', ditolak: 'Refund ditolak pemilik', dikirim: 'Refund dikirim', selesai: 'Refund selesai', dilaporkan: 'Refund dilaporkan ke admin' };
   const VISIT = { diminta: 'Minta kunjungan', dijadwalkan: 'Kunjungan dijadwalkan', selesai: 'Sudah berkunjung', batal: 'Kunjungan batal' };
   const pill = (l) => `<span class="pill pill--${esc(l.status)}">${esc(STATUS[l.status] || l.status)}</span>`;
@@ -36,10 +36,10 @@
     if (l.refundStatus) f.push(`<span class="pill pill--${esc(l.refundStatus)}">${esc(REFUND[l.refundStatus])}</span>`);
     if (l.visitStatus && l.visitStatus !== 'batal') f.push(`<span class="pill pill--${l.visitStatus === 'diminta' ? 'baru' : 'dijadwalkan'}">${esc(VISIT[l.visitStatus])}${l.visitDate && l.visitStatus !== 'selesai' ? ` ${tgl(l.visitDate)}` : ''}</span>`);
     if (l.feeStatus && l.feeStatus !== 'bebas' && l.propertyKind === 'mitra') f.push(`<span class="pill pill--${esc(l.feeStatus === 'belum' ? 'baru' : l.feeStatus)}">${esc(FEE[l.feeStatus])}</span>`);
-    if (l.noResponse) f.push('<span class="pill pill--telat">Belum direspons</span>');
-    if (l.feeOverdue) f.push('<span class="pill pill--telat">Fee lewat batas</span>');
+    if (l.noResponse) f.push('<span class="pill pill--telat">Belum dibalas pemilik</span>');
+    if (l.feeOverdue) f.push('<span class="pill pill--telat">Biaya layanan lewat batas</span>');
     if (l.needsApproval) f.push('<span class="pill pill--menunggu-admin">Perlu persetujuan admin</span>');
-    if (l.feeToReturn) f.push('<span class="pill pill--telat">Fee perlu dikembalikan</span>');
+    if (l.feeToReturn) f.push('<span class="pill pill--telat">Biaya layanan perlu dikembalikan</span>');
     return f.length ? `<div class="lead-flags">${f.join('')}</div>` : '';
   }
 
@@ -60,7 +60,7 @@
       ['Kos', l.propertyName], ['Kamar', l.roomCode ? `${l.roomCode}${l.roomType ? `, ${l.roomType}` : ''}` : 'Belum dipilih'],
       ['Lama sewa', l.periodLabel], ['Mulai', `${tgl(l.moveDate)}${l.endDate ? ` s.d. ${tgl(l.endDate)}` : ''}`], ['Jumlah orang', l.people === 2 ? '2 orang' : '1 orang'],
     ];
-    if (role !== 'customer') rows.unshift(['Customer', `${l.name}${l.occupation ? `, ${l.occupation}` : ''}`], ['WhatsApp', l.phone]);
+    if (role !== 'customer') rows.unshift(['Calon penyewa', `${l.name}${l.occupation ? `, ${l.occupation}` : ''}`], ['WhatsApp', l.phone]);
     if (l.priceTotal != null) rows.push(['Total sewa', rp(l.priceTotal)], ['DP / booking', rp(l.dpAmount)], ['Sisa dibayar ke pemilik', rp(l.remaining)]);
     if (l.visitStatus) rows.push(['Kunjungan', `${VISIT[l.visitStatus]}${l.visitDate ? `, ${tgl(l.visitDate)}${l.visitTime ? ` ${l.visitTime}` : ''}` : ''}`]);
     if (l.note) rows.push(['Catatan customer', l.note]);
@@ -71,7 +71,7 @@
 
   // ---------------------------------------------------------------- chat (diperbarui tiap beberapa detik)
   function chat(el, { load, send, me, enabled = true, offText = '', title = 'Chat', who = {} }) {
-    const NAMES = { customer: 'Customer', pemilik: 'Pemilik', admin: 'Admin Bonaasina', sistem: 'Bonaasina', ...who };
+    const NAMES = { customer: 'Penyewa', pemilik: 'Pemilik', admin: 'Admin Bonaasina', sistem: 'Bonaasina', ...who };
     el.innerHTML = `<div class="chat"><div class="chat__head"><strong>${esc(title)}</strong><span class="chat__live" hidden>Langsung</span></div>
       <div class="chat__list" aria-live="polite"><p class="chat__empty">Memuat pesan…</p></div>
       ${enabled ? `<form class="chat__form"><textarea rows="1" maxlength="1000" placeholder="Tulis pesan…" aria-label="Tulis pesan"></textarea><button class="btn btn--red" type="submit">Kirim</button></form>`
@@ -130,7 +130,7 @@
     if (['baru', 'menunggu_dp', 'kedaluwarsa'].includes(l.status)) a.push('<button class="btn btn--ghost" data-a="reject">Tidak tersedia</button>');
     if (l.status === 'menunggu_dp') a.push('<button class="btn btn--green" data-wa="konfirmasi">Kirim ke WhatsApp</button>');
     if (l.status === 'ditolak') a.push('<button class="btn btn--ghost" data-wa="tolak">Kabari lewat WhatsApp</button>');
-    if (!['menunggu_dp', 'ditolak'].includes(l.status)) a.push('<button class="btn btn--ghost" data-wa="akun">Kirim akses dashboard (WA)</button>');
+    if (!['menunggu_dp', 'ditolak'].includes(l.status)) a.push('<button class="btn btn--ghost" data-wa="akun">Kirim info masuk lewat WA</button>');
     if ([...['baru', 'menunggu_dp', 'dp_dikirim', 'dp_diterima', 'berhasil']].includes(l.status)) a.push('<button class="btn btn--ghost" data-a="visit">Atur kunjungan</button>');
     if (['baru', 'menunggu_dp', 'kedaluwarsa'].includes(l.status)) a.push('<button class="btn btn--ghost" data-a="cancel">Batalkan</button>');
     if (['dp_dikirim', 'dp_diterima', 'berhasil'].includes(l.status) && (!l.refundStatus || l.refundStatus === 'ditolak')) a.push('<button class="btn btn--ghost" data-a="cancel-refund">Batalkan &amp; kembalikan DP</button>');
@@ -140,22 +140,22 @@
 
     // Kartu "langkah berikutnya" sesuai status.
     let next = '';
-    if (l.status === 'baru') next = `<div class="next next--act"><h3>Pastikan kamar tersedia</h3><p>Customer belum membayar apa pun. Cek kamar ${l.roomCode ? esc(l.roomCode) : 'yang cocok'} untuk ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}, lalu tekan <strong>Kamar tersedia, minta DP</strong> atau <strong>Tidak tersedia</strong>.</p></div>`;
-    else if (l.status === 'menunggu_dp') next = `<div class="next next--wait"><h3>Menunggu customer transfer DP</h3><p>DP <strong>${rp(l.dpAmount)}</strong> ke rekening ${mitra ? 'pemilik' : 'kos'}. Batas <span class="countdown">${sisa(l.dpDeadline)}</span> (${waktu(l.dpDeadline)}). Sudah kirim pesan WhatsApp ke customer?</p></div>`;
+    if (l.status === 'baru') next = `<div class="next next--act"><h3>Pastikan kamar tersedia</h3><p>Penyewa belum membayar apa pun. Cek kamar ${l.roomCode ? esc(l.roomCode) : 'yang cocok'} untuk ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}, lalu tekan <strong>Kamar tersedia, minta DP</strong> atau <strong>Tidak tersedia</strong>.</p></div>`;
+    else if (l.status === 'menunggu_dp') next = `<div class="next next--wait"><h3>Menunggu customer transfer DP</h3><p>DP <strong>${rp(l.dpAmount)}</strong> ke rekening ${mitra ? 'pemilik' : 'kos'}. Batas <span class="countdown">${sisa(l.dpDeadline)}</span> (${waktu(l.dpDeadline)}). Sudah kirim pesan WhatsApp ke penyewa?</p></div>`;
     else if (l.status === 'dp_dikirim') next = `<div class="next next--act"><h3>Periksa bukti DP</h3><p>Cocokkan nominal <strong>${rp(l.dpAmount)}</strong> dengan mutasi rekening sebelum menerima.</p>${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP"></a>` : ''}<div class="btn-row"><button class="btn btn--green" data-a="dp-ok">DP sudah masuk</button><button class="btn btn--ghost" data-a="dp-no">Belum masuk</button></div></div>`;
     else if (l.status === 'dp_diterima' && mitra) {
       if (admin) {
         next = `<div class="next ${l.feeStatus === 'dikirim' || l.feeStatus === 'bebas' ? 'next--act' : 'next--wait'}"><h3>${l.feeStatus === 'dikirim' ? 'Periksa bukti fee lalu setujui' : l.feeStatus === 'bebas' ? 'Tanpa fee — siap disetujui' : 'Menunggu pemilik membayar fee'}</h3>
           <p>DP ${rp(l.dpAmount)} sudah diterima pemilik ${waktu(l.dpConfirmedAt)}. Fee ${rp(l.feeAmount)} (${esc(l.feeRule)})${l.feeDue ? `, batas ${tgl(l.feeDue)}` : ''}.</p>
-          <div class="split2">${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener" title="Bukti DP customer"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP customer"></a>` : ''}${l.feeProofUrl ? `<a class="proof-img" href="${esc(l.feeProofUrl)}" target="_blank" rel="noopener" title="Bukti fee pemilik"><img src="${esc(l.feeProofUrl)}" alt="Bukti fee pemilik"></a>` : ''}</div>
+          <div class="split2">${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener" title="Bukti DP penyewa"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP penyewa"></a>` : ''}${l.feeProofUrl ? `<a class="proof-img" href="${esc(l.feeProofUrl)}" target="_blank" rel="noopener" title="Bukti fee pemilik"><img src="${esc(l.feeProofUrl)}" alt="Bukti fee pemilik"></a>` : ''}</div>
           <div class="btn-row"><button class="btn btn--green" data-a="approve">Setujui &amp; terbitkan bukti booking</button>${l.feeStatus === 'dikirim' ? '<button class="btn btn--ghost" data-a="fee-reject">Tolak bukti fee</button>' : ''}</div></div>`;
       } else if (['belum', 'ditolak'].includes(l.feeStatus)) {
-        next = `<div class="next next--act"><h3>Transfer fee Bonaasina</h3>${l.feeStatus === 'ditolak' ? `<p class="err">Bukti sebelumnya ditolak: ${esc(l.feeNote)}</p>` : ''}
-          <p>Booking terjadi lewat Bonaasina. Transfer fee <strong>${rp(l.feeAmount)}</strong> (${esc(l.feeRule)})${l.feeDue ? ` paling lambat ${tgl(l.feeDue)}` : ''} ke:</p>
+        next = `<div class="next next--act"><h3>Transfer biaya layanan Bonaasina</h3>${l.feeStatus === 'ditolak' ? `<p class="err">Bukti sebelumnya ditolak: ${esc(l.feeNote)}</p>` : ''}
+          <p>Pesanan ini datang lewat Bonaasina. Transfer biaya layanan <strong>${rp(l.feeAmount)}</strong> (${esc(l.feeRule)})${l.feeDue ? ` paling lambat ${tgl(l.feeDue)}` : ''} ke:</p>
           <div class="bank">${esc(l.bonaBankInfo || 'Rekening Bonaasina belum diatur — tanyakan ke admin.')}</div>
-          <label class="btn btn--red">Unggah bukti transfer fee<input type="file" accept="image/*" data-up="fee-proof" hidden></label></div>`;
-      } else next = `<div class="next next--wait"><h3>Menunggu persetujuan admin</h3><p>Bukti fee sudah dikirim. Admin Bonaasina memeriksa lalu menerbitkan bukti booking untuk Anda dan customer.</p></div>`;
-    } else if (l.status === 'berhasil') next = `<div class="next next--ok"><h3>Booking berhasil</h3><p>Bukti booking ${esc(l.invoiceNo)}. Sisa ${rp(l.remaining)} dibayar customer langsung ke pemilik. Ubah status kamar menjadi <strong>Terisi</strong> saat customer masuk.</p></div>`;
+          <label class="btn btn--red">Unggah bukti transfer<input type="file" accept="image/*" data-up="fee-proof" hidden></label></div>`;
+      } else next = `<div class="next next--wait"><h3>Menunggu persetujuan admin</h3><p>Bukti sudah terkirim. Admin mengecek lalu menerbitkan bukti booking untuk Anda dan penyewa.</p></div>`;
+    } else if (l.status === 'berhasil') next = `<div class="next next--ok"><h3>Booking berhasil</h3><p>Bukti booking ${esc(l.invoiceNo)}. Sisa ${rp(l.remaining)} dibayar penyewa langsung ke pemilik. Ubah status kamar menjadi <strong>Terisi</strong> saat customer masuk.</p></div>`;
 
     // Refund
     let refund = '';
@@ -163,7 +163,7 @@
       const up = ['diminta', 'dilaporkan'].includes(l.refundStatus);
       refund = `<div class="next ${up ? 'next--act' : l.refundStatus === 'selesai' ? 'next--ok' : 'next--wait'}"><h3>${esc(REFUND[l.refundStatus])}</h3>
         <p>Alasan: ${esc(l.refundReason || '-')}${l.refundNote ? `<br>Catatan: ${esc(l.refundNote)}` : ''}</p>
-        <p>Rekening customer: <strong>${esc(l.refundAccount || 'belum diisi customer')}</strong>. Jumlah: ${rp(l.refundAmount ?? l.dpAmount)}.</p>
+        <p>Rekening penyewa: <strong>${esc(l.refundAccount || 'belum diisi penyewa')}</strong>. Jumlah: ${rp(l.refundAmount ?? l.dpAmount)}.</p>
         ${l.bookingPolicy ? `<p class="hint">Aturan booking kos: ${esc(l.bookingPolicy)}</p>` : ''}
         ${l.refundProofUrl ? `<a class="proof-img" href="${esc(l.refundProofUrl)}" target="_blank" rel="noopener"><img src="${esc(l.refundProofUrl)}" alt="Bukti refund"></a>` : ''}
         <div class="btn-row">${up ? '<button class="btn btn--red" data-a="refund-proof">Unggah bukti refund</button>' : ''}
@@ -175,7 +175,7 @@
     const visitReq = l.visitStatus === 'diminta' ? `<div class="next next--act"><h3>Customer minta kunjungan</h3><p>${tgl(l.visitDate)}${l.visitTime ? ` pukul ${esc(l.visitTime)}` : ''}${l.visitNote ? `. ${esc(l.visitNote)}` : ''}</p><div class="btn-row"><button class="btn btn--green" data-a="visit">Konfirmasi jadwal</button></div></div>` : '';
     return `<div class="stack">${next}${refund}${visitReq}
       <div class="panel"><h2>Detail reservasi ${pill(l)}</h2>${flags(l)}${infoKv(l, role)}
-        ${admin ? `<p class="hint mt">Pemilik: ${esc(l.ownerName)}${l.ownerPhone ? `, ${esc(l.ownerPhone)}` : ''}. Customer ${l.customerHasChanged ? 'sudah mengganti kata sandi bawaan' : 'belum masuk/mengganti kata sandi bawaan'}${l.lastLoginAt ? `, terakhir masuk ${relTime(l.lastLoginAt)}` : ''}.</p>` : ''}
+        ${admin ? `<p class="hint mt">Pemilik: ${esc(l.ownerName)}${l.ownerPhone ? `, ${esc(l.ownerPhone)}` : ''}. Penyewa ${l.customerHasChanged ? 'sudah masuk ke halaman reservasinya' : 'belum pernah masuk ke halaman reservasinya'}${l.lastLoginAt ? `, terakhir masuk ${relTime(l.lastLoginAt)}` : ''}.</p>` : ''}
         <div class="lead-actions mt">${a.join('')}</div></div>
       <div class="panel"><h2>Perjalanan reservasi</h2>${timeline(l)}</div></div>`;
   }
@@ -199,7 +199,7 @@
     });
     el.addEventListener('change', async (e) => {
       const up = e.target.closest('[data-up]'); if (!up || !up.files[0]) return;
-      try { await BonaLoader.during('Mengunggah bukti…', async () => api('POST', `${base}/${up.dataset.up}`, undefined, await ctx.shrink(up.files[0]))); toast('Bukti fee terkirim. Admin akan memeriksa.'); reload(); }
+      try { await BonaLoader.during('Mengunggah bukti…', async () => api('POST', `${base}/${up.dataset.up}`, undefined, await ctx.shrink(up.files[0]))); toast('Bukti terkirim. Admin akan mengecek.'); reload(); }
       catch (ex) { toast(ex.message, true); }
     });
     el.addEventListener('click', async (e) => {
@@ -209,7 +209,7 @@
           const out = await api('GET', `${base}/wa?kind=${w.dataset.wa}`);
           openDialog({
             title: 'Kirim lewat WhatsApp',
-            body: `<p class="muted">Pesan sudah disiapkan lengkap dengan tautan dashboard, username, dan kata sandi customer. Periksa, lalu tekan Buka WhatsApp.</p>
+            body: `<p class="muted">Pesannya sudah lengkap dengan tautan, username, dan kata sandi penyewa. Periksa sebentar, lalu tekan Buka WhatsApp.</p>
               <div class="preview" id="waText">${esc(out.text)}</div>
               <div class="btn-row mt"><a class="btn btn--green" href="${esc(out.url)}" target="_blank" rel="noopener">Buka WhatsApp</a><button type="button" class="btn btn--ghost" id="waCopy">Salin pesan</button></div>`,
             onOpen: (b) => { $('#waCopy', b).onclick = async () => { try { await navigator.clipboard.writeText(out.text); toast('Pesan disalin.'); } catch { toast('Tekan lama pada pesan untuk menyalin.'); } }; },
@@ -229,22 +229,22 @@
         const opts = rooms.map((r) => `<option value="${r.id}" data-q="${quote(r)}" ${r.id === l.roomId ? 'selected' : ''} ${['terisi', 'perbaikan'].includes(r.effectiveStatus || r.status) ? 'disabled' : ''}>${esc(r.code)}${r.type ? `, ${esc(r.type)}` : ''} — ${rp(priceOf(r))}/${PER[l.period]}${(r.effectiveStatus || r.status) !== 'kosong' ? ` (${esc(r.effectiveStatus || r.status)})` : ''}${l.people === 2 && Number(r.capacity) < 2 ? ' — hanya 1 orang' : ''}</option>`).join('');
         const minDp = ctx.minBooking?.(l) || 0;
         openDialog({
-          title: `Konfirmasi kamar untuk ${l.name}`, ok: 'Konfirmasi & minta DP', okClass: 'btn--green',
-          body: `<p class="muted">${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}${l.people === 2 ? ', 2 orang' : ''}. Setelah dikonfirmasi, customer melihat rekening Anda dan bisa membayar DP.</p>
+          title: `Konfirmasi kamar untuk ${l.name}`, ok: 'Kirim & minta DP', okClass: 'btn--green',
+          body: `<p class="muted">${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}${l.people === 2 ? ', 2 orang' : ''}. Setelah ini, penyewa melihat rekening Anda dan bisa membayar DP.</p>
             <div class="fields fields--2 mt">
               <label class="span-all">Kamar<select name="roomId" id="cRoom" required>${opts || '<option value="">Belum ada kamar</option>'}</select></label>
               <label>Total sewa untuk periode ini<input type="number" name="priceTotal" id="cTotal" min="0" step="1000" required><span class="hint">Terisi dari harga kamar × lama sewa.</span></label>
               <label>Booking / DP yang ditransfer<input type="number" name="dpAmount" id="cDp" min="${minDp}" step="1000" value="${Math.max(minDp, 0) || ''}" required><span class="hint">${minDp ? `Minimal ${rp(minDp)} (pengaturan kos).` : 'Sesuai kebijakan kos.'}</span></label>
               <label>Batas waktu bayar DP<select name="dpHours"><option value="6">6 jam</option><option value="12">12 jam</option><option value="24" selected>24 jam</option><option value="48">2 hari</option><option value="72">3 hari</option></select></label>
-              <label class="span-all">Pesan untuk customer <span class="hint">opsional</span><textarea name="message" rows="2" placeholder="Mis. sisa sewa dibayar saat masuk, bawa KTP."></textarea></label>
+              <label class="span-all">Pesan untuk penyewa <span class="hint">opsional</span><textarea name="message" rows="2" placeholder="Mis. sisa sewa dibayar saat masuk, bawa KTP."></textarea></label>
             </div>`,
           onOpen: (body) => { const fillQ = () => { const o = $('#cRoom', body).selectedOptions[0]; if (o?.dataset.q) $('#cTotal', body).value = o.dataset.q; }; $('#cRoom', body).onchange = fillQ; fillQ(); },
-          onOk: async (d) => { await act('confirm', d, 'Terkonfirmasi. Kirim pesan WhatsApp ke customer supaya segera membayar DP.'); setTimeout(() => document.querySelector('[data-wa="konfirmasi"]')?.click(), 80); },
+          onOk: async (d) => { await act('confirm', d, 'Tersimpan. Kirim pesan WhatsApp supaya penyewa segera membayar DP.'); setTimeout(() => document.querySelector('[data-wa="konfirmasi"]')?.click(), 80); },
         });
       }
-      if (k === 'reject') openDialog({ title: 'Kamar tidak tersedia', ok: 'Kirim ke customer', body: `<label>Alasan (tampil di dashboard customer)<textarea name="reason" rows="3" required placeholder="Mis. kamar sudah terisi untuk bulan tersebut."></textarea></label>`, onOk: (d) => act('reject', d, 'Customer sudah diberi tahu.') });
+      if (k === 'reject') openDialog({ title: 'Kamar tidak tersedia', ok: 'Kirim ke penyewa', body: `<label>Alasan (dibaca penyewa)<textarea name="reason" rows="3" required placeholder="Mis. kamar sudah terisi untuk bulan tersebut."></textarea></label>`, onOk: (d) => act('reject', d, 'Penyewa sudah diberi tahu.') });
       if (k === 'cancel') { openDialog({ title: 'Batalkan reservasi', ok: 'Batalkan', body: `<label>Alasan<textarea name="reason" rows="2"></textarea></label>`, onOk: (d) => act('cancel', d, 'Reservasi dibatalkan.') }); }
-      if (k === 'cancel-refund') openDialog({ title: 'Batalkan booking & kembalikan DP', ok: 'Batalkan & proses refund', body: `<p class="muted">Customer sudah mentransfer DP ${rp(l.dpAmount)}. Membatalkan berarti DP dikembalikan. Customer akan diminta mengisi rekening tujuan.</p><label class="mt">Alasan<textarea name="reason" rows="3" required></textarea></label>`, onOk: (d) => act('cancel', d, 'Refund dimulai. Unggah bukti transfer refund setelah mengirim uangnya.') });
+      if (k === 'cancel-refund') openDialog({ title: 'Batalkan booking & kembalikan DP', ok: 'Batalkan & proses refund', body: `<p class="muted">Penyewa sudah mentransfer DP ${rp(l.dpAmount)}. Membatalkan berarti DP dikembalikan. Penyewa akan diminta menulis rekening untuk pengembalian.</p><label class="mt">Alasan<textarea name="reason" rows="3" required></textarea></label>`, onOk: (d) => act('cancel', d, 'Refund dimulai. Unggah bukti transfer refund setelah mengirim uangnya.') });
       if (k === 'visit') openDialog({
         title: 'Jadwal kunjungan', ok: 'Simpan & beri tahu customer',
         body: `<div class="fields fields--2"><label>Status<select name="visitStatus"><option value="dijadwalkan">Dijadwalkan</option><option value="selesai">Sudah berkunjung</option><option value="batal">Batal</option></select></label>
@@ -252,21 +252,21 @@
           <label class="span-all">Catatan <span class="hint">opsional</span><input name="visitNote" placeholder="Mis. temui penjaga di pos depan."></label></div>`,
         onOk: (d) => act('visit', d, 'Jadwal kunjungan diperbarui.'),
       });
-      if (k === 'dp-ok') { if (await askConfirm('DP sudah masuk?', `Pastikan ${rp(l.dpAmount)} benar-benar sudah masuk ke rekening. Kamar akan ditahan untuk ${l.name}.`, 'Ya, sudah masuk')) act('dp', { accept: true }, mitra ? 'DP diterima. Lanjutkan transfer fee Bonaasina.' : 'DP diterima. Booking berhasil.'); }
-      if (k === 'dp-no') openDialog({ title: 'DP belum masuk', ok: 'Kirim ke customer', body: `<label>Keterangan untuk customer<input name="note" required placeholder="Mis. nominal kurang Rp50.000 / belum ada di mutasi"></label>`, onOk: (d) => act('dp', { accept: false, note: d.note }, 'Customer diminta memeriksa ulang.') });
+      if (k === 'dp-ok') { if (await askConfirm('DP sudah masuk?', `Pastikan ${rp(l.dpAmount)} benar-benar sudah masuk ke rekening. Kamar akan ditahan untuk ${l.name}.`, 'Ya, sudah masuk')) act('dp', { accept: true }, mitra ? 'DP diterima. Lanjutkan transfer biaya layanan Bonaasina.' : 'DP diterima. Booking berhasil.'); }
+      if (k === 'dp-no') openDialog({ title: 'DP belum masuk', ok: 'Kirim ke penyewa', body: `<label>Keterangan untuk penyewa<input name="note" required placeholder="Mis. nominal kurang Rp50.000 / belum ada di mutasi"></label>`, onOk: (d) => act('dp', { accept: false, note: d.note }, 'Penyewa diminta memeriksa ulang.') });
       if (k === 'approve') openDialog({
         title: 'Setujui transaksi', ok: 'Setujui', okClass: 'btn--green',
-        body: `<p>Bukti booking untuk ${esc(l.name)} dan invoice fee untuk pemilik akan terbit.</p>${['belum', 'ditolak'].includes(l.feeStatus) ? `<label class="mt"><input type="checkbox" name="feeReceived"> Fee ${rp(l.feeAmount)} sudah saya terima dengan cara lain</label>` : ''}`,
+        body: `<p>Bukti booking untuk ${esc(l.name)} dan invoice untuk pemilik akan terbit.</p>${['belum', 'ditolak'].includes(l.feeStatus) ? `<label class="mt"><input type="checkbox" name="feeReceived"> Fee ${rp(l.feeAmount)} sudah saya terima dengan cara lain</label>` : ''}`,
         onOk: (d) => act('approve', { feeReceived: d.feeReceived === 'on' }, 'Disetujui. Bukti booking terbit.'),
       });
       if (k === 'fee-reject') openDialog({ title: 'Tolak bukti fee', ok: 'Tolak', body: `<label>Alasan untuk pemilik<input name="note" required></label>`, onOk: (d) => act('fee-reject', d, 'Pemilik diminta mengirim ulang bukti fee.') });
-      if (k === 'refund-reject') openDialog({ title: 'Tolak refund', ok: 'Tolak refund', body: `<p class="muted">Customer bisa melaporkan ke admin bila tidak setuju. Sebutkan aturan booking yang berlaku.</p><label class="mt">Alasan<textarea name="reason" rows="3" required></textarea></label>`, onOk: (d) => act('refund-reject', d, 'Refund ditolak.') });
+      if (k === 'refund-reject') openDialog({ title: 'Tolak refund', ok: 'Tolak refund', body: `<p class="muted">Penyewa bisa melapor ke admin bila tidak setuju. Sebutkan aturan booking yang berlaku.</p><label class="mt">Alasan<textarea name="reason" rows="3" required></textarea></label>`, onOk: (d) => act('refund-reject', d, 'Refund ditolak.') });
       if (k === 'refund-reopen') openDialog({ title: 'Minta pemilik memproses refund', ok: 'Kirim', body: `<label>Catatan (mis. kembalikan 50%)<input name="note"></label>`, onOk: (d) => act('refund-reopen', d, 'Pemilik diminta memproses refund.') });
       if (k === 'refund-done') openDialog({ title: 'Tutup refund', ok: 'Tandai selesai', body: `<p class="muted">Gunakan bila refund sudah beres di luar sistem.</p><label class="mt">Catatan<input name="note"></label>`, onOk: (d) => act('refund-done', d, 'Refund ditutup.') });
       if (k === 'fee-returned') { if (await askConfirm('Fee sudah dikembalikan?', `Tandai fee ${rp(l.feeAmount)} sudah ditransfer kembali ke pemilik.`, 'Ya')) act('fee-returned', {}, 'Fee ditandai dikembalikan.'); }
       if (k === 'refund-proof') openDialog({
         title: 'Bukti transfer refund', ok: 'Pilih foto bukti',
-        body: `<p class="muted">Transfer ke: <strong>${esc(l.refundAccount || 'minta customer mengisi rekening lewat chat')}</strong></p><label class="mt">Jumlah yang dikembalikan<input type="number" name="amount" min="0" step="1000" value="${l.refundAmount ?? l.dpAmount ?? 0}"></label>`,
+        body: `<p class="muted">Transfer ke: <strong>${esc(l.refundAccount || 'minta penyewa menulis rekening lewat chat')}</strong></p><label class="mt">Jumlah yang dikembalikan<input type="number" name="amount" min="0" step="1000" value="${l.refundAmount ?? l.dpAmount ?? 0}"></label>`,
         onOk: async (d) => { await upload('refund-proof', 'Mengunggah bukti refund…', `?amount=${Number(d.amount) || 0}`); },
       });
     });

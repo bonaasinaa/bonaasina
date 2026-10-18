@@ -21,7 +21,7 @@ export function createMarket(H: Record<string, any>) {
     sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
     readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
     background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
-    PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort,
+    PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort, createProperty,
   } = H;
 
   // ------------------------------------------------------------ konstanta & teks
@@ -36,8 +36,8 @@ export function createMarket(H: Record<string, any>) {
   const TPL_CONFIRM =
     'Horas {nama}, terima kasih sudah memesan di {kos} lewat Bonaasina.\n\n' +
     'Kabar baik: kamar {kamar} tersedia untuk sewa {periode} mulai {mulai}.\nTotal sewa: {harga}\nBooking/DP: {dp}, dibayar paling lambat {batas}.\n{pesan}\n' +
-    'Lanjutkan pembayaran DP di dashboard Anda:\n{link}\nUsername: {username}\nKata sandi: {password}\n\n' +
-    'Rekening tujuan dan tombol unggah bukti transfer ada di dashboard. Setelah bukti diperiksa, Anda mendapat bukti booking resmi dari Bonaasina.';
+    'Bayar DP lewat halaman reservasi Anda:\n{link}\nUsername: {username}\nKata sandi: {password}\n\n' +
+    'Di sana ada nomor rekening dan tombol untuk mengirim bukti transfer. Setelah DP diterima, Anda mendapat bukti booking resmi dari Bonaasina.';
   const TPL_REJECT =
     'Horas {nama}, terima kasih sudah memesan di {kos} lewat Bonaasina.\n\nMohon maaf, kamar belum bisa kami terima: {alasan}\n\n' +
     'Kos lain di sekitar bisa dilihat di {link_kos}\nStatus reservasi Anda tetap bisa dicek di {link} (username {username}).';
@@ -239,8 +239,11 @@ export function createMarket(H: Record<string, any>) {
     const [s, props] = await Promise.all([getSettings(), q(sb.from('properties').select('*').eq('kind', 'mitra').eq('status', 'aktif'))]);
     const list = ((props as Row[]) || []).map((p) => toCamel(p)) as Row[];
     const [rooms, occ] = await Promise.all([roomsOf(list.map((p) => p.id)), activeRoomIds()]);
+    const st = { ...DEFAULTS, ...s };
     return {
       intro: s.marketIntro || '',
+      fee: { type: st.feeDefaultType === 'nominal' ? 'nominal' : 'persen', value: Number(st.feeDefaultValue) || 0 },
+      whatsapp: normalizePhone(s.whatsapp || ''),
       properties: list.sort(bySort).map((p) => {
         const rs = rooms.filter((r) => r.propertyId === p.id && !r.hidden);
         return {
@@ -254,7 +257,7 @@ export function createMarket(H: Record<string, any>) {
   });
   on('GET', '/kos/:slug', async ({ params }: Row) => {
     const p = toCamel(await q(sb.from('properties').select('*').eq('slug', str(params.slug, 60).toLowerCase()).maybeSingle()));
-    if (!p || p.status !== 'aktif') throw notFound('Kos ini tidak ditemukan atau sedang tidak tayang.');
+    if (!p || p.status !== 'aktif') throw notFound('Kos ini tidak ditemukan atau sedang tidak ditampilkan.');
     const [rooms, occ, wa] = await Promise.all([roomsOf([p.id]), activeRoomIds(), ownerContact(p)]);
     return {
       property: { ...pick(p, PUBLIC_PROPERTY_FIELDS), waEnabled: !!wa, whatsapp: wa },
@@ -295,7 +298,7 @@ export function createMarket(H: Record<string, any>) {
       sb.from('leads').select('id', { count: 'exact', head: true }).eq('phone', phone).eq('property_id', p.id).in('status', ACTIVE),
     ]);
     if ((byPhone.count ?? 0) >= 3 || (ip && (byIp.count ?? 0) >= 8)) throw new HttpError(429, 'Reservasi dari nomor/perangkat ini sudah cukup banyak. Coba lagi nanti atau hubungi pemilik lewat WhatsApp.');
-    if ((dup.count ?? 0) > 0) throw bad(`Nomor ini masih punya reservasi aktif di ${p.name}. Masuk ke dashboard reservasi Anda untuk melihat statusnya.`);
+    if ((dup.count ?? 0) > 0) throw bad(`Nomor ini masih punya reservasi aktif di ${p.name}. Buka halaman Reservasi Saya untuk melihat statusnya.`);
 
     const prefix = prefixOf(p);
     let rec: Row | null = null; let password = '';
@@ -408,18 +411,18 @@ export function createMarket(H: Record<string, any>) {
     need(l, 'baru', 'kedaluwarsa', 'ditolak');
     const s = await setting();
     const room = await one('rooms', str(b.roomId || l.roomId, 40));
-    if (!room || room.propertyId !== p.id) throw bad('Pilih kamar yang tersedia untuk customer ini.');
+    if (!room || room.propertyId !== p.id) throw bad('Pilih kamar yang tersedia untuk penyewa ini.');
     if ((await activeRoomIds()).has(room.id) || room.status === 'terisi') throw bad(`Kamar ${room.code} masih terisi. Pilih kamar lain atau tolak reservasi.`);
     if (room.status === 'perbaikan') throw bad(`Kamar ${room.code} sedang diperbaiki. Ubah status kamar dulu bila sudah siap.`);
     if (room.status === 'dipesan') {
       const taken = await sb.from('leads').select('id', { count: 'exact', head: true }).eq('room_id', room.id).neq('id', l.id).in('status', ['dp_diterima', 'berhasil']).is('refund_done_at', null);
-      if ((taken.count ?? 0) > 0) throw bad(`Kamar ${room.code} sudah dipesan customer lain.`);
+      if ((taken.count ?? 0) > 0) throw bad(`Kamar ${room.code} sudah dipesan penyewa lain.`);
     }
-    if (Number(l.people) > Number(room.capacity || 1)) throw bad(`Customer datang berdua, tetapi kamar ${room.code} hanya untuk 1 orang.`);
+    if (Number(l.people) > Number(room.capacity || 1)) throw bad(`Penyewa datang berdua, tetapi kamar ${room.code} hanya untuk 1 orang.`);
     const priceTotal = num(b.priceTotal) || quote(room, l.period, l.duration, l.people);
     if (!priceTotal) throw bad('Isi total sewa untuk periode yang dipesan.');
     const dp = num(b.dpAmount);
-    if (!dp) throw bad('Isi jumlah booking/DP yang harus ditransfer customer.');
+    if (!dp) throw bad('Isi jumlah DP yang harus ditransfer penyewa.');
     if (dp < (p.minBooking || 0)) throw bad(`DP minimal ${rupiah(p.minBooking)} sesuai pengaturan kos.`);
     if (dp > priceTotal) throw bad('DP tidak boleh lebih besar dari total sewa.');
     const hours = Math.min(168, Math.max(1, num(b.dpHours) || s.dpHours || 24));
@@ -496,7 +499,7 @@ export function createMarket(H: Record<string, any>) {
     const patch: Row = { status: 'berhasil', approvedAt: nowIso(), approvedBy: b.adminEmail || 'admin', invoiceNo: l.invoiceNo || await newDocNo('booking'), invoiceCode: l.invoiceCode || randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10).padEnd(10, '7') };
     if (l.feeAmount > 0 && !['bebas'].includes(l.feeStatus)) { patch.feeStatus = 'diterima'; patch.feePaidAt = l.feePaidAt || nowIso(); patch.feeInvoiceNo = l.feeInvoiceNo || await newDocNo('fee'); }
     await save(l, patch);
-    await sysMsg(l, `Admin Bonaasina menyetujui transaksi. Bukti booking ${l.invoiceNo} sudah terbit dan bisa diunduh di dashboard.`);
+    await sysMsg(l, `Admin Bonaasina menyetujui transaksi. Bukti booking ${l.invoiceNo} sudah terbit dan bisa diunduh di halaman reservasi.`);
     await notifyCustomer(l, 'status', 'Booking berhasil', `Bukti booking ${l.invoiceNo} bisa diunduh. Sisa pembayaran ${rupiah(Math.max(0, (l.priceTotal || 0) - (l.dpAmount || 0)))} dibayar langsung ke pemilik sesuai kesepakatan.`);
     if (p.ownerId) await notify('pemilik', p.ownerId, l.id, 'status', `Booking ${l.name} disetujui`, `Bukti booking ${l.invoiceNo}${l.feeInvoiceNo ? ` dan invoice fee ${l.feeInvoiceNo}` : ''} sudah terbit.`);
     return `Menyetujui booking ${l.name} (${l.invoiceNo})`;
@@ -520,10 +523,10 @@ export function createMarket(H: Record<string, any>) {
     // Uang DP sudah ditransfer → pembatalan lewat refund.
     need(l, 'dp_dikirim', 'dp_diterima', 'berhasil');
     if (l.refundStatus && !['ditolak'].includes(l.refundStatus)) throw bad('Refund untuk reservasi ini sudah berjalan.');
-    if (!reason) throw bad('Tulis alasan pembatalan supaya customer mengerti.');
+    if (!reason) throw bad('Tulis alasan pembatalan supaya penyewa mengerti.');
     await save(l, { refundStatus: 'diminta', refundReason: reason, refundRequestedAt: nowIso(), cancelledBy: role, refundAmount: l.dpAmount });
-    await sysMsg(l, `${who(role)} membatalkan booking dan akan mengembalikan DP ${rupiah(l.dpAmount)}. Alasan: ${reason}\nCustomer: tulis rekening tujuan refund di dashboard.`);
-    await notifyCustomer(l, 'refund', 'Booking dibatalkan pemilik, DP dikembalikan', 'Isi rekening tujuan refund di dashboard Anda.');
+    await sysMsg(l, `${who(role)} membatalkan booking dan akan mengembalikan DP ${rupiah(l.dpAmount)}. Alasan: ${reason}\nPenyewa: tulis rekening untuk pengembalian DP di halaman reservasi.`);
+    await notifyCustomer(l, 'refund', 'Booking dibatalkan pemilik, DP dikembalikan', 'Tulis rekening untuk pengembalian DP di halaman reservasi Anda.');
     if (role !== 'admin') await notifyAdmin(l, 'refund', `Pemilik ${p.name} membatalkan booking ${l.name}`, reason);
     return `Membatalkan booking ${l.name} dengan refund: ${reason}`;
   }
@@ -532,7 +535,7 @@ export function createMarket(H: Record<string, any>) {
     const reason = str(b.reason, 400);
     if (!reason) throw bad('Tulis alasan menolak refund (mis. sesuai aturan booking kos).');
     await save(l, { refundStatus: 'ditolak', refundNote: reason });
-    await sysMsg(l, `${who(role)} menolak permintaan refund: ${reason}\nBila tidak setuju, customer bisa melaporkan ke admin Bonaasina dari dashboard.`);
+    await sysMsg(l, `${who(role)} menolak permintaan refund: ${reason}\nBila tidak setuju, penyewa bisa melapor ke admin Bonaasina dari halaman reservasi.`);
     await notifyCustomer(l, 'refund', 'Permintaan refund ditolak', reason);
     if (role !== 'admin') await notifyAdmin(l, 'refund', `Refund ${l.name} ditolak pemilik ${p.name}`, reason);
     return `Menolak refund ${l.name}: ${reason}`;
@@ -554,7 +557,7 @@ export function createMarket(H: Record<string, any>) {
   }
   async function doFeeReturned(l: Row, _p: Row, _b: Row, role: Role) {
     if (role !== 'admin') throw new HttpError(403, 'Hanya admin.');
-    if (l.refundStatus !== 'selesai' || !['diterima', 'dikirim'].includes(l.feeStatus)) throw bad('Fee hanya dikembalikan setelah refund customer selesai.');
+    if (l.refundStatus !== 'selesai' || !['diterima', 'dikirim'].includes(l.feeStatus)) throw bad('Biaya layanan dikembalikan setelah pengembalian DP ke penyewa selesai.');
     await save(l, { feeStatus: 'dikembalikan' });
     const pp = await one('properties', l.propertyId);
     if (pp?.ownerId) await notify('pemilik', pp.ownerId, l.id, 'fee', `Fee booking ${l.name} dikembalikan`, `Fee ${rupiah(l.feeAmount)} dikembalikan karena booking dibatalkan dengan refund.`);
@@ -595,7 +598,7 @@ export function createMarket(H: Record<string, any>) {
     let text: string;
     if (kind === 'tolak') text = fill(s.waTemplateReject || TPL_REJECT);
     else if (kind === 'konfirmasi' && l.status === 'menunggu_dp') text = fill(s.waTemplateConfirm || TPL_CONFIRM);
-    else text = fill(`Horas {nama}, ini akses dashboard reservasi Anda di {kos} (Bonaasina).\n\nStatus: ${LEAD_STATUS[l.status]}\n{link}\nUsername: {username}\nKata sandi: {password}\n\nDi dashboard Anda bisa melihat status, chat dengan pemilik, dan mengunggah bukti transfer.`);
+    else text = fill(`Horas {nama}, ini info masuk ke halaman reservasi Anda di {kos} (Bonaasina).\n\nStatus: ${LEAD_STATUS[l.status]}\n{link}\nUsername: {username}\nKata sandi: {password}\n\nDi halaman itu Anda bisa melihat status, chat dengan pemilik, dan mengunggah bukti transfer.`);
     return { text, url: waLink(l.phone, text) };
   }
 
@@ -670,7 +673,7 @@ export function createMarket(H: Record<string, any>) {
       title: 'BUKTI BOOKING', number: l.invoiceNo, issuedAt: l.approvedAt || nowIso(), subtitle: `${p?.name || ''}${p?.city ? `, ${p.city}` : ''}`,
       intro: `Bonaasina menyatakan booking berikut sudah dibayar DP-nya kepada pemilik kos dan telah diperiksa admin.${refunded ? ' Booking ini kemudian DIBATALKAN dan DP sudah dikembalikan.' : ''}`,
       rows: [
-        ['Nama customer', `${l.name}${l.people === 2 ? ' (2 orang)' : ''}`], ['Nomor reservasi', `#${l.code}`], ['Kos', `${p?.name || '-'}${p?.address ? `, ${p.address}` : ''}`],
+        ['Nama penyewa', `${l.name}${l.people === 2 ? ' (2 orang)' : ''}`], ['Nomor reservasi', `#${l.code}`], ['Kos', `${p?.name || '-'}${p?.address ? `, ${p.address}` : ''}`],
         ['Kamar', room ? `${room.code}${room.type ? `, ${room.type}` : ''}` : '-'], ['Lama sewa', periodText(l.period, l.duration)],
         ['Mulai tinggal', tanggal(l.moveDate)], ['Sampai', tanggal(endDateOf(l))], ['Total sewa', rupiah(l.priceTotal || 0)],
         ['DP dibayar', `${rupiah(l.dpAmount || 0)} (diterima pemilik ${WAKTU(l.dpConfirmedAt)})`],
@@ -695,7 +698,7 @@ export function createMarket(H: Record<string, any>) {
         ['Status', l.feeStatus === 'dikembalikan' ? 'Dikembalikan karena booking dibatalkan' : 'Lunas'], ['Tanggal diterima', WAKTU(l.feePaidAt)],
       ],
       amountLabel: 'Fee Bonaasina', amount: l.feeAmount || 0, stamp: l.feeStatus === 'dikembalikan' ? 'DIKEMBALIKAN' : 'LUNAS',
-      notes: ['Fee dihitung dari uang booking/DP yang ditransfer customer langsung ke rekening pemilik.', 'Bila booking dibatalkan dan DP dikembalikan ke customer, fee dikembalikan ke pemilik.'],
+      notes: ['Biaya layanan dihitung dari DP yang ditransfer penyewa langsung ke rekening pemilik.', 'Bila booking dibatalkan dan DP dikembalikan ke penyewa, biaya layanan dikembalikan ke pemilik.'],
       signer: 'Admin Bonaasina', verifyCode: null,
     });
   }
@@ -727,7 +730,7 @@ export function createMarket(H: Record<string, any>) {
     const path = await storeProof(req, l, 'dp');
     await save(l, { status: 'dp_dikirim', dpProofPath: path, dpUploadedAt: nowIso(), dpRejectNote: '' });
     const p = await one('properties', l.propertyId);
-    await sysMsg(l, `Customer mengunggah bukti transfer DP ${rupiah(l.dpAmount)}. Pemilik: periksa mutasi rekening lalu konfirmasi.`);
+    await sysMsg(l, `Penyewa mengunggah bukti transfer DP ${rupiah(l.dpAmount)}. Pemilik: periksa mutasi rekening lalu konfirmasi.`);
     await notifyOwner(p, l, 'dp', `Bukti DP dari ${l.name}`, `Periksa transfer ${rupiah(l.dpAmount)} di rekening Anda, lalu konfirmasi di menu Reservasi.`);
     if (isMitra(p)) await notifyAdmin(l, 'dp', `Bukti DP ${l.name} di ${p.name}`, rupiah(l.dpAmount));
     log({ action: 'customer.dp_proof', summary: `Mengunggah bukti DP ${rupiah(l.dpAmount)} untuk ${p?.name || ''}` });
@@ -739,7 +742,7 @@ export function createMarket(H: Record<string, any>) {
     const reason = str(b.reason, 400);
     await save(l, { status: 'batal', cancelReason: reason || 'Dibatalkan customer.', cancelledBy: 'customer' });
     const p = await one('properties', l.propertyId);
-    await sysMsg(l, `Customer membatalkan reservasi.${reason ? ` Alasan: ${reason}` : ''}`);
+    await sysMsg(l, `Penyewa membatalkan reservasi.${reason ? ` Alasan: ${reason}` : ''}`);
     await notifyOwner(p, l, 'status', `${l.name} membatalkan reservasi`, reason);
     log({ action: 'customer.cancel', summary: `Membatalkan reservasi ${p?.name || ''}` });
     return { ok: true };
@@ -752,7 +755,7 @@ export function createMarket(H: Record<string, any>) {
     if (l.refundStatus === 'diminta') {
       // Melengkapi/mengubah rekening tujuan saat refund sedang diproses.
       await save(l, { refundAccount: account });
-      await sysMsg(l, `Customer memperbarui rekening tujuan refund: ${account}`);
+      await sysMsg(l, `Penyewa memperbarui rekening tujuan refund: ${account}`);
       await notifyOwner(p, l, 'refund', `Rekening refund ${l.name} diperbarui`, account);
       return { ok: true };
     }
@@ -761,7 +764,7 @@ export function createMarket(H: Record<string, any>) {
     const reason = str(b.reason, 400);
     if (!reason) throw bad('Tulis alasan meminta refund.');
     await save(l, { refundStatus: 'diminta', refundReason: reason, refundAccount: account, refundRequestedAt: nowIso(), refundAmount: l.dpAmount, cancelledBy: 'customer' });
-    await sysMsg(l, `Customer meminta pengembalian DP. Alasan: ${reason}\nRekening tujuan: ${account}`);
+    await sysMsg(l, `Penyewa meminta pengembalian DP. Alasan: ${reason}\nRekening tujuan: ${account}`);
     await notifyOwner(p, l, 'refund', `${l.name} meminta refund DP`, `${reason}. Proses sesuai aturan booking kos Anda.`);
     if (isMitra(p)) await notifyAdmin(l, 'refund', `Permintaan refund ${l.name} di ${p.name}`, reason);
     log({ action: 'customer.refund', summary: `Meminta refund DP ${p?.name || ''}` });
@@ -781,7 +784,7 @@ export function createMarket(H: Record<string, any>) {
     const note = str(b.note, 400);
     if (!note) throw bad('Ceritakan singkat masalahnya supaya admin bisa membantu.');
     await save(l, { refundStatus: 'dilaporkan', refundNote: note });
-    await sysMsg(l, `Customer melaporkan masalah refund ke admin Bonaasina: ${note}`);
+    await sysMsg(l, `Penyewa melaporkan masalah refund ke admin Bonaasina: ${note}`);
     await notifyAdmin(l, 'refund', `Laporan refund dari ${l.name} (${p?.name || ''})`, note);
     if (p?.ownerId) await notify('pemilik', p.ownerId, l.id, 'refund', `${l.name} melaporkan refund ke admin`, note);
     log({ action: 'customer.refund_report', summary: 'Melaporkan masalah refund ke admin' });
@@ -793,7 +796,7 @@ export function createMarket(H: Record<string, any>) {
     if (!isDate(b.visitDate) || b.visitDate < todayStr()) throw bad('Pilih tanggal kunjungan hari ini atau setelahnya.');
     await save(l, { visitStatus: 'diminta', visitDate: b.visitDate, visitTime: str(b.visitTime, 20), visitNote: str(b.visitNote, 300) });
     const p = await one('properties', l.propertyId);
-    await sysMsg(l, `Customer meminta kunjungan ${tanggal(l.visitDate)}${l.visitTime ? ` pukul ${l.visitTime}` : ''}.${l.visitNote ? ` ${l.visitNote}` : ''}`);
+    await sysMsg(l, `Penyewa meminta kunjungan ${tanggal(l.visitDate)}${l.visitTime ? ` pukul ${l.visitTime}` : ''}.${l.visitNote ? ` ${l.visitNote}` : ''}`);
     await notifyOwner(p, l, 'visit', `${l.name} minta jadwal kunjungan`, `${tanggal(l.visitDate)} ${l.visitTime}`);
     log({ action: 'customer.visit', summary: `Meminta kunjungan ${p?.name || ''} ${tanggal(l.visitDate)}` });
     return { ok: true };
@@ -890,13 +893,13 @@ export function createMarket(H: Record<string, any>) {
   });
   on('POST', '/pemilik/properties/:id/submit', async ({ params, owner: o }: Row, log: (e: Row) => void) => {
     const p = await ownerProp(o, params.id);
-    if (!['draf', 'nonaktif'].includes(p.status)) throw bad(p.status === 'aktif' ? 'Kos ini sudah tayang.' : 'Kos ini sedang ditinjau admin.');
+    if (!['draf', 'nonaktif'].includes(p.status)) throw bad(p.status === 'aktif' ? 'Kos ini sudah tampil di website.' : 'Kos ini sedang dicek admin.');
     const rooms = (await roomsOf([p.id])).filter((r) => !r.hidden);
     const missing = [!p.address && 'alamat', !(p.photos || []).length && 'minimal 1 foto', !rooms.length && 'minimal 1 kamar', !p.bankInfo && 'rekening untuk DP', !p.whatsapp && p.waEnabled !== false && 'nomor WhatsApp'].filter(Boolean);
     if (missing.length) throw bad(`Lengkapi dulu: ${missing.join(', ')}.`);
     const rec = await update('properties', p.id, { status: 'menunggu', submittedAt: nowIso() });
-    await notifyAdmin(null, 'partner', `${o.name} mengajukan ${p.name} untuk tayang`, 'Periksa data kos lalu tayangkan di menu Kos Sekitar → Mitra kos.');
-    log({ action: 'owner.submit', summary: `Mengajukan ${p.name} untuk tayang`, target: p.name });
+    await notifyAdmin(null, 'partner', `${o.name} minta ${p.name} ditampilkan`, 'Cek data kosnya, lalu tekan “Tampilkan di website” di menu Mitra kos.');
+    log({ action: 'owner.submit', summary: `Minta ${p.name} ditampilkan di website`, target: p.name });
     return rec;
   });
   on('POST', '/pemilik/properties/:id/checked', async ({ params, owner: o }: Row, log: (e: Row) => void) => {
@@ -979,7 +982,7 @@ export function createMarket(H: Record<string, any>) {
     const amount = num(url.searchParams.get('amount')) || l.refundAmount || l.dpAmount || 0;
     const path = await storeProof(req, l, 'refund');
     await save(l, { refundStatus: 'dikirim', refundProofPath: path, refundSentAt: nowIso(), refundAmount: amount });
-    await sysMsg(l, `${who(role)} sudah mentransfer refund ${rupiah(amount)}. Customer: periksa rekening lalu konfirmasi di dashboard.`);
+    await sysMsg(l, `${who(role)} sudah mentransfer refund ${rupiah(amount)}. Penyewa: periksa rekening lalu tekan “Sudah saya terima” di halaman reservasi.`);
     await notifyCustomer(l, 'refund', 'Refund sudah dikirim', `Periksa rekening Anda (${rupiah(amount)}) lalu tekan "Sudah saya terima".`);
     if (role !== 'admin' && isMitra(p)) await notifyAdmin(l, 'refund', `Refund ${l.name} dikirim pemilik`, rupiah(amount));
   }
@@ -1128,12 +1131,92 @@ export function createMarket(H: Record<string, any>) {
   on('GET', '/admin/notifications', async () => notifList('admin', null));
   on('POST', '/admin/notifications/read', async ({ body: b }: Row) => notifRead('admin', null, b));
 
+  // ================================================================ PENDAFTARAN MITRA (/mitra/)
+  const GENDERS = ['Putra', 'Putri', 'Campur', 'Pasutri'];
+  on('POST', '/mitra/daftar', async ({ req, body: b }: Row, log: (e: Row) => void) => {
+    if (b.website) return { ok: true }; // honeypot
+    const name = str(b.name, 80), phone = str(b.phone, 20), kosName = str(b.kosName, 80).replace(/^kos\s+/i, '');
+    if (!name) throw bad('Isi nama Anda.');
+    if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890.');
+    if (!kosName) throw bad('Isi nama kos Anda.');
+    const city = str(b.city, 80);
+    if (!city) throw bad('Isi kota atau daerah kos Anda.');
+    const periods = (Array.isArray(b.periods) ? b.periods : []).filter((x: string) => CYCLES.includes(x));
+    const { ip } = clientInfo(req);
+    const dayAgo = new Date(Date.now() - DAY).toISOString(), hourAgo = new Date(Date.now() - 3600e3).toISOString();
+    const [byPhone, byIp] = await Promise.all([
+      sb.from('partner_applications').select('id', { count: 'exact', head: true }).eq('phone', phone).gte('created_at', dayAgo),
+      sb.from('partner_applications').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', hourAgo),
+    ]);
+    if ((byPhone.count ?? 0) >= 2 || (ip && (byIp.count ?? 0) >= 5)) throw new HttpError(429, 'Pendaftaran dari nomor ini sudah kami terima. Admin akan menghubungi Anda lewat WhatsApp.');
+    const rooms = Math.round(Number(b.roomCount) || 0);
+    const rec = toCamel(await q(sb.from('partner_applications').insert({
+      name, phone, kos_name: `Kos ${kosName}`, city, address: str(b.address, 300), gender: GENDERS.includes(b.gender) ? b.gender : 'Campur',
+      room_count: rooms >= 1 && rooms <= 500 ? rooms : null, periods: periods.length ? CYCLES.filter((c: string) => periods.includes(c)) : ['bulanan'],
+      price_from: num(b.priceFrom) || null, note: str(b.note, 600), ip,
+    }).select().single()));
+    await notifyAdmin(null, 'mitra', `Pendaftaran mitra baru: ${rec.kosName}`, `${name} (${phone}), ${city}${rooms ? `, ${rooms} kamar` : ''}. Periksa di menu Pendaftaran mitra.`);
+    log({ action: 'partner.apply', summary: `Mendaftar sebagai mitra: ${rec.kosName}, ${city}`, meta: { name } });
+    return created({ ok: true });
+  });
+  on('GET', '/admin/applications', async () => ((await q(sb.from('partner_applications').select('*').order('created_at', { ascending: false }).limit(300))) as Row[] || []).map((r) => toCamel(r)));
+  const slugUser = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^kos\s+/, '').replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'mitra';
+  function accountMessage(o: Row, kosName: string, password: string) {
+    return `Horas ${o.name}, selamat bergabung sebagai mitra Kos Sekitar Bonaasina! 🎉\n\n` +
+      `Akun untuk ${kosName} sudah siap:\nAlamat: ${site()}/pemilik/\nUsername: ${o.username}\nKata sandi sementara: ${password}\n\n` +
+      `Langkah berikutnya:\n1. Masuk, lalu buat kata sandi Anda sendiri.\n2. Lengkapi info kos, foto, kamar & harga, rekening, dan nomor WhatsApp.\n3. Tekan "Minta ditampilkan di website". Setelah kami cek, kos Anda tampil dan siap dipesan.\n\n` +
+      `Ada pertanyaan? Balas pesan ini saja. Terima kasih 🙏`;
+  }
+  on('POST', '/admin/applications/:id/approve', async ({ params, body: b }: Row, log: (e: Row) => void) => {
+    const a = toCamel(await q(sb.from('partner_applications').select('*').eq('id', str(params.id, 60)).maybeSingle()));
+    if (!a) throw notFound('Pendaftaran tidak ditemukan.');
+    if (a.status === 'disetujui') throw bad('Pendaftaran ini sudah disetujui.');
+    let username = str(b.username, 40).toLowerCase() || slugUser(a.kosName);
+    if (!USER_RE.test(username)) throw bad('Username 3–32 karakter: huruf kecil, angka, titik, minus, atau garis bawah.');
+    if (!b.username) { const base = username; for (let i = 2; await usernameTaken(username); i++) username = `${base}${i}`; }
+    else if (await usernameTaken(username)) throw bad(`Username "${username}" sudah dipakai.`);
+    const password = ownerPassword();
+    const owner = await insert('owners', { name: a.name, phone: a.phone, username, passwordHash: await bcrypt.hash(password, 10), mustChange: true, note: `Dari pendaftaran ${a.kosName}` });
+    const feeType = ['persen', 'nominal'].includes(b.feeType) ? b.feeType : null;
+    const prop = await createProperty('mitra', {
+      name: a.kosName, ownerId: owner.id, city: a.city, address: a.address, gender: a.gender, periods: a.periods?.length ? a.periods : ['bulanan'], whatsapp: a.phone,
+      feeType, feeValue: feeType ? Math.max(0, Number(b.feeValue) || 0) : null,
+    });
+    await q(sb.from('partner_applications').update({ status: 'disetujui', owner_id: owner.id, property_id: prop.id, decided_at: nowIso(), admin_note: str(b.note, 300) }).eq('id', a.id));
+    const text = accountMessage(owner, a.kosName, password);
+    log({ action: 'partner.approve', summary: `Menyetujui mitra ${a.kosName} dan membuat akun ${username}` });
+    return { owner: ownerOut(owner), password, property: pick(prop, ['id', 'name', 'slug']), text, url: waLink(a.phone, text) };
+  });
+  on('POST', '/admin/applications/:id/reject', async ({ params, body: b }: Row, log: (e: Row) => void) => {
+    const a = toCamel(await q(sb.from('partner_applications').select('*').eq('id', str(params.id, 60)).maybeSingle()));
+    if (!a) throw notFound('Pendaftaran tidak ditemukan.');
+    if (a.status === 'disetujui') throw bad('Pendaftaran ini sudah disetujui.');
+    const note = str(b.note, 300);
+    await q(sb.from('partner_applications').update({ status: 'ditolak', admin_note: note, decided_at: nowIso() }).eq('id', a.id));
+    const text = `Horas ${a.name}, terima kasih sudah mendaftarkan ${a.kosName} sebagai mitra Bonaasina.\n\nMohon maaf, untuk saat ini kami belum bisa menerimanya${note ? `: ${note}` : '.'}\n\nSilakan hubungi kami bila ada pertanyaan.`;
+    log({ action: 'partner.reject', summary: `Menolak pendaftaran mitra ${a.kosName}` });
+    return { text, url: waLink(a.phone, text) };
+  });
+  on('POST', '/admin/applications/:id/resend', async ({ params }: Row, log: (e: Row) => void) => {
+    // Kirim ulang akun: kata sandi sementara baru (kata sandi lama tidak bisa dibaca).
+    const a = toCamel(await q(sb.from('partner_applications').select('*').eq('id', str(params.id, 60)).maybeSingle()));
+    if (!a?.ownerId) throw bad('Pendaftaran ini belum disetujui.');
+    const o = await one('owners', a.ownerId); if (!o) throw notFound('Akun pemilik sudah dihapus.');
+    const password = ownerPassword();
+    await update('owners', o.id, { passwordHash: await bcrypt.hash(password, 10), mustChange: true });
+    await q(sb.from('owner_sessions').delete().eq('owner_id', o.id)); clearCaches();
+    const text = accountMessage(o, a.kosName, password);
+    log({ action: 'partner.resend', summary: `Membuat kata sandi sementara baru untuk ${o.name}` });
+    return { text, url: waLink(o.phone || a.phone, text), password };
+  });
+
   // Angka untuk lencana menu admin.
   async function adminCounts() {
     await expireLeads();
     const s = await setting();
     const slow = new Date(Date.now() - (s.leadResponseHours || 24) * 3600e3).toISOString();
     const c = (f: (x: any) => any) => f(sb.from('leads').select('id', { count: 'exact', head: true })).then((r: any) => r.count ?? 0);
+    const applications = await sb.from('partner_applications').select('id', { count: 'exact', head: true }).eq('status', 'baru').then((r: any) => r.count ?? 0);
     const [leadsNew, noResponse, approvals, refunds, feeOverdue, partnersPending, notifUnread, feeToReturn] = await Promise.all([
       c((x) => x.eq('status', 'baru')), c((x) => x.eq('status', 'baru').is('responded_at', null).lt('created_at', slow)),
       c((x) => x.eq('status', 'dp_diterima').in('fee_status', ['dikirim', 'bebas'])), c((x) => x.in('refund_status', ['diminta', 'dilaporkan', 'ditolak'])),
@@ -1142,11 +1225,11 @@ export function createMarket(H: Record<string, any>) {
       sb.from('notifications').select('id', { count: 'exact', head: true }).eq('recipient_type', 'admin').is('read_at', null).then((r: any) => r.count ?? 0),
       c((x) => x.eq('refund_status', 'selesai').in('fee_status', ['diterima', 'dikirim'])),
     ]);
-    return { leadsNew, noResponse, approvals, refunds, feeOverdue, partnersPending, notifUnread, feeToReturn };
+    return { leadsNew, noResponse, approvals, refunds, feeOverdue, partnersPending, notifUnread, feeToReturn, applications };
   }
   async function propertyStatusChanged(p: Row, before: string) {
     if (!p.ownerId) return;
-    const text: Record<string, string> = { aktif: 'sudah tayang di Kos Sekitar Bonaasina', nonaktif: 'dinonaktifkan dari website', draf: 'dikembalikan ke draf untuk dilengkapi', menunggu: 'sedang ditinjau admin' };
+    const text: Record<string, string> = { aktif: 'sudah tampil di Kos Sekitar Bonaasina', nonaktif: 'disembunyikan dari website', draf: 'perlu dilengkapi dulu', menunggu: 'sedang dicek admin' };
     await notify('pemilik', p.ownerId, null, 'partner', `${p.name} ${text[p.status] || p.status}`, p.reviewNote || (before === 'menunggu' && p.status === 'aktif' ? 'Calon penyewa sekarang bisa melihat dan memesan kos Anda.' : ''));
   }
 

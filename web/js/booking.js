@@ -42,7 +42,7 @@ window.BonaBooking = (() => {
       </div>
       <label>Catatan <span class="opt">(opsional)</span><textarea name="note" rows="2" maxlength="600" placeholder="Misalnya: bawa motor, butuh kamar mandi dalam."></textarea></label>
       <label class="hp" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
-      <p class="form__note">Gratis dan belum perlu membayar. Pemilik memastikan kamar tersedia dulu, lalu mengabari Anda lewat WhatsApp &amp; dashboard reservasi.</p>
+      <p class="form__note">Gratis, belum perlu membayar. Pemilik memastikan kamarnya ada dulu, lalu mengabari Anda lewat WhatsApp.</p>
       <p class="form__error" role="alert" hidden></p>
       <button class="btn btn--red btn--block" type="submit">Kirim reservasi</button>
     </form>
@@ -119,7 +119,7 @@ window.BonaBooking = (() => {
         <p><strong>Simpan akun ini</strong> untuk melihat status, chat dengan pemilik, dan membayar DP setelah dikonfirmasi:</p>
         <dl class="cred"><dt>Alamat</dt><dd>${esc(out.link.replace(/^https?:\/\//, '').split('?')[0])}</dd><dt>Username</dt><dd>${esc(out.username)}</dd><dt>Kata sandi</dt><dd>${esc(out.password)}</dd></dl>
         <p class="form__note">Saat pertama masuk, Anda diminta membuat kata sandi sendiri.</p>
-        <div class="done__actions"><button type="button" class="btn btn--red" data-open>Buka dashboard reservasi</button>
+        <div class="done__actions"><button type="button" class="btn btn--red" data-open>Buka halaman reservasi saya</button>
           <a class="btn btn--ghost" href="https://wa.me/${esc(phone)}?text=${encodeURIComponent(selfMsg)}" target="_blank" rel="noopener">Simpan ke WhatsApp saya</a></div>`;
       form.hidden = true; done.hidden = false; done.focus();
       $('[data-open]', done).addEventListener('click', async (e) => {

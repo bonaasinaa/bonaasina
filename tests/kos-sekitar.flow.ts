@@ -226,4 +226,18 @@ assert(parts[0].feeRule.startsWith('15%') && parts[0].feeReceived === 0, 'partne
 const logTypes = new Set(db.activity_log.map((x) => x.actor_type));
 await new Promise((r) => setTimeout(r, 200));
 console.log('log actor types:', [...new Set(db.activity_log.map((x) => x.actor_type))].join(','), 'files:', files.size);
+// ---------- pendaftaran mitra
+db.partner_applications = [];
+await fail(400, 'POST', '/mitra/daftar', { name: 'Bu Rina', phone: '0812', kosName: 'Anggrek', city: 'Balige' });
+await ok('POST', '/mitra/daftar', { name: 'Bu Rina', phone: '081377778888', kosName: 'Kos Anggrek', city: 'Balige', roomCount: 10, periods: ['bulanan', 'tahunan'], gender: 'Putri' });
+assert((await ok('GET', '/admin/summary', undefined, A)).market.applications === 1, 'application count');
+const apps = await ok('GET', '/admin/applications', undefined, A);
+assert(apps[0].kosName === 'Kos Anggrek' && apps[0].status === 'baru', 'app listed');
+const appr = await ok('POST', `/admin/applications/${apps[0].id}/approve`, { feeType: 'persen', feeValue: 12 }, A);
+assert(appr.owner.username === 'anggrek' && appr.password && appr.url.startsWith('https://wa.me/6281377778888') && appr.text.includes('anggrek'), 'approved ' + appr.owner.username);
+const np = db.properties.find((p) => p.id === appr.property.id);
+assert(np.kind === 'mitra' && np.status === 'draf' && np.owner_id === appr.owner.id && np.fee_value === 12, 'property draft');
+await fail(400, 'POST', `/admin/applications/${apps[0].id}/approve`, {}, A);
+const s2 = await ok('POST', '/masuk', { username: 'anggrek', password: appr.password });
+assert(s2.kind === 'pemilik' && s2.mustChange, 'new owner login');
 console.log('ALL FLOW TESTS PASSED');

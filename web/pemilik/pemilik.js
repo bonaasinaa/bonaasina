@@ -11,7 +11,7 @@
   const setSession = (s) => { try { s ? localStorage.setItem(KEY, JSON.stringify(s)) : localStorage.removeItem(KEY); } catch { /* abaikan */ } };
   const PERIODS = [['harian', 'Harian', 'priceDaily', 'per malam'], ['bulanan', 'Bulanan', 'priceMonthly', 'per bulan'], ['semesteran', '6 bulanan', 'priceSemester', 'per 6 bulan'], ['tahunan', 'Tahunan', 'priceYearly', 'per tahun']];
   const STATUS_KAMAR = { kosong: 'Kosong', dipesan: 'Dipesan', terisi: 'Terisi', perbaikan: 'Perbaikan' };
-  const PROP_STATUS = { draf: 'Draf — belum tayang', menunggu: 'Menunggu tinjauan admin', aktif: 'Tayang di website', nonaktif: 'Tidak tayang' };
+  const PROP_STATUS = { draf: 'Belum tampil, masih dilengkapi', menunggu: 'Sedang dicek admin', aktif: 'Tampil di website', nonaktif: 'Disembunyikan' };
   let data = null; let chatBox = null; let leadFilter = 'aktif'; let propSel = null;
 
   // ---------- API ----------
@@ -109,7 +109,7 @@
   async function load() { data = await api('GET', '/me'); propSel ||= data.properties[0]?.id || null; return data; }
   async function start() {
     $('#login').hidden = true; $('#changePw').hidden = true; $('#app').hidden = false;
-    BonaLoader.show('Menyiapkan dashboard…', 0);
+    BonaLoader.show('Membuka dashboard…', 0);
     try { await load(); $('#sideWho').textContent = data.owner.name; route(); }
     catch (ex) { if (!/masuk dulu|bawaan/.test(ex.message)) main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; }
     finally { BonaLoader.hide(); }
@@ -170,18 +170,38 @@
     } catch { /* coba lagi nanti */ }
   }, 30000);
 
+  // Daftar periksa kos baru: apa saja yang perlu dilengkapi sebelum kos tampil di website.
+  function setupItems(p) {
+    const rooms = data.rooms.filter((r) => r.propertyId === p.id && !r.hidden);
+    const priced = rooms.some((r) => PERIODS.some(([k, , key]) => p.periods.includes(k) && r[key] > 0));
+    return [
+      [!!p.address, 'Alamat kos', '#kos', true], [(p.photos || []).length > 0, 'Minimal 1 foto kos', '#kos', true],
+      [priced, 'Minimal 1 kamar dengan harga', '#kamar', true], [!!p.bankInfo, 'Rekening untuk menerima DP', '#kos', true],
+      [!!p.whatsapp || p.waEnabled === false, 'Nomor WhatsApp', '#kos', true], [!!p.bookingPolicy, 'Aturan booking & pembatalan (disarankan)', '#kos', false],
+    ];
+  }
+  function setupCard(p) {
+    const items = setupItems(p); const need = items.filter((i) => i[3]); const done = need.filter((i) => i[0]).length;
+    const ready = done === need.length;
+    if (p.status === 'menunggu') return `<div class="next next--wait"><h3>${esc(p.name)} sedang dicek admin</h3><p>Biasanya selesai dalam 1×24 jam. Anda akan mendapat notifikasi saat kos sudah tampil di website.</p></div>`;
+    return `<div class="next ${ready ? 'next--ok' : 'next--act'} setup"><div class="row-between"><h3>${ready ? `${esc(p.name)} siap ditampilkan` : `Lengkapi ${esc(p.name)} supaya bisa tampil`}</h3><strong>${done}/${need.length}</strong></div>
+      <div class="setup__bar" role="progressbar" aria-valuemin="0" aria-valuemax="${need.length}" aria-valuenow="${done}"><span style="width:${(done / need.length) * 100}%"></span></div>
+      ${p.reviewNote ? `<p class="info-box">Pesan admin: ${esc(p.reviewNote)}</p>` : ''}
+      <ul class="setup__list">${items.map(([ok, t, h]) => `<li class="${ok ? 'is-done' : ''}"><a href="${h}">${esc(t)}</a></li>`).join('')}</ul>
+      <div class="btn-row">${ready ? `<button class="btn btn--green" data-submit="${p.id}">Minta ditampilkan di website</button>` : `<a class="btn btn--red" href="${items.find((i) => i[3] && !i[0])[2]}">Lengkapi sekarang</a>`}</div></div>`;
+  }
   // ========== BERANDA ==========
   async function beranda() {
     const n = needs(); const props = data.properties;
     const todo = [
-      [n.baru, '#reservasi', 'reservasi baru menunggu konfirmasi ketersediaan', true], [n.dp, '#reservasi', 'bukti DP perlu dicek di rekening', true],
-      [n.refund, '#reservasi', 'permintaan refund', true], [n.fee, '#fee', 'fee Bonaasina perlu ditransfer', true],
+      [n.baru, '#reservasi', 'pesanan baru: pastikan kamarnya tersedia', true], [n.dp, '#reservasi', 'bukti DP perlu dicek di rekening Anda', true],
+      [n.refund, '#reservasi', 'permintaan refund', true], [n.fee, '#fee', 'biaya layanan perlu ditransfer', true],
       [n.visit, '#reservasi', 'permintaan jadwal kunjungan', false], [n.unread, '#reservasi', 'pesan chat belum dibaca', false],
     ].filter(([v]) => v);
     const stale = props.filter((p) => p.status === 'aktif' && (!p.checkedAt || Date.now() - Date.parse(p.checkedAt) > 14 * 864e5));
     const free = data.rooms.filter((r) => r.effectiveStatus === 'kosong' && !r.hidden).length;
     main.innerHTML = head(`Horas, ${esc(data.owner.name.split(' ')[0])}`, `${props.length ? props.map((p) => esc(p.name)).join(', ') : 'Belum ada kos'} di Kos Sekitar Bonaasina.`) + `
-      ${props.filter((p) => p.status !== 'aktif').map((p) => `<div class="notice"><p><strong>${esc(p.name)}: ${esc(PROP_STATUS[p.status])}.</strong> ${p.status === 'menunggu' ? 'Admin sedang meninjau data kos Anda.' : 'Lengkapi info kos, kamar, foto, rekening, lalu ajukan tayang.'}${p.reviewNote ? ` Catatan admin: ${esc(p.reviewNote)}` : ''}</p><a class="btn btn--sm" href="#kos">Buka Kos saya</a></div>`).join('')}
+      ${props.filter((p) => p.status !== 'aktif').map(setupCard).join('')}
       ${stale.map((p) => `<div class="notice"><p><strong>Status kamar ${esc(p.name)} terakhir dicek ${p.checkedAt ? relTime(p.checkedAt) : 'belum pernah'}.</strong> Pastikan kamar kosong/terisi sudah benar supaya calon penyewa tidak kecewa.</p><button class="btn btn--sm" data-checked="${p.id}">Status kamar sudah benar</button></div>`).join('')}
       <div class="grid grid--stats">
         <div class="panel stat ${n.baru ? 'stat--alert' : ''}"><p class="stat__label">Reservasi baru</p><p class="stat__value">${n.baru}</p><p class="stat__sub">Belum dikonfirmasi</p></div>
@@ -192,16 +212,18 @@
       <div class="panel mt"><h2>Perlu tindakan</h2>${todo.length ? `<div class="todo">${todo.map(([v, h, t, u]) => `<a href="${h}" class="${u ? 'is-urgent' : ''}"><span class="count">${v}</span><span>${t}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Reservasi baru akan muncul di sini dan di notifikasi.</p>'}</div>
       <div class="panel mt"><h2>Alur reservasi di Bonaasina</h2>${guide()}</div>`;
     main.onclick = async (e) => {
+      const sb = e.target.closest('[data-submit]');
+      if (sb) { try { await api('POST', `/properties/${sb.dataset.submit}/submit`, {}); toast('Terkirim. Admin akan mengecek lalu menampilkan kos Anda.'); reload(); } catch (ex) { toast(ex.message, true); } return; }
       const c = e.target.closest('[data-checked]'); if (!c) return;
       try { await api('POST', `/properties/${c.dataset.checked}/checked`, {}); toast('Terima kasih. Website menampilkan status kamar terbaru.'); reload(); } catch (ex) { toast(ex.message, true); }
     };
   }
   const guide = () => `<ol class="guide">
-    <li><div><strong>Reservasi masuk</strong><span>Customer memilih kamar & tanggal di website. Belum ada pembayaran. Anda mendapat notifikasi.</span></div></li>
-    <li><div><strong>Konfirmasi ketersediaan</strong><span>Tekan “Kamar tersedia, minta DP”, isi total sewa & DP (minimal sesuai pengaturan), lalu “Kirim ke WhatsApp”. Pesan berisi tautan dashboard, username, dan kata sandi customer.</span></div></li>
-    <li><div><strong>Customer transfer DP ke rekening Anda</strong><span>Customer mengunggah bukti. Cek mutasi rekening lalu tekan “DP sudah masuk”.</span></div></li>
-    <li><div><strong>Transfer fee Bonaasina</strong><span>Fee dihitung otomatis dari DP. Transfer ke rekening Bonaasina dan unggah buktinya.</span></div></li>
-    <li><div><strong>Admin menyetujui</strong><span>Bukti booking resmi untuk customer dan invoice fee untuk Anda terbit. Bila batal setelah DP, proses refund di halaman reservasi.</span></div></li></ol>`;
+    <li><div><strong>Pesanan masuk</strong><span>Calon penyewa memilih kamar & tanggal di website. Belum ada pembayaran. Anda mendapat notifikasi.</span></div></li>
+    <li><div><strong>Pastikan kamar tersedia</strong><span>Tekan “Kamar tersedia, minta DP”, isi jumlah DP, lalu “Kirim ke WhatsApp”. Pesannya sudah lengkap dengan cara bayar untuk penyewa.</span></div></li>
+    <li><div><strong>Penyewa transfer DP ke rekening Anda</strong><span>Penyewa mengunggah bukti transfer. Cek mutasi rekening lalu tekan “DP sudah masuk”.</span></div></li>
+    <li><div><strong>Bayar biaya layanan</strong><span>Biaya layanan dihitung otomatis dari DP. Transfer ke rekening Bonaasina dan unggah buktinya.</span></div></li>
+    <li><div><strong>Admin menyetujui</strong><span>Bukti booking terkirim ke penyewa, invoice ke Anda. Bila batal setelah DP, proses refund di halaman reservasi.</span></div></li></ol>`;
 
   // ========== RESERVASI ==========
   async function reservasi() {
@@ -210,15 +232,15 @@
     const FILTERS = { aktif: ['baru', 'menunggu_dp', 'dp_dikirim', 'dp_diterima'], berhasil: ['berhasil'], selesai: ['ditolak', 'batal', 'kedaluwarsa'], semua: null };
     const draw = () => {
       const list = data.leads.filter((l) => !FILTERS[leadFilter] || FILTERS[leadFilter].includes(l.status) || (leadFilter === 'aktif' && ['diminta', 'dilaporkan'].includes(l.refundStatus)));
-      $('#ldTable').innerHTML = list.length ? `<table><thead><tr><th>Customer</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th></th></tr></thead><tbody>${list.map((l) => `<tr>
-        <td data-label="Customer"><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread ? `<span class="unread" title="Pesan belum dibaca">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, masuk ${relTime(l.createdAt)}</span></td>
+      $('#ldTable').innerHTML = list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th></th></tr></thead><tbody>${list.map((l) => `<tr>
+        <td data-label="Calon penyewa"><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread ? `<span class="unread" title="Pesan belum dibaca">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, masuk ${relTime(l.createdAt)}</span></td>
         <td data-label="Kos & kamar">${esc(l.roomCode || 'Belum pilih kamar')}<span class="sub">${esc(l.propertyName)}</span></td>
         <td data-label="Sewa">${esc(l.periodLabel)}<span class="sub">mulai ${tgl(l.moveDate)}${l.people === 2 ? ', 2 orang' : ''}</span></td>
         <td data-label="Status">${M.pill(l)}${M.flags(l)}</td>
         <td class="actions"><a class="btn btn--${l.status === 'baru' || l.status === 'dp_dikirim' ? 'red' : 'ghost'} btn--sm" href="#reservasi?id=${l.id}">${l.status === 'baru' ? 'Konfirmasi' : l.status === 'dp_dikirim' ? 'Cek DP' : 'Buka'}</a></td></tr>`).join('')}</tbody></table>`
-        : `<div class="empty">${leadFilter === 'aktif' ? 'Belum ada reservasi berjalan. Pastikan kos sudah tayang dan status kamar terbaru.' : 'Tidak ada data.'}</div>`;
+        : `<div class="empty">${leadFilter === 'aktif' ? 'Belum ada pesanan. Pesanan baru akan muncul di sini dan di notifikasi.' : 'Tidak ada data.'}</div>`;
     };
-    main.innerHTML = head('Reservasi', 'Konfirmasi ketersediaan dulu, baru customer membayar DP. Semua perubahan langsung terlihat oleh customer.') + `
+    main.innerHTML = head('Reservasi', 'Pastikan kamar tersedia dulu, baru penyewa membayar DP. Setiap langkah langsung terlihat oleh penyewa.') + `
       <div class="toolbar"><div class="seg" id="ldSeg">${[['aktif', 'Berjalan'], ['berhasil', 'Berhasil'], ['selesai', 'Selesai/batal'], ['semua', 'Semua']].map(([k, t]) => `<button aria-pressed="${leadFilter === k}" data-k="${k}">${t}</button>`).join('')}</div></div>
       <div class="table-wrap" id="ldTable"></div>`;
     draw();
@@ -231,8 +253,8 @@
       minBooking: (x) => data.properties.find((p) => p.id === x.propertyId)?.minBooking || 0,
       reload: async () => { await reload(); },
     };
-    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)} · ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`, `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp customer</a>`) +
-      `<div class="lead-grid"><div id="leadPanel">${M.leadPanel(l, ctx)}</div><div><div id="chatBox"></div><p class="hint">Customer melihat pesan ini di dashboard reservasinya. ${l.chatEnabled ? '' : 'Chat sedang dimatikan di Kos saya.'}</p></div></div>`;
+    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)} · ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`, `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp penyewa</a>`) +
+      `<div class="lead-grid"><div id="leadPanel">${M.leadPanel(l, ctx)}</div><div><div id="chatBox"></div><p class="hint">Penyewa membaca pesan ini di halaman reservasinya. ${l.chatEnabled ? '' : 'Chat sedang dimatikan di Kos saya.'}</p></div></div>`;
     M.bindLead($('#leadPanel'), l, ctx);
     chatBox = M.chat($('#chatBox'), {
       title: `Chat dengan ${l.name}`, me: 'pemilik', enabled: l.chatEnabled, offText: 'Chat dimatikan. Nyalakan di menu Kos saya, atau gunakan WhatsApp.',
@@ -337,7 +359,7 @@
     if (!data.properties.length) { main.innerHTML = head('Kos saya', '') + '<div class="empty">Admin belum menghubungkan kos ke akun Anda.</div>'; return; }
     const p = propOf(propSel);
     const canSubmit = ['draf', 'nonaktif'].includes(p.status);
-    main.innerHTML = head(esc(p.name), `<span class="pill pill--${p.status}">${esc(PROP_STATUS[p.status])}</span> ${p.status === 'aktif' ? `<a href="/kos/?k=${esc(p.slug)}" target="_blank" rel="noopener">Lihat halaman kos</a>` : ''}`, `${propPicker()}${canSubmit ? '<button class="btn btn--green" id="submitBtn">Ajukan tayang</button>' : ''}`) + `
+    main.innerHTML = head(esc(p.name), `<span class="pill pill--${p.status}">${esc(PROP_STATUS[p.status])}</span> ${p.status === 'aktif' ? `<a href="/kos/?k=${esc(p.slug)}" target="_blank" rel="noopener">Lihat halaman kos</a>` : ''}`, `${propPicker()}${canSubmit ? (setupItems(p).every((i) => !i[3] || i[0]) ? '<button class="btn btn--green" id="submitBtn">Minta ditampilkan di website</button>' : `<span class="hint">Lengkapi dulu: ${setupItems(p).filter((i) => i[3] && !i[0]).map((i) => i[1].toLowerCase()).join(', ')}</span>`) : ''}`) + `
       ${p.reviewNote ? `<p class="info-box">Catatan admin: ${esc(p.reviewNote)}</p>` : ''}
       <form class="settings-grid mt" id="kosForm">
         <div class="panel fields fields--2">
@@ -359,18 +381,18 @@
           <div class="chips">${PERIODS.map(([k, t]) => `<label class="chip"><input type="checkbox" name="per_${k}" ${p.periods.includes(k) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div>
           <p class="hint">Website hanya menampilkan harga dan pilihan untuk periode yang dicentang.</p>
           <p class="fieldset-title">Booking &amp; pembayaran</p>
-          <label>Minimal booking / DP<input type="number" name="minBooking" min="0" step="1000" value="${p.minBooking || ''}"><span class="hint">Customer tidak bisa diminta DP di bawah angka ini.</span></label>
-          <label>Rekening tujuan DP<textarea name="bankInfo" rows="2" placeholder="BRI 1234567890 a.n. Nama Pemilik">${esc(p.bankInfo)}</textarea><span class="hint">Hanya tampil ke customer setelah Anda mengonfirmasi ketersediaan.</span></label>
+          <label>Minimal booking / DP<input type="number" name="minBooking" min="0" step="1000" value="${p.minBooking || ''}"><span class="hint">Penyewa tidak bisa diminta DP di bawah angka ini.</span></label>
+          <label>Rekening tujuan DP<textarea name="bankInfo" rows="2" placeholder="BRI 1234567890 a.n. Nama Pemilik">${esc(p.bankInfo)}</textarea><span class="hint">Rekening hanya terlihat oleh penyewa setelah Anda memastikan kamarnya tersedia.</span></label>
           <label>Aturan booking &amp; refund<textarea name="bookingPolicy" rows="3" placeholder="Mis. DP hangus bila batal kurang dari 7 hari sebelum masuk; refund 50% bila lebih dari 7 hari.">${esc(p.bookingPolicy)}</textarea></label>
           <label>Jam kunjungan<input name="visitHours" value="${esc(p.visitHours)}" placeholder="Setiap hari 09.00–18.00"></label>
         </div>
         <div class="panel fields">
-          <p class="fieldset-title">Kontak dengan calon penyewa</p>
-          <label><input type="checkbox" name="chatEnabled" ${p.chatEnabled !== false ? 'checked' : ''}> Chat langsung di dashboard (disarankan)</label>
+          <p class="fieldset-title">Cara calon penyewa menghubungi Anda</p>
+          <label><input type="checkbox" name="chatEnabled" ${p.chatEnabled !== false ? 'checked' : ''}> Chat dengan calon penyewa di Bonaasina (disarankan)</label>
           <label><input type="checkbox" name="waEnabled" ${p.waEnabled !== false ? 'checked' : ''}> Tampilkan tombol WhatsApp</label>
           <label>Nomor WhatsApp<input name="whatsapp" inputmode="tel" value="${esc(p.whatsapp)}" placeholder="0812…"></label>
-          <p class="fieldset-title">Fee Bonaasina</p>
-          <p class="muted">Fee: <strong>${esc(p.feeRule)}</strong>, dibayar setelah DP customer masuk ke rekening Anda. Diatur oleh admin.</p>
+          <p class="fieldset-title">Biaya layanan Bonaasina</p>
+          <p class="muted">Biaya layanan: <strong>${esc(p.feeRule)}</strong>, dibayar hanya setelah DP penyewa masuk ke rekening Anda.</p>
         </div>
         <div class="form-actions"><button class="btn btn--red" type="submit">Simpan</button></div>
       </form>`;
@@ -384,7 +406,7 @@
       try { await BonaLoader.during('Menyimpan…', () => api('PUT', `/properties/${p.id}`, d)); toast('Info kos disimpan.'); reload(); } catch (ex) { toast(ex.message, true); }
     };
     $('#submitBtn')?.addEventListener('click', async () => {
-      try { await api('POST', `/properties/${p.id}/submit`, {}); toast('Diajukan. Admin Bonaasina akan meninjau.'); reload(); } catch (ex) { toast(ex.message, true); }
+      try { await api('POST', `/properties/${p.id}/submit`, {}); toast('Terkirim. Admin akan mengecek lalu menampilkan kos Anda.'); reload(); } catch (ex) { toast(ex.message, true); }
     });
   }
 
@@ -392,7 +414,7 @@
   async function fee() {
     const list = data.leads.filter((l) => l.feeAmount > 0);
     const open = list.filter((l) => ['belum', 'ditolak'].includes(l.feeStatus) && ['dp_diterima', 'berhasil'].includes(l.status));
-    main.innerHTML = head('Fee Bonaasina', `Fee kemitraan dibayar setelah DP customer masuk ke rekening Anda. Rekening Bonaasina: <strong>${esc(data.bonaBankInfo || 'tanyakan admin')}</strong>.`) + `
+    main.innerHTML = head('Biaya layanan', `Dibayar hanya setelah DP penyewa masuk ke rekening Anda. Rekening Bonaasina: <strong>${esc(data.bonaBankInfo || 'tanyakan admin')}</strong>.`) + `
       <div class="grid grid--stats">
         <div class="panel stat ${open.length ? 'stat--alert' : ''}"><p class="stat__label">Perlu dibayar</p><p class="stat__value">${rp(open.reduce((a, l) => a + l.feeAmount, 0))}</p><p class="stat__sub">${open.length} booking</p></div>
         <div class="panel stat"><p class="stat__label">Menunggu dicek admin</p><p class="stat__value">${rp(list.filter((l) => l.feeStatus === 'dikirim').reduce((a, l) => a + l.feeAmount, 0))}</p></div>
@@ -403,7 +425,7 @@
         <td data-label="Booking"><strong>${esc(l.name)}</strong><span class="sub">${esc(l.propertyName)} ${esc(l.roomCode || '')}, mulai ${tgl(l.moveDate)}</span></td>
         <td class="num" data-label="DP">${rp(l.dpAmount)}</td><td class="num" data-label="Fee">${rp(l.feeAmount)}${l.feeDue && ['belum', 'ditolak'].includes(l.feeStatus) ? `<span class="sub">batas ${tgl(l.feeDue)}</span>` : ''}</td>
         <td data-label="Status"><span class="pill pill--${esc(l.feeStatus === 'belum' ? 'baru' : l.feeStatus)}">${esc(M.FEE[l.feeStatus] || '-')}</span></td>
-        <td class="actions"><a class="btn btn--${['belum', 'ditolak'].includes(l.feeStatus) ? 'red' : 'ghost'} btn--sm" href="#reservasi?id=${l.id}">${['belum', 'ditolak'].includes(l.feeStatus) ? 'Bayar & unggah bukti' : 'Buka'}</a></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada fee. Fee muncul setelah Anda menerima DP dari customer.</div>'}</div>`;
+        <td class="actions"><a class="btn btn--${['belum', 'ditolak'].includes(l.feeStatus) ? 'red' : 'ghost'} btn--sm" href="#reservasi?id=${l.id}">${['belum', 'ditolak'].includes(l.feeStatus) ? 'Bayar & unggah bukti' : 'Buka'}</a></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada tagihan. Biaya layanan muncul setelah Anda menerima DP dari penyewa.</div>'}</div>`;
   }
 
   // ========== NOTIFIKASI ==========

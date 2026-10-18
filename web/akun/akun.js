@@ -202,7 +202,7 @@
           <div class="panel"><h2>Detail</h2>${M.infoKv(l, 'customer')}</div>
           <div class="panel"><h2>Cara kerja reservasi</h2><ol class="guide">
             <li><div><strong>Kirim reservasi</strong><span>Gratis. Pilih kamar, lama sewa, dan tanggal masuk.</span></div></li>
-            <li><div><strong>Pemilik konfirmasi</strong><span>Pemilik memastikan kamar benar-benar tersedia, lalu mengirim nominal DP lewat WhatsApp &amp; dashboard ini.</span></div></li>
+            <li><div><strong>Pemilik konfirmasi</strong><span>Pemilik memastikan kamarnya ada, lalu mengabari jumlah DP lewat WhatsApp dan halaman ini.</span></div></li>
             <li><div><strong>Transfer DP &amp; unggah bukti</strong><span>Uang DP langsung ke rekening pemilik. Unggah buktinya di sini.</span></div></li>
             <li><div><strong>Bukti booking resmi</strong><span>Setelah pemilik menerima DP dan admin Bonaasina memeriksa, bukti booking terbit.</span></div></li></ol></div>
           <div class="panel"><h2>Akun</h2><p class="muted">Username <strong>${esc(l.username)}</strong>. Simpan untuk melihat status kapan saja di ${esc(location.host)}/akun.</p><div class="btn-row mt"><button class="btn btn--ghost btn--sm" data-pw>Ganti kata sandi</button></div></div>

@@ -15,6 +15,7 @@ const DEFAULTS: Record<string, Row> = {
   invoices: { status: 'belum' },
   surveys: { status: 'baru' },
   activity_log: { ok: true },
+  partner_applications: { status: 'baru', admin_note: '', address: '', note: '' },
 };
 const UNIQUE: Record<string, string[]> = { leads: ['code', 'username'], owners: ['username'], properties: ['slug'] };
 function fill(table: string, r: Row) {

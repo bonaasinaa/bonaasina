@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jadi Mitra Kos Sekitar — Bonaasina</title>
+  <meta name="description" content="Punya kos? Tampilkan di Bonaasina. Gratis daftar, Anda yang memastikan kamar, uang DP langsung ke rekening Anda, dan biaya layanan hanya bila ada booking.">
+  <meta name="theme-color" content="#F7EDE3">
+  <meta property="og:title" content="Jadi Mitra Kos Sekitar — Bonaasina">
+  <meta property="og:description" content="Gratis daftar. Bayar hanya bila kamar Anda terpesan.">
+  <meta property="og:image" content="/assets/img/logo-bonaasina.png">
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261018b">
+  <link rel="stylesheet" href="/css/site.css?v=20261018b">
+  <link rel="stylesheet" href="/css/kos.css?v=20261018b">
+  <link rel="stylesheet" href="/mitra/mitra.css?v=20261018b">
+</head>
+<body>
+  <a class="skip" href="#daftar">Langsung ke formulir pendaftaran</a>
+  <header class="nav is-scrolled" id="nav">
+    <a class="nav__brand" href="/" aria-label="Bonaasina, ke beranda"><img src="/assets/img/mark.webp" alt="" width="54" height="37"><span>Bonaasina</span></a>
+    <nav class="nav__links" aria-label="Menu utama">
+      <a href="#untung">Keuntungan</a>
+      <a href="#biaya">Biaya</a>
+      <a href="#cara">Cara kerja</a>
+      <a href="#tanya">Tanya jawab</a>
+      <a href="/pemilik/">Masuk pemilik</a>
+    </nav>
+    <a class="btn btn--red btn--sm nav__cta" href="#daftar">Daftar gratis</a>
+  </header>
+
+  <main id="top">
+    <!-- HERO: demo interaktif dashboard pemilik -->
+    <section class="mhero" aria-labelledby="heroTitle">
+      <div class="mhero__copy">
+        <p class="crumbs"><a href="/">Bonaasina</a> / <a href="/kos-sekitar/">Kos sekitar</a> / Jadi mitra</p>
+        <h1 id="heroTitle">Kamar kosong di kos Anda, kami bantu terisi.</h1>
+        <p class="mhero__lead">Tampilkan kos Anda di Bonaasina. Calon penyewa memesan dari website, Anda yang memastikan kamarnya, dan uang DP masuk langsung ke rekening Anda.</p>
+        <div class="mhero__ctas">
+          <a class="btn btn--red" href="#daftar">Daftar gratis</a>
+          <a class="btn btn--ghost" href="#cara">Lihat cara kerjanya</a>
+        </div>
+        <ul class="mhero__facts">
+          <li>Daftar gratis</li>
+          <li>Bayar hanya bila ada booking</li>
+          <li>Cukup dari HP</li>
+        </ul>
+      </div>
+      <div class="phone" aria-label="Contoh tampilan dashboard pemilik">
+        <div class="phone__frame">
+          <div class="phone__bar"><img src="/assets/img/mark.webp" alt="" width="28" height="19"> Dashboard pemilik</div>
+          <div class="phone__screen" id="demo" aria-live="polite"></div>
+          <div class="phone__dots" role="tablist" aria-label="Langkah contoh" id="demoDots"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KEUNTUNGAN -->
+    <section class="section" id="untung" aria-labelledby="untungTitle">
+      <div class="section__head"><h2 id="untungTitle">Kenapa bergabung?</h2><p>Anda tetap pemilik dan pengelola kos. Kami membantu kos Anda ditemukan dan pemesanannya tertib.</p></div>
+      <div class="perks">
+        <article><h3>Tidak ada biaya di depan</h3><p>Daftar dan tampil di website gratis. Biaya layanan baru ada setelah calon penyewa membayar DP ke Anda.</p></article>
+        <article><h3>Anda yang memutuskan</h3><p>Setiap pemesanan masuk ke Anda dulu. Kamar penuh atau belum cocok? Cukup tekan “Tidak tersedia”.</p></article>
+        <article><h3>Uang langsung ke rekening Anda</h3><p>DP dan sisa sewa ditransfer penyewa ke rekening Anda sendiri, bukan lewat kami.</p></article>
+        <article><h3>Pesan WhatsApp sudah disiapkan</h3><p>Satu tombol untuk membalas calon penyewa lengkap dengan nominal DP dan tautan pembayaran.</p></article>
+        <article><h3>Chat dan jadwal kunjungan</h3><p>Calon penyewa bisa bertanya dan minta lihat kos. Semua tercatat, tidak tercecer.</p></article>
+        <article><h3>Bukti booking resmi</h3><p>Penyewa menerima bukti booking dari Bonaasina, Anda menerima invoice. Rapi dan tidak ada salah paham.</p></article>
+      </div>
+    </section>
+
+    <!-- BIAYA: kalkulator -->
+    <section class="section" id="biaya" aria-labelledby="biayaTitle">
+      <div class="calc">
+        <div>
+          <h2 id="biayaTitle">Berapa biayanya?</h2>
+          <p class="calc__lead">Biaya layanan dihitung dari uang DP yang Anda terima, hanya untuk pemesanan yang benar-benar terjadi. Bila pemesanan dibatalkan dan DP dikembalikan, biaya layanan juga dikembalikan.</p>
+          <p class="calc__note">Tarif saat ini <strong id="feeRate">10% dari DP</strong>. Bisa dibicarakan untuk kos dengan banyak kamar.</p>
+        </div>
+        <div class="calc__box">
+          <label for="dpRange">DP yang dibayar penyewa</label>
+          <output class="calc__dp" id="dpOut" for="dpRange">Rp500.000</output>
+          <input type="range" id="dpRange" min="100000" max="3000000" step="50000" value="500000">
+          <dl class="calc__sum">
+            <div><dt>Masuk ke rekening Anda</dt><dd id="youGet">Rp500.000</dd></div>
+            <div><dt>Biaya layanan Bonaasina</dt><dd id="feeOut">Rp50.000</dd></div>
+            <div class="is-strong"><dt>Yang Anda bayar bila tidak ada booking</dt><dd>Rp0</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- CARA KERJA -->
+    <section class="section" id="cara" aria-labelledby="caraTitle">
+      <div class="section__head"><h2 id="caraTitle">Cara bergabung</h2><p>Biasanya kos Anda sudah tampil dalam 1–2 hari.</p></div>
+      <ol class="steps">
+        <li><h3>Isi formulir singkat</h3><p>Nama, nomor WhatsApp, nama kos, dan lokasinya. Dua menit selesai.</p></li>
+        <li><h3>Kami hubungi lewat WhatsApp</h3><p>Admin memeriksa pendaftaran lalu mengirim akun masuk Anda.</p></li>
+        <li><h3>Lengkapi kos Anda</h3><p>Tambahkan foto, kamar, harga, rekening, dan aturan kos dari HP.</p></li>
+        <li><h3>Kos tampil, pesanan masuk</h3><p>Setelah kami cek, kos Anda tampil di Kos Sekitar dan siap dipesan.</p></li>
+      </ol>
+    </section>
+
+    <!-- TANYA JAWAB -->
+    <section class="section tanya" id="tanya" aria-labelledby="tanyaTitle">
+      <div class="section__head"><h2 id="tanyaTitle">Tanya jawab</h2></div>
+      <div class="faq">
+        <details><summary>Apakah saya harus membayar untuk mendaftar?</summary><div class="faq__a"><p>Tidak. Mendaftar dan tampil di website gratis. Biaya layanan hanya ada bila calon penyewa sudah membayar DP ke rekening Anda.</p></div></details>
+        <details><summary>Bagaimana kalau kamar ternyata sudah terisi?</summary><div class="faq__a"><p>Setiap pemesanan menunggu persetujuan Anda dulu. Calon penyewa belum membayar apa pun sampai Anda memastikan kamar tersedia. Tekan “Tidak tersedia” bila kamar penuh.</p></div></details>
+        <details><summary>Ke mana uang penyewa ditransfer?</summary><div class="faq__a"><p>Langsung ke rekening Anda. Setelah DP masuk, Anda mentransfer biaya layanan ke Bonaasina dan mengunggah buktinya. Admin lalu menerbitkan bukti booking untuk penyewa.</p></div></details>
+        <details><summary>Bagaimana kalau penyewa batal?</summary><div class="faq__a"><p>Aturan pembatalan Anda sendiri yang berlaku, dan tampil di halaman kos. Bila DP dikembalikan ke penyewa, biaya layanan juga kami kembalikan ke Anda.</p></div></details>
+        <details><summary>Saya kurang paham teknologi. Apakah bisa?</summary><div class="faq__a"><p>Bisa. Semuanya dari HP, tombolnya sedikit, dan admin siap membantu lewat WhatsApp. Bila perlu, admin juga bisa membantu mengisi data kos Anda.</p></div></details>
+        <details><summary>Bisakah saya berhenti kapan saja?</summary><div class="faq__a"><p>Bisa. Hubungi admin dan kos Anda akan disembunyikan dari website. Tidak ada kontrak jangka panjang.</p></div></details>
+      </div>
+    </section>
+
+    <!-- FORMULIR -->
+    <section class="section" id="daftar" aria-labelledby="daftarTitle">
+      <div class="join">
+        <div class="join__intro">
+          <h2 id="daftarTitle">Daftar jadi mitra</h2>
+          <p>Cukup isi yang penting saja. Foto, kamar, dan harga diisi nanti dari dashboard Anda.</p>
+          <p class="join__wa">Lebih suka bicara langsung? <a id="adminWa" href="/" target="_blank" rel="noopener">Chat admin lewat WhatsApp</a></p>
+        </div>
+        <form class="form" id="joinForm" novalidate>
+          <ol class="join__steps" aria-label="Langkah formulir"><li class="is-on" data-step-dot="1">Tentang Anda</li><li data-step-dot="2">Tentang kos</li></ol>
+          <fieldset class="join__step" data-step="1">
+            <legend class="sr">Tentang Anda</legend>
+            <label>Nama Anda<input name="name" autocomplete="name" maxlength="80" required></label>
+            <label>Nomor WhatsApp<input name="phone" inputmode="tel" autocomplete="tel" placeholder="0812 3456 7890" maxlength="20" required><span class="opt">Akun masuk akan dikirim ke nomor ini.</span></label>
+            <button class="btn btn--red btn--block" type="button" data-next>Lanjut</button>
+          </fieldset>
+          <fieldset class="join__step" data-step="2" hidden>
+            <legend class="sr">Tentang kos</legend>
+            <div class="form__row">
+              <label>Nama kos<input name="kosName" maxlength="80" placeholder="Kos Melati" required></label>
+              <label>Kota / daerah<input name="city" maxlength="80" placeholder="Balige" required></label>
+            </div>
+            <label>Alamat singkat <span class="opt">(opsional)</span><input name="address" maxlength="300" placeholder="Jl. Melati No. 3, dekat kampus"></label>
+            <fieldset class="form__radios"><legend>Kos untuk</legend>
+              <label><input type="radio" name="gender" value="Putri"> Putri</label>
+              <label><input type="radio" name="gender" value="Putra"> Putra</label>
+              <label><input type="radio" name="gender" value="Campur" checked> Campur</label>
+              <label><input type="radio" name="gender" value="Pasutri"> Pasutri</label></fieldset>
+            <div class="form__row">
+              <label>Jumlah kamar<input type="number" name="roomCount" min="1" max="500" inputmode="numeric" placeholder="10"></label>
+              <label>Harga mulai dari <span class="opt">(per bulan, opsional)</span><input type="number" name="priceFrom" min="0" step="50000" inputmode="numeric" placeholder="600000"></label>
+            </div>
+            <fieldset class="form__radios"><legend>Bisa disewa</legend>
+              <label><input type="checkbox" name="periods" value="harian"> Harian</label>
+              <label><input type="checkbox" name="periods" value="bulanan" checked> Bulanan</label>
+              <label><input type="checkbox" name="periods" value="semesteran"> 6 bulan</label>
+              <label><input type="checkbox" name="periods" value="tahunan"> Tahunan</label></fieldset>
+            <label>Catatan <span class="opt">(opsional)</span><textarea name="note" rows="2" maxlength="600" placeholder="Mis. dekat kampus, ada parkir mobil, waktu terbaik dihubungi."></textarea></label>
+            <label class="check-row"><input type="checkbox" name="agree" required> Saya pemilik atau pengelola kos ini dan setuju dihubungi admin Bonaasina.</label>
+            <label class="hp" aria-hidden="true">Website <input name="website" tabindex="-1" autocomplete="off"></label>
+            <p class="form__error" role="alert" hidden></p>
+            <div class="join__actions"><button class="btn btn--ghost" type="button" data-back>Kembali</button><button class="btn btn--red" type="submit">Kirim pendaftaran</button></div>
+          </fieldset>
+        </form>
+        <div class="form__done" id="joinDone" tabindex="-1" hidden>
+          <img src="/assets/img/mark.webp" alt="" width="120" height="82">
+          <h3>Pendaftaran terkirim</h3>
+          <p id="joinDoneText">Terima kasih. Admin Bonaasina akan menghubungi Anda lewat WhatsApp, biasanya dalam 1×24 jam.</p>
+          <a class="btn btn--ink" id="joinDoneWa" href="/" target="_blank" rel="noopener">Kabari admin lewat WhatsApp</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p class="footer__small">© <span id="year"></span> Bonaasina. <a href="/">Kos Asina &amp; Kos Bona</a>. <a href="/kos-sekitar/">Kos sekitar</a>. <a href="/pemilik/">Masuk sebagai pemilik</a>.</p>
+  </footer>
+
+  <script src="/js/config.js?v=20261018b"></script>
+  <script src="/mitra/mitra.js?v=20261018b" defer></script>
+  <script src="/js/analytics.js?v=20261018b" defer></script>
+</body>
+</html>

@@ -9,11 +9,9 @@
   $('#year').textContent = new Date().getFullYear();
   const ago = (iso) => { if (!iso) return ''; const d = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return d <= 0 ? 'hari ini' : d === 1 ? 'kemarin' : `${d} hari lalu`; };
 
-  Promise.all([fetch(API + '/kos-sekitar').then((r) => r.json()), fetch(API + '/public').then((r) => r.json()).catch(() => null)]).then(([d, pub]) => {
+  fetch(API + '/kos-sekitar').then((r) => r.json()).then((d) => {
     st.list = d.properties || [];
     if (d.intro) $('#intro').textContent = d.intro;
-    const wa = pub?.whatsappNormalized;
-    $('#mitraWa').href = wa ? `https://wa.me/${wa}?text=${encodeURIComponent('Horas admin Bonaasina, saya punya kos dan ingin bergabung sebagai mitra Kos Sekitar.')}` : '/';
     chips(); draw();
   }).catch(() => { $('#grid').innerHTML = '<p class="kempty">Daftar kos belum bisa dimuat. Coba muat ulang halaman.</p>'; });
 
@@ -35,7 +33,7 @@
     if (st.period !== 'semua') list = list.filter((p) => (p.periods || []).includes(st.period));
     if (st.free) list = list.filter((p) => p.freeRooms > 0);
     list = [...list].sort((a, b) => (b.freeRooms > 0) - (a.freeRooms > 0));
-    if (!st.list.length) { $('#grid').innerHTML = '<div class="kempty">Belum ada kos mitra yang tayang. Sementara itu, lihat <a href="/">Kos Asina &amp; Kos Bona</a>.</div>'; return; }
+    if (!st.list.length) { $('#grid').innerHTML = '<div class="kempty">Belum ada kos di sini. Sementara itu, lihat <a href="/">Kos Asina &amp; Kos Bona</a>, atau <a href="/mitra/">daftarkan kos Anda</a>.</div>'; return; }
     if (!list.length) { $('#grid').innerHTML = '<div class="kempty">Tidak ada kos yang cocok dengan pilihan ini.</div>'; return; }
     $('#grid').innerHTML = list.map((p) => {
       const prices = Object.entries(p.priceFrom || {}).filter(([k]) => st.period === 'semua' || k === st.period).slice(0, 3);
@@ -44,7 +42,7 @@
           <span class="kcard__badge ${p.freeRooms ? '' : 'is-full'}">${p.freeRooms ? `${p.freeRooms} kamar kosong` : 'Sedang penuh'}</span></div>
         <div class="kcard__body">
           <span class="kcard__name">${esc(p.name)}</span>
-          <span class="kcard__meta">${[p.gender ? `Kos ${p.gender.toLowerCase()}` : '', p.city, p.twoPerson ? 'ada kamar untuk 2 orang' : ''].filter(Boolean).map(esc).join(' · ')}</span>
+          <span class="kcard__meta">${[p.gender ? `Kos ${p.gender.toLowerCase()}` : '', p.city, p.twoPerson ? 'ada kamar untuk 2 orang' : ''].filter(Boolean).map(esc).join(', ')}</span>
           ${p.tagline ? `<span class="kcard__meta">${esc(p.tagline)}</span>` : ''}
           ${prices.length ? `<div class="kcard__price">${prices.map(([k, v]) => `<span>mulai <strong>${rpShort(v)}</strong>/${PER[k][1]}</span>`).join('')}</div>` : ''}
           ${(p.facilities || []).length ? `<div class="kcard__fac">${p.facilities.map((f) => `<span>${esc(f)}</span>`).join('')}</div>` : ''}

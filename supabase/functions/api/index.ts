@@ -466,13 +466,17 @@ export async function uniqueSlug(name: string) {
   for (let i = 2; i < 50; i++) { if (!(await q<Row | null>(sb.from('properties').select('id').eq('slug', slug).maybeSingle()))) return slug; slug = `${base}-${i}`; }
   return `${base}-${randomToken(3).toLowerCase()}`;
 }
+// Kos baru: kos mitra mulai sebagai draf (pemilik melengkapi info & kamar, lalu mengajukan tayang).
+export async function createProperty(kind: 'sendiri' | 'mitra', patch: Row) {
+  const slug = await uniqueSlug(patch.name);
+  return await insert('properties', { id: `kos_${slug.replace(/-/g, '_')}_${randomToken(3).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, slug, kind, status: kind === 'mitra' ? 'draf' : 'aktif', logo: '/assets/img/mark.webp', sort: 50, checkedAt: new Date().toISOString(), ...patch });
+}
 on('POST', '/admin/properties', async ({ body: b }, log) => {
   const patch = propertyAdminPatch(b);
   if (!patch.name) throw bad('Isi nama kos.');
   const kind = b.kind === 'sendiri' ? 'sendiri' : 'mitra';
   if (kind === 'mitra' && patch.ownerId && !(await one('owners', patch.ownerId))) throw bad('Pemilik kos tidak ditemukan.');
-  const slug = await uniqueSlug(patch.name);
-  const rec = await insert('properties', { id: `kos_${slug.replace(/-/g, '_')}_${randomToken(3).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, slug, kind, status: kind === 'mitra' ? 'draf' : 'aktif', logo: '/assets/img/mark.webp', sort: 50, checkedAt: new Date().toISOString(), ...patch });
+  const rec = await createProperty(kind, patch);
   log({ action: 'property.create', summary: `Menambah kos ${rec.name}${kind === 'mitra' ? ' (mitra)' : ''}`, target: rec.name });
   return created(rec);
 });
@@ -826,7 +830,7 @@ on('POST', '/admin/upload', async ({ req }, log) => {
 }, { raw: true });
 on('GET', '/admin/export', async (_c, log) => {
   log({ action: 'export', summary: 'Mengunduh cadangan seluruh data' });
-  const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues', 'contracts', 'room_inspections', 'waitlist', 'announcements', 'announcement_reads', 'chore_tasks', 'chore_reports', 'owners', 'leads', 'messages', 'notifications'];
+  const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues', 'contracts', 'room_inspections', 'waitlist', 'announcements', 'announcement_reads', 'chore_tasks', 'chore_reports', 'owners', 'leads', 'messages', 'notifications', 'partner_applications'];
   const out: Row = { exportedAt: new Date().toISOString() };
   for (const t of tables) out[t] = (await q<Row[]>(sb.from(t).select('*'))).map((r) => ({ ...r, portal_token_hash: undefined, password_hash: undefined }));
   return out;
@@ -1588,7 +1592,7 @@ const market = createMarket({
   sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
   readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
   background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
-  PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort,
+  PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort, createProperty,
 });
 
 // ---------------------------------------------------------------- server

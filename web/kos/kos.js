@@ -52,9 +52,9 @@
             ${p.mapsQuery ? `<div class="kd__map"><iframe title="Peta ${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps?q=${encodeURIComponent(p.mapsQuery)}&output=embed"></iframe></div><p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.mapsQuery)}" target="_blank" rel="noopener">Buka di Google Maps</a></p>` : '<p class="muted">Titik peta belum diatur. Tanyakan lokasi lewat chat atau WhatsApp.</p>'}</section>
         </div>
         <aside class="kd__side" id="pesan">
-          <div class="kd__contact"><h3>Pesan kamar</h3><p>Belum perlu membayar. Pemilik memastikan kamar tersedia dulu${p.minBooking ? `, lalu Anda membayar booking/DP minimal ${rp(p.minBooking)} langsung ke rekening pemilik` : ''}. Setelah DP diperiksa, Bonaasina menerbitkan bukti booking resmi.</p>
+          <div class="kd__contact"><h3>Pesan kamar</h3><p>Belum perlu membayar. Pemilik memastikan kamarnya ada dulu${p.minBooking ? `, lalu Anda membayar booking/DP minimal ${rp(p.minBooking)} langsung ke rekening pemilik` : ''}. Setelah DP diterima, Anda mendapat bukti booking resmi.</p>
             ${p.visitHours ? `<p>Jam kunjungan: ${esc(p.visitHours)}</p>` : ''}
-            <p>${p.chatEnabled ? 'Setelah reservasi terkirim, Anda bisa chat langsung dengan pemilik di dashboard reservasi.' : ''}${waUrl ? ` <a href="${esc(waUrl)}" target="_blank" rel="noopener">Atau tanya lewat WhatsApp</a>.` : ''}</p></div>
+            <p>${p.chatEnabled ? 'Setelah memesan, Anda bisa chat langsung dengan pemilik.' : ''}${waUrl ? ` <a href="${esc(waUrl)}" target="_blank" rel="noopener">Atau tanya lewat WhatsApp</a>.` : ''}</p></div>
           <div id="bookingBox"></div>
         </aside>
       </div>`;

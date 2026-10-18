@@ -6,6 +6,7 @@ Website untuk calon penyewa, admin untuk pemilik, dan dashboard untuk penghuni.
 | --- | --- | --- |
 | Website | `/` | Calon penyewa: kamar kosong, harga per periode yang dibuka (harian/bulanan/6 bulanan/tahunan), fasilitas, lokasi, aturan, reservasi, daftar tunggu |
 | Kos Sekitar | `/kos-sekitar/`, `/kos/?k=slug` | Calon penyewa: kos mitra di sekitar, detail kos, reservasi |
+| Jadi mitra | `/mitra/` | Pemilik kos lain: keuntungan, kalkulator biaya layanan, formulir pendaftaran mitra |
 | Reservasi saya | `/akun/` | Customer: status reservasi, bayar DP & unggah bukti, chat pemilik, refund, bukti booking PDF |
 | Dashboard pemilik | `/pemilik/` | Pemilik kos mitra: reservasi masuk, konfirmasi & DP, chat, kamar & harga, info kos, fee |
 | Admin | `/admin/` | Pemilik Bonaasina: menu Kos Sekitar (reservasi, persetujuan & refund, mitra kos, pemilik kos, fee & aturan, notifikasi), kamar, penghuni & akun login, kontrak, kondisi kamar, tagihan & kuitansi, pengumuman, piket, kerusakan, survei, daftar tunggu, laporan, log |
@@ -48,7 +49,8 @@ Kode: `supabase/functions/api/market.ts`, migrasi `20261018000001_kos_sekitar.sq
 5. Admin memeriksa kedua bukti → *Setujui*: bukti booking `BNS/BK/…` (QR ke `/cek/`) dan invoice fee `BNS/FEE/…` terbit. Kos Bonaasina sendiri: admin = pemilik, tanpa fee, langsung berhasil; tombol *Jadikan penghuni* mengisi data penghuni dari reservasi.
 - **Refund** (setelah DP ditransfer): customer meminta (alasan + rekening) atau pemilik membatalkan → pemilik unggah bukti refund → customer konfirmasi diterima. Pemilik bisa menolak dengan alasan (aturan booking kos); customer bisa melaporkan ke admin, admin bisa meminta pemilik memproses atau menutup refund. Bila refund selesai, fee dibatalkan/dikembalikan ke pemilik.
 - **Chat** per reservasi (diperbarui tiap 5 detik), bisa dimatikan per kos; tombol WhatsApp juga bisa dinyalakan/dimatikan. **Notifikasi** dashboard untuk admin, pemilik, dan customer.
-- Pemilik kos mitra: akun dibuat admin (menu Pemilik kos, kata sandi sementara wajib diganti), kos dibuat admin sebagai draf → pemilik melengkapi → *Ajukan tayang* → admin menayangkan.
+- **Pendaftaran mitra**: pemilik kos mengisi formulir singkat di `/mitra/` (nama, WhatsApp, nama kos, kota, jumlah kamar, dll.) → masuk ke admin *Pendaftaran mitra* → *Setujui & buat akun* membuat akun pemilik + kos (draf) dan menyiapkan pesan WhatsApp berisi username & kata sandi sementara.
+- Info kos & kamar (foto, harga, rekening, aturan) diisi **pemilik sendiri**; dashboard pemilik menampilkan daftar periksa. Setelah lengkap pemilik menekan *Minta ditampilkan di website* → admin menekan *Tampilkan di website*. Admin hanya mengatur status tampil, pemilik, dan fee.
 - Semua username (penghuni, pemilik, customer) bisa masuk dari halaman login mana pun lewat `POST /masuk`; diarahkan ke dashboard masing-masing. Dibatasi 10 percobaan gagal per 15 menit per IP.
 - Pengaturan di admin → *Fee & aturan*: fee bawaan, rekening Bonaasina, batas bayar fee/DP, batas “belum direspons”, templat pesan WhatsApp.
 
