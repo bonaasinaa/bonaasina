@@ -1,3 +1,7 @@
 User-agent: *
 Disallow: /admin/
 Disallow: /portal/
+Disallow: /penghuni/
+Disallow: /pemilik/
+Disallow: /akun/
+Disallow: /cek/

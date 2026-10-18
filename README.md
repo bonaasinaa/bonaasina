@@ -4,8 +4,11 @@ Website untuk calon penyewa, admin untuk pemilik, dan dashboard untuk penghuni.
 
 | Bagian | Alamat | Untuk siapa |
 | --- | --- | --- |
-| Website | `/` | Calon penyewa: kamar kosong, harga bulanan/tahunan, fasilitas, lokasi, aturan, survei, daftar tunggu |
-| Admin | `/admin/` | Pemilik: kamar, penghuni & akun login, kontrak, kondisi kamar, tagihan & kuitansi, pengumuman, piket, kerusakan, survei, daftar tunggu, laporan, log |
+| Website | `/` | Calon penyewa: kamar kosong, harga per periode yang dibuka (harian/bulanan/6 bulanan/tahunan), fasilitas, lokasi, aturan, reservasi, daftar tunggu |
+| Kos Sekitar | `/kos-sekitar/`, `/kos/?k=slug` | Calon penyewa: kos mitra di sekitar, detail kos, reservasi |
+| Reservasi saya | `/akun/` | Customer: status reservasi, bayar DP & unggah bukti, chat pemilik, refund, bukti booking PDF |
+| Dashboard pemilik | `/pemilik/` | Pemilik kos mitra: reservasi masuk, konfirmasi & DP, chat, kamar & harga, info kos, fee |
+| Admin | `/admin/` | Pemilik Bonaasina: menu Kos Sekitar (reservasi, persetujuan & refund, mitra kos, pemilik kos, fee & aturan, notifikasi), kamar, penghuni & akun login, kontrak, kondisi kamar, tagihan & kuitansi, pengumuman, piket, kerusakan, survei, daftar tunggu, laporan, log |
 | Dashboard penghuni | `/penghuni/` | Penghuni: tagihan & kuitansi PDF, kontrak digital, kondisi kamar, piket, pengumuman, lapor kerusakan, kartu penghuni |
 | Cek keaslian | `/cek/?k=…` | Siapa saja: memindai QR kartu penghuni/kuitansi |
 
@@ -34,12 +37,32 @@ Supabase Auth: login admin
 - **Piket**: tugas per kos (harian/mingguan/2 mingguan/bulanan), bergilir N orang per giliran atau bersama; penghuni mengirim foto bukti.
 - Bukti bayar & foto kerusakan disimpan privat dan hanya bisa dilihat admin lewat tautan sementara (5 menit).
 
+## Kos Sekitar (kemitraan) & reservasi
+Kode: `supabase/functions/api/market.ts`, migrasi `20261018000001_kos_sekitar.sql`, halaman `web/kos-sekitar`, `web/kos`, `web/akun`, `web/pemilik`, komponen bersama `web/js/market-ui.js` & `web/js/booking.js`.
+
+**Alur (sama untuk kos mitra dan Kos Asina/Bona):**
+1. Customer mengirim reservasi (kamar opsional, periode, lama, tanggal masuk, 1–2 orang, boleh minta kunjungan). **Belum bayar apa pun.** Akun customer langsung dibuat: username `<namakos><5 angka>` (mis. `bona13323`), kata sandi bawaan format sama dengan angka lain; wajib diganti saat pertama masuk (formulir ganti sandi punya kolom username untuk pengelola kata sandi).
+2. Pemilik menekan *Kamar tersedia, minta DP*: memilih kamar, total sewa (otomatis harga × lama), DP (≥ minimum booking kos), dan batas bayar. Lalu *Kirim ke WhatsApp*: pesan berisi tautan `/akun/?u=…`, username, dan kata sandi bawaan (kata sandi bawaan disimpan hanya sampai customer menggantinya). Bisa juga *Tidak tersedia*.
+3. Customer transfer DP **langsung ke rekening pemilik** dan mengunggah bukti. Lewat batas → otomatis *kedaluwarsa*.
+4. Pemilik memastikan DP masuk → kamar jadi *Dipesan*; fee dihitung (persen dari DP atau nominal; per kos atau bawaan). Pemilik transfer fee ke rekening Bonaasina & unggah bukti.
+5. Admin memeriksa kedua bukti → *Setujui*: bukti booking `BNS/BK/…` (QR ke `/cek/`) dan invoice fee `BNS/FEE/…` terbit. Kos Bonaasina sendiri: admin = pemilik, tanpa fee, langsung berhasil; tombol *Jadikan penghuni* mengisi data penghuni dari reservasi.
+- **Refund** (setelah DP ditransfer): customer meminta (alasan + rekening) atau pemilik membatalkan → pemilik unggah bukti refund → customer konfirmasi diterima. Pemilik bisa menolak dengan alasan (aturan booking kos); customer bisa melaporkan ke admin, admin bisa meminta pemilik memproses atau menutup refund. Bila refund selesai, fee dibatalkan/dikembalikan ke pemilik.
+- **Chat** per reservasi (diperbarui tiap 5 detik), bisa dimatikan per kos; tombol WhatsApp juga bisa dinyalakan/dimatikan. **Notifikasi** dashboard untuk admin, pemilik, dan customer.
+- Pemilik kos mitra: akun dibuat admin (menu Pemilik kos, kata sandi sementara wajib diganti), kos dibuat admin sebagai draf → pemilik melengkapi → *Ajukan tayang* → admin menayangkan.
+- Semua username (penghuni, pemilik, customer) bisa masuk dari halaman login mana pun lewat `POST /masuk`; diarahkan ke dashboard masing-masing. Dibatasi 10 percobaan gagal per 15 menit per IP.
+- Pengaturan di admin → *Fee & aturan*: fee bawaan, rekening Bonaasina, batas bayar fee/DP, batas “belum direspons”, templat pesan WhatsApp.
+
+**Uji alur API** (tanpa database sungguhan, klien Supabase palsu di memori):
+```bash
+cd tests && deno run -A --config deno.json kos-sekitar.flow.ts
+```
+
 ## Deploy
 
 ### 1. Supabase
 1. Buat proyek **bonaasina** (region Singapore `ap-southeast-1`).
 2. Jalankan semua file di `supabase/migrations/` berurutan, lalu `supabase/seed.sql`.
-3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR.
+3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts` + `market.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR.
 4. Buat kode penyiapan admin sekali pakai (berlaku 24 jam), lalu buka `/admin/` → *Pertama kali masuk* untuk membuat kata sandi:
    ```sql
    insert into public.setup_codes (email, code_hash, expires_at)

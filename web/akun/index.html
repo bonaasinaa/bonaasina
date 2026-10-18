@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#F7EDE3">
+  <title>Reservasi Saya — Bonaasina</title>
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261018a">
+  <link rel="stylesheet" href="/admin/admin.css?v=20261018a">
+  <link rel="stylesheet" href="/css/market.css?v=20261018a">
+</head>
+<body class="tenant">
+  <!-- Masuk -->
+  <main class="login" id="login" hidden>
+    <form class="login__card" id="loginForm">
+      <img src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="220" height="194">
+      <h1>Reservasi saya</h1>
+      <p class="muted small">Masuk dengan username dan kata sandi yang Anda terima saat mengirim reservasi atau dari pesan WhatsApp pemilik kos.</p>
+      <label>Username
+        <input type="text" name="username" id="loginUser" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="mis. bona13323" required>
+      </label>
+      <label>Kata sandi
+        <span class="pw-row"><input type="password" name="password" id="loginPass" autocomplete="current-password" required><button type="button" class="btn btn--ghost btn--sm" data-show="loginPass" aria-pressed="false">Lihat</button></span>
+      </label>
+      <p class="err" id="loginErr" role="alert" hidden></p>
+      <button class="btn btn--red btn--block" type="submit">Masuk</button>
+      <p class="muted small">Lupa kata sandi? Minta pemilik kos mengirim ulang akses lewat WhatsApp. <a href="/kos-sekitar/">Lihat kos sekitar</a></p>
+    </form>
+  </main>
+
+  <!-- Wajib ganti kata sandi bawaan -->
+  <main class="login" id="changePw" hidden>
+    <form class="login__card" id="pwForm">
+      <img src="/assets/img/mark.webp" alt="" width="120" height="82">
+      <h1>Buat kata sandi baru</h1>
+      <p class="muted small">Kata sandi bawaan hanya untuk masuk pertama kali. Buat kata sandi Anda sendiri supaya reservasi dan bukti transfer tetap aman.</p>
+      <label>Username
+        <input type="text" name="username" id="pwUser" autocomplete="username" readonly>
+      </label>
+      <label>Kata sandi baru
+        <span class="pw-row"><input type="password" name="newPassword" id="pwNew" autocomplete="new-password" minlength="8" required><button type="button" class="btn btn--ghost btn--sm" data-show="pwNew" aria-pressed="false">Lihat</button></span>
+      </label>
+      <label>Ulangi kata sandi baru
+        <input type="password" name="newPassword2" id="pwNew2" autocomplete="new-password" minlength="8" required>
+      </label>
+      <ul class="pw-rules"><li>Minimal 8 karakter.</li><li>Jangan pakai format bawaan (nama kos + angka).</li></ul>
+      <p class="err" id="pwErr" role="alert" hidden></p>
+      <button class="btn btn--red btn--block" type="submit">Simpan &amp; lanjutkan</button>
+      <button class="linkish" type="button" data-logout>Keluar</button>
+    </form>
+  </main>
+
+  <!-- Dashboard -->
+  <div id="app" hidden>
+    <header class="cust__bar">
+      <a class="brand" href="/kos-sekitar/" title="Kos sekitar Bonaasina"><img src="/assets/img/mark.webp" alt="" width="38" height="26"><span>Bonaasina</span></a>
+      <span class="sp"></span>
+      <button class="btn btn--ghost btn--sm bell" id="bellBtn" type="button" aria-label="Notifikasi">Notifikasi<span class="badge" id="bellBadge" hidden></span></button>
+      <button class="btn btn--ghost btn--sm" data-logout type="button">Keluar</button>
+    </header>
+    <main class="cust" id="main" tabindex="-1"></main>
+  </div>
+
+  <dialog class="dlg" id="dlg">
+    <form method="dialog" class="dlg__form" id="dlgForm" novalidate>
+      <header class="dlg__head"><h2 id="dlgTitle"></h2><button class="icon-btn" value="cancel" formnovalidate aria-label="Tutup">✕</button></header>
+      <div class="dlg__body" id="dlgBody"></div>
+      <p class="err" id="dlgErr" role="alert" hidden></p>
+      <footer class="dlg__foot">
+        <button class="btn btn--ghost" value="cancel" formnovalidate>Batal</button>
+        <button class="btn btn--red" id="dlgOk" value="ok">Simpan</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/js/config.js?v=20261018a"></script>
+  <script src="/js/loader.js?v=20261018a"></script>
+  <script src="/js/market-ui.js?v=20261018a"></script>
+  <script src="/akun/akun.js?v=20261018a" defer></script>
+  <script src="/js/analytics.js?v=20261018a" defer></script>
+</body>
+</html>

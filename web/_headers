@@ -18,6 +18,16 @@
   Cache-Control: no-store
   Referrer-Policy: no-referrer
 
+/pemilik/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+
+/akun/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+
 /cek/*
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store

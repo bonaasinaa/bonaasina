@@ -371,3 +371,89 @@ Perselisihan diselesaikan secara musyawarah untuk mufakat.
 
 ## Pasal 9 - Persetujuan Elektronik
 Perjanjian ini disetujui PIHAK KEDUA secara elektronik melalui dashboard penghuni Bonaasina. Waktu persetujuan dan perangkat yang dipakai dicatat oleh sistem.`;
+
+// ---------------------------------------------------------------- BUKTI TRANSAKSI KOS SEKITAR (A4)
+// Dipakai untuk bukti booking (customer & pemilik) dan invoice fee (pemilik & admin).
+export type TransactionDoc = {
+  title: string;            // mis. "BUKTI BOOKING" / "INVOICE FEE"
+  number: string;
+  issuedAt: string;         // ISO
+  subtitle: string;         // nama kos
+  intro: string;            // satu kalimat pembuka
+  rows: [string, string][];
+  amountLabel: string;
+  amount: number;
+  stamp: string;            // mis. "LUNAS" / "BERHASIL"
+  notes: string[];
+  signer: string;
+  verifyCode?: string | null;
+};
+export async function transactionPdf(d: TransactionDoc) {
+  const doc = await PDFDocument.create();
+  doc.setTitle(`${d.title} ${d.number}`); doc.setAuthor('Bonaasina');
+  const sans = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const serifBold = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const logo = await embedAny(doc, await siteImage('/assets/img/logo-bonaasina.png'));
+  const W = 595.28, H = 841.89, M = 48;
+  const page = doc.addPage([W, H]);
+  page.drawRectangle({ x: 0, y: 0, width: W, height: H, color: rgb(1, 0.985, 0.965) });
+  page.drawRectangle({ x: 0, y: H - 10, width: W, height: 10, color: RED });
+
+  let y = H - M - 6;
+  if (logo) { const s = 56 / logo.width; page.drawImage(logo, { x: M, y: y - logo.height * s + 10, width: 56, height: logo.height * s }); }
+  page.drawText('BONAASINA', { x: M + 68, y: y - 6, size: 14, font: bold, color: INK });
+  page.drawText(win(d.subtitle), { x: M + 68, y: y - 22, size: 9.5, font: sans, color: IJUK });
+  const title = win(d.title);
+  page.drawText(title, { x: W - M - serifBold.widthOfTextAtSize(title, 24), y: y - 8, size: 24, font: serifBold, color: INK });
+  const no = win(`No. ${d.number}`);
+  page.drawText(no, { x: W - M - sans.widthOfTextAtSize(no, 10), y: y - 26, size: 10, font: sans, color: IJUK });
+  const dt = win(`Terbit ${waktuWIB(d.issuedAt)}`);
+  page.drawText(dt, { x: W - M - sans.widthOfTextAtSize(dt, 8.5), y: y - 39, size: 8.5, font: sans, color: IJUK });
+  y -= 58;
+  page.drawLine({ start: { x: M, y }, end: { x: W - M, y }, thickness: 0.8, color: LINE });
+  y -= 26;
+  for (const l of wrap(d.intro, sans, 10.5, W - 2 * M)) { page.drawText(l, { x: M, y, size: 10.5, font: sans, color: INK }); y -= 15; }
+  y -= 10;
+
+  const labelW = 150; const valX = M + labelW;
+  for (const [label, value] of d.rows) {
+    page.drawText(win(label), { x: M, y, size: 9.5, font: sans, color: IJUK });
+    const lines = wrap(value || '-', sans, 11, W - M - valX);
+    lines.forEach((l, i) => page.drawText(l, { x: valX, y: y - i * 14, size: 11, font: sans, color: INK }));
+    y -= Math.max(1, lines.length) * 14 + 9;
+    page.drawLine({ start: { x: M, y: y + 4 }, end: { x: W - M, y: y + 4 }, thickness: 0.3, color: LINE });
+    y -= 4;
+  }
+  y -= 14;
+  // kotak jumlah
+  const amt = win(rupiah(d.amount));
+  page.drawText(win(d.amountLabel), { x: M, y, size: 9.5, font: sans, color: IJUK });
+  y -= 50;
+  const boxW = Math.max(190, bold.widthOfTextAtSize(amt, 22) + 36);
+  page.drawRectangle({ x: M, y, width: boxW, height: 42, color: CREAM, borderColor: INK, borderWidth: 1.2 });
+  page.drawText(amt, { x: M + 18, y: y + 14, size: 22, font: bold, color: INK });
+  const tb = wrap(terbilang(d.amount), italic, 9.5, W - 2 * M - boxW - 20);
+  tb.forEach((l, i) => page.drawText(l, { x: M + boxW + 16, y: y + 26 - i * 12, size: 9.5, font: italic, color: IJUK }));
+  // stempel + penanda
+  const sx = W - M - 180;
+  page.drawText(win(d.stamp), { x: sx + 6, y: y - 40, size: 20, font: bold, color: rgb(0.18, 0.42, 0.25), rotate: degrees(-8), opacity: 0.85 });
+  page.drawText(win(d.signer), { x: sx, y: y - 66, size: 10.5, font: bold, color: INK });
+  page.drawText('Diverifikasi sistem Bonaasina', { x: sx, y: y - 78, size: 8, font: sans, color: IJUK });
+  y -= 110;
+  if (d.notes.length) {
+    page.drawText('Catatan', { x: M, y, size: 10, font: bold, color: INK }); y -= 15;
+    for (const n of d.notes) {
+      const lines = wrap(`- ${n}`, sans, 9, W - 2 * M - (d.verifyCode ? 90 : 0));
+      for (const l of lines) { page.drawText(l, { x: M, y, size: 9, font: sans, color: IJUK }); y -= 12; }
+      y -= 3;
+    }
+  }
+  if (d.verifyCode) {
+    drawQr(page, `${SITE}/cek/?k=${d.verifyCode}`, W - M - 72, 70, 72);
+    page.drawText('Cek keaslian', { x: W - M - 72, y: 58, size: 8, font: sans, color: IJUK });
+  }
+  page.drawText('Dokumen ini dibuat otomatis oleh Bonaasina setelah bukti transfer diperiksa dan disetujui admin.', { x: M, y: 36, size: 8, font: sans, color: IJUK });
+  return await doc.save();
+}

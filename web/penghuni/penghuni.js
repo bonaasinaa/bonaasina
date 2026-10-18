@@ -11,6 +11,7 @@
   const WAKTU = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const waktu = (iso) => (iso ? `${WAKTU.format(new Date(iso))} WIB` : '-');
   const main = $('#main');
+  const CW = (c) => ({ harian: 'malam', semesteran: '6 bulan', tahunan: 'tahun' }[c] || 'bulan');
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
   const KEY = 'bonaasina-penghuni-session';
   const getSession = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
@@ -105,7 +106,10 @@
         try { localStorage.setItem('bonaasina-admin-session', JSON.stringify(out)); } catch { /* abaikan */ }
         location.href = '/admin/'; return;
       }
-      setSession(await api('POST', '/login', { username: id, password }));
+      // Satu pintu masuk: username pemilik kos mitra/customer diarahkan ke dashboard masing-masing.
+      const out = await window.BonaMarket.login(id, password);
+      if (out.kind !== 'penghuni') { location.href = out.home; return; }
+      setSession(out);
       e.target.password.value = ''; $('#loginErr').hidden = true;
       start();
     } catch (ex) { $('#loginErr').textContent = ex.message; $('#loginErr').hidden = false; }
@@ -193,7 +197,7 @@
     const nextChore = chores.filter((c) => c.mine && !c.report && c.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
     const latestAnn = announcements[0];
     const wa = waOwner(`Horas, saya ${tenant.name} dari kamar ${room?.code || ''}. `);
-    main.innerHTML = head(`Horas, ${esc(first)}`, `Kamar ${esc(room?.code || '-')}${room?.type ? `, ${esc(room.type)}` : ''} di ${esc(property?.name || 'Bonaasina')}. Sewa ${rp(tenant.rentAmount)} per ${tenant.rentCycle === 'tahunan' ? 'tahun' : 'bulan'}.`,
+    main.innerHTML = head(`Horas, ${esc(first)}`, `Kamar ${esc(room?.code || '-')}${room?.type ? `, ${esc(room.type)}` : ''} di ${esc(property?.name || 'Bonaasina')}. Sewa ${rp(tenant.rentAmount)} per ${CW(tenant.rentCycle)}.`,
       wa ? `<a class="btn btn--green" href="${esc(wa)}" target="_blank" rel="noopener">Chat pengelola</a>` : '') + `
       <section class="panel"><h2>Yang perlu Anda lakukan</h2>${notifications.length ? `<div class="todo">${notifications.map((n) => `<a href="#${n.view}" class="${n.urgent ? 'is-urgent' : ''}"><span class="dot"></span><span>${esc(n.text)}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu Anda lakukan sekarang.</p>'}</section>
       <div class="grid grid--stats mt">
@@ -249,7 +253,7 @@
     const canDecide = current && current.phase !== 'akan_mulai' && current.daysLeft !== null && current.daysLeft <= 60;
     main.innerHTML = head('Kontrak sewa', 'Baca dan setujui kontrak secara elektronik. Salinan PDF tersimpan dan bisa diunduh kapan saja.') + `
       ${pending ? `<section class="panel panel--focus"><h2>Kontrak baru menunggu persetujuan Anda</h2>
-        <dl class="kv"><dt>Nomor</dt><dd>${esc(pending.number)}</dd><dt>Masa sewa</dt><dd>${tgl(pending.startDate)} s.d. ${tgl(pending.endDate)}</dd><dt>Harga</dt><dd>${rp(pending.rentAmount)} per ${pending.rentCycle === 'tahunan' ? 'tahun' : 'bulan'}</dd><dt>Deposit</dt><dd>${rp(pending.deposit)}</dd></dl>
+        <dl class="kv"><dt>Nomor</dt><dd>${esc(pending.number)}</dd><dt>Masa sewa</dt><dd>${tgl(pending.startDate)} s.d. ${tgl(pending.endDate)}</dd><dt>Harga</dt><dd>${rp(pending.rentAmount)} per ${CW(pending.rentCycle)}</dd><dt>Deposit</dt><dd>${rp(pending.deposit)}</dd></dl>
         <div class="panel-actions"><button class="btn btn--red" data-read="${pending.id}">Baca & setujui</button><button class="btn btn--ghost" data-pdf="${pending.id}">Unduh draf PDF</button></div></section>` : ''}
       ${current ? `<section class="panel ${pending ? 'mt' : ''}"><h2>Kontrak berjalan <span class="pill pill--${current.phase}">${PHASE[current.phase]}</span></h2>
         <dl class="kv"><dt>Nomor</dt><dd>${esc(current.number)}</dd><dt>Masa sewa</dt><dd>${tgl(current.startDate)} s.d. ${tgl(current.endDate)}${current.daysLeft >= 0 ? ` (${current.daysLeft} hari lagi)` : ''}</dd><dt>Disetujui</dt><dd>${waktu(current.acceptedAt)}</dd></dl>
@@ -426,7 +430,7 @@
           <p class="hint mt">${t.photoUrl ? 'Kartu bisa ditunjukkan dari HP atau dicetak.' : 'Unggah foto wajah yang jelas (seperti pas foto) supaya kartu lengkap.'} Orang lain dapat memindai QR untuk memastikan Anda penghuni aktif.</p>
         </section>
         <section class="panel"><h2>Data Anda</h2>
-          <dl class="kv"><dt>Nama</dt><dd>${esc(t.name)}</dd><dt>Username</dt><dd>${esc(t.username)}</dd><dt>Kamar</dt><dd>${esc(room?.code || '-')}, ${esc(property?.name || '')}</dd><dt>Sewa</dt><dd>${rp(t.rentAmount)} per ${t.rentCycle === 'tahunan' ? 'tahun' : 'bulan'}</dd><dt>Mulai</dt><dd>${tgl(t.startDate)}</dd><dt>Deposit</dt><dd>${rp(t.deposit)}</dd><dt>WhatsApp</dt><dd>${esc(t.phone || '-')}</dd><dt>Kontak darurat</dt><dd>${esc([t.emergencyName, t.emergencyPhone].filter(Boolean).join(', ') || '-')}</dd></dl>
+          <dl class="kv"><dt>Nama</dt><dd>${esc(t.name)}</dd><dt>Username</dt><dd>${esc(t.username)}</dd><dt>Kamar</dt><dd>${esc(room?.code || '-')}, ${esc(property?.name || '')}</dd><dt>Sewa</dt><dd>${rp(t.rentAmount)} per ${CW(t.rentCycle)}</dd><dt>Mulai</dt><dd>${tgl(t.startDate)}</dd><dt>Deposit</dt><dd>${rp(t.deposit)}</dd><dt>WhatsApp</dt><dd>${esc(t.phone || '-')}</dd><dt>Kontak darurat</dt><dd>${esc([t.emergencyName, t.emergencyPhone].filter(Boolean).join(', ') || '-')}</dd></dl>
           <p class="hint mt">Ada data yang salah? Hubungi pengelola untuk memperbaikinya.</p>
         </section>
         <section class="panel"><h2>Ganti kata sandi</h2>

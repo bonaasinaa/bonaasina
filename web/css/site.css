@@ -186,11 +186,24 @@ p { margin: 0; }
 
 /* ---------- kamar ---------- */
 .kamar__controls { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-.toggle { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 5px; border-radius: 999px; background: var(--ink); }
+.toggle { --n: 2; --i: 0; position: relative; display: inline-grid; grid-template-columns: repeat(var(--n), 1fr); padding: 5px; border-radius: 999px; background: var(--ink); max-width: 100%; }
 .toggle button { position: relative; z-index: 1; border: 0; background: none; color: var(--cream); padding: 10px 24px; font: 600 15px var(--sans); cursor: pointer; border-radius: 999px; transition: color .35s; }
 .toggle button[aria-checked="true"] { color: var(--ink); }
-.toggle__pill { position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc(50% - 5px); border-radius: 999px; background: var(--cream); transition: transform .5s var(--ease); }
-.toggle[data-cycle="tahunan"] .toggle__pill { transform: translateX(100%); }
+.toggle__pill { position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 10px) / var(--n)); border-radius: 999px; background: var(--cream); transform: translateX(calc(100% * var(--i))); transition: transform .5s var(--ease); }
+.toggle[data-n="3"] button, .toggle[data-n="4"] button { padding: 10px 14px; font-size: 14px; }
+@media (max-width: 420px) { .toggle[data-n="4"] button { padding: 9px 9px; font-size: 13px; } }
+.room__cap { font-size: 13px; color: var(--green); font-weight: 600; margin-top: 2px; }
+/* formulir reservasi bersama */
+.estimate { font-size: 14px; color: var(--ijuk); background: var(--cream); border-radius: 14px; padding: 10px 14px; margin: 0; }
+.estimate:empty { display: none; }
+.estimate strong { color: var(--ink); }
+.form__note { font-size: 13px; color: var(--ijuk); margin: 0; }
+.form .check-row { display: flex; gap: 10px; align-items: center; font-weight: 600; }
+.form .check-row input { width: 20px; height: 20px; min-height: 0; margin: 0; accent-color: var(--red); }
+.cred { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; text-align: left; background: var(--cream); border: 1px dashed var(--line-strong); border-radius: 16px; padding: 14px 16px; margin: 0; width: 100%; }
+.cred dt { color: var(--ijuk); font-size: 13px; }
+.cred dd { margin: 0; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.done__actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .toggle__hint { font-size: 14px; color: var(--ijuk); min-height: 1.4em; }
 .filters { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1.5px solid var(--ink); }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }

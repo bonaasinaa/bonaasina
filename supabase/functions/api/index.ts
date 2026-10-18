@@ -7,6 +7,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 import bcrypt from 'npm:bcryptjs@2.4.3';
 import { contractPdf, receiptPdf, cardPdf, qrSvg, terbilang, DEFAULT_CONTRACT_TEMPLATE } from './docs.ts';
+import { createMarket } from './market.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const secretKeys = safeJson(Deno.env.get('SUPABASE_SECRET_KEYS'));
@@ -86,14 +87,24 @@ function addMonths(s: string, n: number) {
   t.setUTCDate(Math.min(day, last)); return fmt(t);
 }
 const tanggal = (s?: string | null) => { if (!s) return ''; const d = parse(s); return `${d.getUTCDate()} ${BULAN[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
+// Lama satu periode tagihan dalam bulan (harian ditagih sekali untuk seluruh masa inap).
+const CYCLE_MONTHS: Record<string, number> = { bulanan: 1, semesteran: 6, tahunan: 12 };
+const CYCLES = ['harian', 'bulanan', 'semesteran', 'tahunan'];
+const CYCLE_WORD: Record<string, string> = { harian: 'hari', bulanan: 'bulan', semesteran: '6 bulan', tahunan: 'tahun' };
+export function roomPrice(r: Row, cycle: string) {
+  return Number(({ harian: r.priceDaily, bulanan: r.priceMonthly, semesteran: r.priceSemester, tahunan: r.priceYearly } as Row)[cycle]) || 0;
+}
 function periodLabel(t: Row, start: string) {
   const s = parse(start);
-  if (t.rentCycle === 'tahunan') {
-    const e = parse(addMonths(start, 12)); e.setUTCDate(e.getUTCDate() - 1);
-    return `${s.getUTCDate()} ${BULAN[s.getUTCMonth()]} ${s.getUTCFullYear()} – ${e.getUTCDate()} ${BULAN[e.getUTCMonth()]} ${e.getUTCFullYear()}`;
+  const range = (e: Date) => `${s.getUTCDate()} ${BULAN[s.getUTCMonth()]} ${s.getUTCFullYear()} – ${e.getUTCDate()} ${BULAN[e.getUTCMonth()]} ${e.getUTCFullYear()}`;
+  if (t.rentCycle === 'harian') { const e = parse(t.endDate || start); if (t.endDate) e.setUTCDate(e.getUTCDate() - 1); return range(e); }
+  if (t.rentCycle === 'tahunan' || t.rentCycle === 'semesteran') {
+    const e = parse(addMonths(start, CYCLE_MONTHS[t.rentCycle])); e.setUTCDate(e.getUTCDate() - 1);
+    return range(e);
   }
   return `${BULAN[s.getUTCMonth()]} ${s.getUTCFullYear()}`;
 }
+const nightsBetween = (a: string, b: string) => Math.max(1, Math.round((parse(b).getTime() - parse(a).getTime()) / DAY));
 function decorate(i: Row, today = todayStr()): Row {
   const d = i.status === 'belum' && i.dueDate < today ? Math.round((parse(today).getTime() - parse(i.dueDate).getTime()) / DAY) : 0;
   return { ...i, overdue: d > 0, overdueDays: d };
@@ -134,8 +145,17 @@ async function generateInvoices(tenantId?: string) {
   const rows: Row[] = [];
   for (const t of tenants) {
     if (!t.startDate || !t.rentAmount) continue;
+    // Sewa harian: satu tagihan untuk seluruh masa inap (tarif per hari × jumlah malam).
+    if (t.rentCycle === 'harian') {
+      const start = t.startDate;
+      if (start > limit || seen.has(`${t.id}|${start}`) || (t.billFrom && start < t.billFrom)) continue;
+      const nights = t.endDate ? nightsBetween(start, t.endDate) : 1;
+      rows.push({ tenant_id: t.id, room_id: t.roomId, property_id: rooms.get(t.roomId) ?? null, period_start: start, period_label: `${periodLabel(t, start)} (${nights} malam)`, cycle: 'harian', due_date: start, amount: t.rentAmount * nights, status: 'belum' });
+      seen.add(`${t.id}|${start}`);
+      continue;
+    }
     for (let k = 0; k < 600; k++) {
-      const start = t.rentCycle === 'tahunan' ? addMonths(t.startDate, 12 * k) : addMonths(t.startDate, k);
+      const start = addMonths(t.startDate, (CYCLE_MONTHS[t.rentCycle] || 1) * k);
       if (start > limit || (t.endDate && start >= t.endDate)) break;
       if (seen.has(`${t.id}|${start}`) || (t.billFrom && start < t.billFrom)) continue;
       rows.push({ tenant_id: t.id, room_id: t.roomId, property_id: rooms.get(t.roomId) ?? null, period_start: start, period_label: periodLabel(t, start), cycle: t.rentCycle, due_date: start, amount: t.rentAmount, status: 'belum' });
@@ -180,7 +200,7 @@ const okPhoto = (u: string) => u.startsWith(PHOTO_PREFIX) || u.startsWith('/asse
 // Dicatat: login/keluar admin, semua perubahan data oleh admin, akses berkas & unduhan,
 // aktivitas penghuni di dashboard, permintaan survei & daftar tunggu, dan percobaan akses yang gagal.
 // Kunjungan halaman publik tidak dicatat di sini (itu tugas Google Analytics).
-type ActorType = 'admin' | 'penghuni' | 'publik';
+type ActorType = 'admin' | 'penghuni' | 'publik' | 'pemilik' | 'customer';
 type LogEntry = { action: string; summary: string; target?: string | null; ok?: boolean; meta?: Row; dedupeMinutes?: number };
 const LOG_KEEP_DAYS = 180;
 
@@ -230,32 +250,41 @@ async function invoiceDesc(id: string) {
 }
 
 // ---------------------------------------------------------------- router
-type Ctx = { req: Request; url: URL; params: Record<string, string>; body: Row; tenant?: Row; adminEmail?: string; log?: LogEntry | null };
+type Ctx = { req: Request; url: URL; params: Record<string, string>; body: Row; tenant?: Row; owner?: Row; lead?: Row; adminEmail?: string; log?: LogEntry | null };
 // Handler memanggil log({...}) untuk mencatat aktivitasnya; catatan ditulis setelah handler berhasil.
 type Handler = (c: Ctx, log: (e: LogEntry) => void) => Promise<unknown> | unknown;
-const routes: { method: string; re: RegExp; keys: string[]; area: 'public' | 'penghuni' | 'admin'; raw: boolean; fn: Handler }[] = [];
+type Area = 'public' | 'penghuni' | 'admin' | 'pemilik' | 'akun';
+const routes: { method: string; re: RegExp; keys: string[]; area: Area; raw: boolean; fn: Handler }[] = [];
 function on(method: string, path: string, fn: Handler, opts: { raw?: boolean } = {}) {
   const keys: string[] = [];
   const re = new RegExp('^' + path.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '$');
-  const area = path.startsWith('/admin') && !/^\/admin\/(login|refresh|setup)$/.test(path) ? 'admin'
-    : path.startsWith('/penghuni') && path !== '/penghuni/login' ? 'penghuni' : 'public';
+  const area: Area = path.startsWith('/admin') && !/^\/admin\/(login|refresh|setup)$/.test(path) ? 'admin'
+    : path.startsWith('/penghuni') && path !== '/penghuni/login' ? 'penghuni'
+    : path.startsWith('/pemilik/') ? 'pemilik' : path.startsWith('/akun/') ? 'akun' : 'public';
   routes.push({ method, re, keys, area, raw: !!opts.raw, fn });
 }
 const created = (body: unknown) => ({ __status: 201, body });
 
 // ================================================================ PUBLIK
+export const PUBLIC_PROPERTY_FIELDS = ['id', 'slug', 'name', 'shortName', 'logo', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'facilities', 'rules', 'nearby', 'photos', 'kind', 'city', 'periods', 'minBooking', 'bookingPolicy', 'visitHours', 'chatEnabled', 'checkedAt'];
+export const PUBLIC_ROOM_FIELDS = ['id', 'propertyId', 'code', 'type', 'sizeM2', 'floor', 'priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'capacity', 'extraPersonFee', 'facilities', 'photos', 'note'];
 on('GET', '/public', async () => {
-  const [s, props, rooms, active] = await Promise.all([
+  const [s, allProps, rooms, active, partners] = await Promise.all([
     getSettings(), all('properties'), all('rooms'),
     q<Row[]>(sb.from('tenants').select('room_id').eq('status', 'aktif')),
+    sb.from('properties').select('id', { count: 'exact', head: true }).eq('kind', 'mitra').eq('status', 'aktif'),
   ]);
+  // Halaman utama hanya menampilkan kos milik Bonaasina; kos mitra tampil di /kos-sekitar/.
+  const props = allProps.filter((p) => p.kind !== 'mitra' && p.status === 'aktif');
+  const ids = new Set(props.map((p) => p.id));
   const occ = new Set((active || []).map((t) => t.room_id));
   return {
     site: pick(s, ['siteName', 'tagline', 'ownerName', 'whatsapp', 'depositInfo', 'paymentMethods', 'faq', 'heroWords', 'surveyHours']),
     whatsappNormalized: normalizePhone(s.whatsapp),
-    properties: props.sort(bySort).map((p) => pick(p, ['id', 'slug', 'name', 'shortName', 'logo', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'facilities', 'rules', 'nearby', 'photos'])),
-    rooms: rooms.filter((r) => !r.hidden).map((r) => ({
-      ...pick(r, ['id', 'propertyId', 'code', 'type', 'sizeM2', 'floor', 'priceMonthly', 'priceYearly', 'facilities', 'photos', 'note']),
+    partnersCount: partners.count ?? 0,
+    properties: props.sort(bySort).map((p) => ({ ...pick(p, PUBLIC_PROPERTY_FIELDS), waEnabled: p.waEnabled !== false })),
+    rooms: rooms.filter((r) => !r.hidden && ids.has(r.propertyId)).map((r) => ({
+      ...pick(r, PUBLIC_ROOM_FIELDS),
       status: occ.has(r.id) ? 'terisi' : r.status,
     })).sort(byCode),
   };
@@ -377,7 +406,7 @@ on('GET', '/admin/summary', async () => {
   const inv = invs.map((i) => decorate(i, today)); const unpaid = inv.filter((i) => i.status === 'belum');
   return {
     today, month, newInvoices: createdCount, isSample: !!s.isSample,
-    perProperty: props.sort(bySort).map((p) => {
+    perProperty: props.filter((p) => p.kind !== 'mitra').sort(bySort).map((p) => {
       const st = rooms.filter((r) => r.propertyId === p.id).map(eff);
       return { id: p.id, name: p.name, total: st.length, terisi: st.filter((x) => x === 'terisi').length, kosong: st.filter((x) => x === 'kosong').length, dipesan: st.filter((x) => x === 'dipesan').length, perbaikan: st.filter((x) => x === 'perbaikan').length };
     }),
@@ -394,26 +423,76 @@ on('GET', '/admin/summary', async () => {
     contractDecisions: ctr.filter((c) => c.decision && !c.decisionHandledAt).length,
     tenantsWithoutContract: tenants.filter((t) => t.status === 'aktif' && !ctr.some((c) => c.tenantId === t.id && ['menunggu', 'aktif', 'akan_habis', 'akan_mulai'].includes(c.phase))).length,
     waitlistToNotify: (waitlist || []).filter((w) => w.status === 'perlu_dikabari').length,
+    market: await market.adminCounts(),
   };
 });
 
 // ================================================================ ADMIN — kos & kamar
 on('GET', '/admin/properties', async () => (await all('properties')).sort(bySort));
-on('PUT', '/admin/properties/:id', async ({ params, body: b }, log) => {
-  const patch: Row = pick(b, ['name', 'gender', 'tagline', 'description', 'address', 'mapsQuery']);
-  for (const k of Object.keys(patch)) patch[k] = str(patch[k], k === 'description' ? 1500 : 300);
+// Kolom kos yang boleh diubah pemilik (admin bisa semuanya, lihat propertyAdminPatch).
+export function propertyPatch(b: Row) {
+  const patch: Row = pick(b, ['name', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'city', 'whatsapp', 'bankInfo', 'bookingPolicy', 'visitHours', 'logo']);
+  for (const k of Object.keys(patch)) patch[k] = str(patch[k], ['description', 'bookingPolicy'].includes(k) ? 1500 : 300);
+  if (patch.name !== undefined && !patch.name) throw bad('Isi nama kos.');
+  if (patch.gender !== undefined && !['Putra', 'Putri', 'Campur', 'Pasutri'].includes(patch.gender)) patch.gender = 'Campur';
+  if (patch.logo !== undefined && patch.logo && !okPhoto(patch.logo)) delete patch.logo;
   for (const k of ['facilities', 'rules', 'nearby']) if (b[k] !== undefined) patch[k] = strList(b[k]);
   if (b.photos !== undefined) patch.photos = strList(b.photos, 12).filter(okPhoto);
+  if (b.periods !== undefined) {
+    const list = (Array.isArray(b.periods) ? b.periods : String(b.periods).split(',')).filter((x: string) => CYCLES.includes(x));
+    if (!list.length) throw bad('Pilih minimal satu periode sewa yang dibuka.');
+    patch.periods = CYCLES.filter((c) => list.includes(c));
+  }
+  for (const k of ['chatEnabled', 'waEnabled']) if (b[k] !== undefined) patch[k] = b[k] === true || b[k] === 'on' || b[k] === 'true';
+  if (b.minBooking !== undefined) patch.minBooking = num(b.minBooking);
+  return patch;
+}
+function propertyAdminPatch(b: Row) {
+  const patch = propertyPatch(b);
+  if (b.status !== undefined) { if (!['draf', 'menunggu', 'aktif', 'nonaktif'].includes(b.status)) throw bad('Status kos tidak dikenal.'); patch.status = b.status; }
+  if (b.ownerId !== undefined) patch.ownerId = str(b.ownerId, 40) || null;
+  if (b.reviewNote !== undefined) patch.reviewNote = str(b.reviewNote, 600);
+  if (b.feeType !== undefined) {
+    patch.feeType = ['persen', 'nominal'].includes(b.feeType) ? b.feeType : null;
+    patch.feeValue = patch.feeType ? Math.max(0, Number(b.feeValue) || 0) : null;
+    if (patch.feeType === 'persen' && patch.feeValue > 100) throw bad('Fee persen maksimal 100%.');
+  }
+  if (b.sort !== undefined) patch.sort = Math.min(999, num(b.sort));
+  return patch;
+}
+const slugify = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'kos';
+export async function uniqueSlug(name: string) {
+  const base = slugify(name.replace(/^kos\s+/i, '')); let slug = base;
+  for (let i = 2; i < 50; i++) { if (!(await q<Row | null>(sb.from('properties').select('id').eq('slug', slug).maybeSingle()))) return slug; slug = `${base}-${i}`; }
+  return `${base}-${randomToken(3).toLowerCase()}`;
+}
+on('POST', '/admin/properties', async ({ body: b }, log) => {
+  const patch = propertyAdminPatch(b);
+  if (!patch.name) throw bad('Isi nama kos.');
+  const kind = b.kind === 'sendiri' ? 'sendiri' : 'mitra';
+  if (kind === 'mitra' && patch.ownerId && !(await one('owners', patch.ownerId))) throw bad('Pemilik kos tidak ditemukan.');
+  const slug = await uniqueSlug(patch.name);
+  const rec = await insert('properties', { id: `kos_${slug.replace(/-/g, '_')}_${randomToken(3).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, slug, kind, status: kind === 'mitra' ? 'draf' : 'aktif', logo: '/assets/img/mark.webp', sort: 50, checkedAt: new Date().toISOString(), ...patch });
+  log({ action: 'property.create', summary: `Menambah kos ${rec.name}${kind === 'mitra' ? ' (mitra)' : ''}`, target: rec.name });
+  return created(rec);
+});
+on('PUT', '/admin/properties/:id', async ({ params, body: b }, log) => {
+  const patch = propertyAdminPatch(b);
+  if (patch.ownerId && !(await one('owners', patch.ownerId))) throw bad('Pemilik kos tidak ditemukan.');
+  const before = await one('properties', params.id);
+  if (patch.status === 'aktif' && before?.status !== 'aktif') patch.reviewNote = patch.reviewNote ?? '';
   const rec = await update('properties', params.id, patch);
-  log({ action: 'property.update', summary: `Mengubah info ${rec.name}`, target: rec.name });
+  if (before && patch.status && patch.status !== before.status) background(market.propertyStatusChanged(rec, before.status));
+  log({ action: 'property.update', summary: patch.status && patch.status !== before?.status ? `Mengubah status ${rec.name} menjadi ${patch.status}` : `Mengubah info ${rec.name}`, target: rec.name });
   return rec;
 });
 
 const STATUS_KAMAR = ['kosong', 'terisi', 'dipesan', 'perbaikan'];
-function roomFromBody(b: Row) {
+export function roomFromBody(b: Row) {
   const r: Row = {};
   for (const [k, m] of [['propertyId', 40], ['code', 20], ['type', 60], ['floor', 20], ['sizeM2', 20], ['note', 300]] as const) if (b[k] !== undefined) r[k] = str(b[k], m);
-  for (const k of ['priceMonthly', 'priceYearly']) if (b[k] !== undefined) r[k] = num(b[k]);
+  for (const k of ['priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'extraPersonFee']) if (b[k] !== undefined) r[k] = num(b[k]);
+  if (b.capacity !== undefined) r.capacity = Number(b.capacity) === 2 ? 2 : 1;
   if (b.facilities !== undefined) r.facilities = strList(b.facilities);
   if (b.photos !== undefined) r.photos = strList(b.photos, 12).filter(okPhoto);
   if (b.hidden !== undefined) r.hidden = !!b.hidden;
@@ -457,9 +536,10 @@ on('DELETE', '/admin/rooms/:id', async ({ params }, log) => {
 // ================================================================ ADMIN — penghuni
 function tenantFromBody(b: Row) {
   const t: Row = {};
-  for (const k of ['name', 'phone', 'occupation', 'origin', 'emergencyName', 'emergencyPhone', 'emergencyRelation', 'note']) if (b[k] !== undefined) t[k] = str(b[k], k === 'note' ? 600 : 120);
+  for (const k of ['name', 'phone', 'occupation', 'origin', 'emergencyName', 'emergencyPhone', 'emergencyRelation', 'note', 'coName', 'coPhone', 'coRelation', 'coOccupation']) if (b[k] !== undefined) t[k] = str(b[k], k === 'note' ? 600 : 120);
   if (b.roomId !== undefined) t.roomId = str(b.roomId, 40);
-  if (b.rentCycle !== undefined) { if (!['bulanan', 'tahunan'].includes(b.rentCycle)) throw bad('Pilih sewa bulanan atau tahunan.'); t.rentCycle = b.rentCycle; }
+  if (b.leadId !== undefined) t.leadId = str(b.leadId, 40) || null;
+  if (b.rentCycle !== undefined) { if (!CYCLES.includes(b.rentCycle)) throw bad('Pilih sewa harian, bulanan, 6 bulanan, atau tahunan.'); t.rentCycle = b.rentCycle; }
   if (b.rentAmount !== undefined) t.rentAmount = num(b.rentAmount);
   if (b.deposit !== undefined) t.deposit = num(b.deposit);
   for (const k of ['startDate', 'endDate', 'billFrom']) if (b[k] !== undefined) { if (b[k] && !isDate(b[k])) throw bad('Format tanggal tidak benar.'); t[k] = b[k] || null; }
@@ -488,7 +568,9 @@ on('POST', '/admin/tenants', async ({ body }, log) => {
   if (await activeInRoom(room.id)) throw bad('Kamar ini masih ditempati penghuni aktif.');
   if (!t.startDate) throw bad('Isi tanggal mulai sewa.');
   t.rentCycle ||= 'bulanan';
-  if (!t.rentAmount) t.rentAmount = t.rentCycle === 'tahunan' ? room.priceYearly : room.priceMonthly;
+  if (!t.rentAmount) t.rentAmount = roomPrice(room, t.rentCycle);
+  if (t.rentCycle === 'harian' && !t.endDate) throw bad('Untuk sewa harian, isi tanggal keluar supaya tagihan menghitung jumlah malam.');
+  if (t.coName && Number(room.capacity || 1) < 2) throw bad(`Kamar ${room.code} hanya untuk 1 orang. Ubah kapasitas kamar menjadi 2 orang dulu.`);
   // Akun login dicek dulu supaya penghuni tidak terlanjur dibuat bila username bentrok/kata sandi terlalu pendek.
   const wantsAccount = !!str(body.username, 60);
   if (wantsAccount) {
@@ -499,6 +581,7 @@ on('POST', '/admin/tenants', async ({ body }, log) => {
   }
   const rec = await insert('tenants', { status: 'aktif', ...t });
   await update('rooms', room.id, { status: 'terisi' });
+  if (rec.leadId) await q(sb.from('leads').update({ tenant_id: rec.id }).eq('id', rec.leadId));
   await generateInvoices(rec.id);
   const account = wantsAccount ? await setAccount(rec, { username: body.username, password: body.password, enabled: true }) : null;
   if (!account) await ensureCardCode(rec);
@@ -512,6 +595,7 @@ on('PUT', '/admin/tenants/:id', async ({ params, body }, log) => {
     if (cur.status === 'aktif' && (await activeInRoom(t.roomId))) throw bad('Kamar tujuan masih ditempati.');
     await update('rooms', cur.roomId, { status: 'kosong' }); await update('rooms', t.roomId, { status: 'terisi' });
   }
+  if (t.coName) { const room = await one('rooms', t.roomId || cur.roomId); if (Number(room?.capacity || 1) < 2) throw bad(`Kamar ${room?.code || ''} hanya untuk 1 orang. Ubah kapasitas kamar menjadi 2 orang dulu.`); }
   const rec = await update('tenants', params.id, t);
   if (t.roomId && t.roomId !== cur.roomId) background(matchWaitlist(cur.roomId));
   log({ action: 'tenant.update', summary: `Mengubah data penghuni ${rec.name}` });
@@ -608,11 +692,12 @@ on('GET', '/admin/invoices/:id/reminder', async ({ params, url }, log) => {
 // Tautan sementara (5 menit) untuk melihat bukti bayar / foto kerusakan
 on('GET', '/admin/file', async ({ url }, log) => {
   const path = str(url.searchParams.get('path'), 300);
-  if (!/^(proofs|issues|inspections|chores|faces|contracts)\/[\w-]+\/[\w.-]+$/.test(path)) throw bad('Alamat file tidak valid.');
+  if (!/^(proofs|issues|inspections|chores|faces|contracts|leads)\/[\w-]+\/[\w.-]+$/.test(path)) throw bad('Alamat file tidak valid.');
   const out = { url: await signedUrl(path) };
-  const tenant = await one('tenants', path.split('/')[1]);
-  const what: Record<string, string> = { proofs: 'bukti bayar', issues: 'foto kerusakan', inspections: 'foto kondisi kamar', chores: 'foto piket', faces: 'foto profil', contracts: 'PDF kontrak' };
-  log({ action: 'file.view', summary: `Melihat ${what[path.split('/')[0]]} ${tenant?.name || ''}`.trim() });
+  const isLead = path.startsWith('leads/');
+  const who = isLead ? await one('leads', path.split('/')[1]) : await one('tenants', path.split('/')[1]);
+  const what: Record<string, string> = { proofs: 'bukti bayar', issues: 'foto kerusakan', inspections: 'foto kondisi kamar', chores: 'foto piket', faces: 'foto profil', contracts: 'PDF kontrak', leads: 'bukti transfer reservasi' };
+  log({ action: 'file.view', summary: `Melihat ${what[path.split('/')[0]]} ${who?.name || ''}`.trim() });
   return out;
 });
 
@@ -704,11 +789,19 @@ on('GET', '/admin/reports.csv', async ({ url }, log) => {
 });
 
 // ================================================================ ADMIN — pengaturan, unggah, cadangan
-const SETTING_FIELDS = ['siteName', 'tagline', 'ownerName', 'whatsapp', 'paymentInfo', 'paymentMethods', 'depositInfo', 'reminderTemplate', 'invoiceLeadDays', 'surveyHours'];
-on('GET', '/admin/settings', async () => ({ ...(await getSettings()), defaultReminderTemplate: DEFAULT_TEMPLATE, defaultContractTemplate: DEFAULT_CONTRACT_TEMPLATE, defaultInspectionItems: DEFAULT_INSPECTION_ITEMS }));
+const SETTING_FIELDS = ['siteName', 'tagline', 'ownerName', 'whatsapp', 'paymentInfo', 'paymentMethods', 'depositInfo', 'reminderTemplate', 'invoiceLeadDays', 'surveyHours',
+  'bonaBankInfo', 'waTemplateConfirm', 'waTemplateReject', 'marketIntro', 'ownBankInfo'];
+const SETTING_NUMBERS: Record<string, [number, number]> = { invoiceLeadDays: [0, 60], feeDueDays: [1, 30], dpHours: [1, 168], leadResponseHours: [1, 168] };
+on('GET', '/admin/settings', async () => ({ ...market.marketDefaults(), ...(await getSettings()), defaultReminderTemplate: DEFAULT_TEMPLATE, defaultContractTemplate: DEFAULT_CONTRACT_TEMPLATE, defaultInspectionItems: DEFAULT_INSPECTION_ITEMS, ...market.marketTemplates() }));
 on('PUT', '/admin/settings', async ({ body: b }, log) => {
   const cur = await getSettings(); const patch: Row = {};
-  for (const k of SETTING_FIELDS) if (b[k] !== undefined) patch[k] = k === 'invoiceLeadDays' ? Math.min(num(b[k]), 60) : str(b[k], 2000);
+  for (const k of SETTING_FIELDS) if (b[k] !== undefined && k !== 'invoiceLeadDays') patch[k] = str(b[k], 2000);
+  for (const [k, [lo, hi]] of Object.entries(SETTING_NUMBERS)) if (b[k] !== undefined && b[k] !== '') patch[k] = Math.max(lo, Math.min(num(b[k]), hi));
+  if (b.feeDefaultType !== undefined) patch.feeDefaultType = b.feeDefaultType === 'nominal' ? 'nominal' : 'persen';
+  if (b.feeDefaultValue !== undefined) {
+    patch.feeDefaultValue = Math.max(0, Number(b.feeDefaultValue) || 0);
+    if ((patch.feeDefaultType || cur.feeDefaultType || 'persen') === 'persen' && patch.feeDefaultValue > 100) throw bad('Fee persen maksimal 100%.');
+  }
   if (b.heroWords !== undefined) patch.heroWords = strList(b.heroWords, 8);
   if (b.contractTemplate !== undefined) patch.contractTemplate = String(b.contractTemplate || '').replace(/\r/g, '').slice(0, 30000).trim();
   if (b.inspectionItems !== undefined) patch.inspectionItems = strList(b.inspectionItems, 40);
@@ -733,7 +826,7 @@ on('POST', '/admin/upload', async ({ req }, log) => {
 }, { raw: true });
 on('GET', '/admin/export', async (_c, log) => {
   log({ action: 'export', summary: 'Mengunduh cadangan seluruh data' });
-  const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues', 'contracts', 'room_inspections', 'waitlist', 'announcements', 'announcement_reads', 'chore_tasks', 'chore_reports'];
+  const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues', 'contracts', 'room_inspections', 'waitlist', 'announcements', 'announcement_reads', 'chore_tasks', 'chore_reports', 'owners', 'leads', 'messages', 'notifications'];
   const out: Row = { exportedAt: new Date().toISOString() };
   for (const t of tables) out[t] = (await q<Row[]>(sb.from(t).select('*'))).map((r) => ({ ...r, portal_token_hash: undefined, password_hash: undefined }));
   return out;
@@ -746,18 +839,18 @@ on('GET', '/admin/activity', async ({ url }) => {
   const before = Number(url.searchParams.get('before')) || 0;
   const limit = 100;
   let query = sb.from('activity_log').select('*').order('id', { ascending: false }).limit(limit + 1);
-  if (['admin', 'penghuni', 'publik'].includes(type)) query = query.eq('actor_type', type);
+  if (['admin', 'penghuni', 'publik', 'pemilik', 'customer'].includes(type)) query = query.eq('actor_type', type);
   if (type === 'gagal') query = query.eq('ok', false);
   if (before) query = query.lt('id', before);
   if (term) query = query.or(`summary.ilike.%${term}%,actor.ilike.%${term}%,target.ilike.%${term}%,ip.ilike.%${term}%`);
   const since = new Date(Date.now() - 30 * DAY).toISOString();
   const count = (f: (x: any) => any) => f(sb.from('activity_log').select('id', { count: 'exact', head: true }).gte('created_at', since)).then((r: any) => r.count ?? 0);
-  const [rows, all30, admin, penghuni, publik, gagal] = await Promise.all([
+  const [rows, all30, admin, penghuni, publik, gagal, pemilik, customer] = await Promise.all([
     q<Row[]>(query), count((x) => x), count((x) => x.eq('actor_type', 'admin')), count((x) => x.eq('actor_type', 'penghuni')),
-    count((x) => x.eq('actor_type', 'publik')), count((x) => x.eq('ok', false)),
+    count((x) => x.eq('actor_type', 'publik')), count((x) => x.eq('ok', false)), count((x) => x.eq('actor_type', 'pemilik')), count((x) => x.eq('actor_type', 'customer')),
   ]);
   const list = (rows || []).map((r) => toCamel(r)!);
-  return { items: list.slice(0, limit), hasMore: list.length > limit, counts: { semua: all30, admin, penghuni, publik, gagal }, keepDays: LOG_KEEP_DAYS };
+  return { items: list.slice(0, limit), hasMore: list.length > limit, counts: { semua: all30, admin, penghuni, publik, pemilik, customer, gagal }, keepDays: LOG_KEEP_DAYS };
 });
 
 // ================================================================ DASHBOARD PENGHUNI — masuk & data utama
@@ -1118,7 +1211,9 @@ on('GET', '/public/verify/:code', async ({ params }) => {
     const tn = await one('tenants', inv.tenantId); const room = await one('rooms', inv.roomId);
     return { type: 'kuitansi', valid: inv.status === 'lunas', receiptNo: inv.receiptNo, name: tn?.name || '', roomCode: room?.code || '', periodLabel: inv.periodLabel, amount: inv.paidAmount ?? inv.amount, paidAt: inv.paidAt };
   }
-  throw notFound('Kode tidak dikenal. Kartu atau kuitansi ini tidak terdaftar di Bonaasina.');
+  const bk = await market.verifyBooking(code);
+  if (bk) return bk;
+  throw notFound('Kode tidak dikenal. Kartu, kuitansi, atau bukti booking ini tidak terdaftar di Bonaasina.');
 });
 
 on('POST', '/waitlist', async ({ body: b }, log) => {
@@ -1243,7 +1338,7 @@ async function contractBody(t: Row, room: Row, prop: Row | null, d: Row) {
   return renderContract(tpl, {
     tanggal_kontrak: tanggal(todayStr()), pemilik: s.ownerName || 'Pengelola Bonaasina', kos: prop?.name || 'Bonaasina', alamat_kos: prop?.address || '-',
     nama_penghuni: t.name, telepon_penghuni: t.phone || '-', asal: t.origin || '-', kamar: room.code, tipe_kamar: [room.type, room.sizeM2].filter(Boolean).join(', ') || '-',
-    mulai: tanggal(d.startDate), selesai: tanggal(d.endDate), harga: rupiah(d.rentAmount), siklus: d.rentCycle === 'tahunan' ? 'tahun' : 'bulan',
+    mulai: tanggal(d.startDate), selesai: tanggal(d.endDate), harga: rupiah(d.rentAmount), siklus: CYCLE_WORD[d.rentCycle] || 'bulan',
     deposit: d.deposit ? `${rupiah(d.deposit)} (${terbilang(d.deposit).toLowerCase()})` : 'Rp0 (tanpa deposit)',
     aturan: rules.length ? rules.map((r, i) => `   ${String.fromCharCode(97 + (i % 26))}. ${r}`).join('\n') : '   (aturan kos yang berlaku dan diumumkan pengelola)',
     cara_bayar: (s.paymentInfo || s.paymentMethods || 'transfer ke rekening pengelola').replace(/\n+/g, '; '),
@@ -1274,7 +1369,7 @@ function contractInput(b: Row, t: Row) {
   };
   if (!isDate(d.startDate) || !isDate(d.endDate)) throw bad('Isi tanggal mulai dan selesai kontrak.');
   if (d.endDate <= d.startDate) throw bad('Tanggal selesai harus setelah tanggal mulai.');
-  if (!['bulanan', 'tahunan'].includes(d.rentCycle)) throw bad('Pilih sewa bulanan atau tahunan.');
+  if (!CYCLES.includes(d.rentCycle)) throw bad('Pilih periode sewa yang benar.');
   return d;
 }
 on('POST', '/admin/contracts', async ({ body: b }, log) => {
@@ -1488,11 +1583,19 @@ on('DELETE', '/admin/chores/:id', async ({ params }, log) => {
   return out;
 });
 
+// ================================================================ KOS SEKITAR (market.ts)
+const market = createMarket({
+  sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
+  readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
+  background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
+  PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort,
+});
+
 // ---------------------------------------------------------------- server
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-session',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-session, x-owner-session, x-lead-session',
   'Access-Control-Expose-Headers': 'x-sb-edge-region',
   'Access-Control-Max-Age': '86400',
 };
@@ -1551,6 +1654,8 @@ Deno.serve(async (req) => {
       const ctx: Ctx = { req, url, params, body: {} };
       if (r.area === 'admin') ctx.adminEmail = await requireAdmin(req);
       if (r.area === 'penghuni') ctx.tenant = await requireTenant(req);
+      if (r.area === 'pemilik') ctx.owner = await market.requireOwner(req);
+      if (r.area === 'akun') ctx.lead = await market.requireLead(req);
       if (!r.raw && ['POST', 'PUT'].includes(req.method)) {
         const text = await req.text();
         if (text.length > 200_000) throw new HttpError(413, 'Data terlalu besar.');
@@ -1558,8 +1663,9 @@ Deno.serve(async (req) => {
       }
       const out = await r.fn(ctx, (e) => { ctx.log = e; });
       if (ctx.log) {
-        const type: ActorType = path.startsWith('/admin') ? 'admin' : path.startsWith('/penghuni') ? 'penghuni' : 'publik';
-        const actor = ctx.adminEmail || ctx.tenant?.name || str(ctx.body.email, 200).toLowerCase() || str(ctx.body.name, 80) || str(ctx.body.username, 60) || 'Pengunjung';
+        const type: ActorType = path.startsWith('/admin') ? 'admin' : path.startsWith('/penghuni') || (path === '/masuk' && ctx.log.action.startsWith('tenant')) ? 'penghuni'
+          : path.startsWith('/pemilik') ? 'pemilik' : path.startsWith('/akun') ? 'customer' : 'publik';
+        const actor = ctx.adminEmail || ctx.tenant?.name || ctx.owner?.name || (ctx.lead ? `${ctx.lead.name} (${ctx.lead.username})` : '') || str(ctx.body.email, 200).toLowerCase() || str(ctx.body.name, 80) || str(ctx.body.username, 60) || 'Pengunjung';
         writeLog(req, type, actor, ctx.log, type === 'penghuni' ? ctx.tenant?.roomId : undefined);
       }
       // Perubahan data oleh admin bisa memengaruhi tagihan otomatis: buat ulang pada permintaan berikutnya.

@@ -11,6 +11,10 @@
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
   const state = { data: null, cycle: 'bulanan', prop: 'semua', onlyAvailable: false, activeTab: null };
   const STATUS = { kosong: 'Kosong', terisi: 'Terisi', dipesan: 'Sudah dipesan', perbaikan: 'Sedang diperbaiki' };
+  // Periode sewa: label tombol, satuan, kolom harga.
+  const PERIODS = { harian: ['Harian', 'malam', 'priceDaily'], bulanan: ['Bulanan', 'bulan', 'priceMonthly'], semesteran: ['6 bulan', '6 bulan', 'priceSemester'], tahunan: ['Tahunan', 'tahun', 'priceYearly'] };
+  const ORDER = ['harian', 'bulanan', 'semesteran', 'tahunan'];
+  let booking = null;
 
   function wa(text) {
     const num = state.data?.whatsappNormalized;
@@ -21,6 +25,10 @@
   fetch(API + '/public').then((r) => r.json()).then((data) => {
     state.data = data;
     state.activeTab = data.properties[0]?.id;
+    // Periode yang dibuka oleh minimal satu kos; bulanan diutamakan bila ada.
+    state.periods = ORDER.filter((k) => data.properties.some((p) => (p.periods || ['bulanan', 'tahunan']).includes(k)));
+    if (!state.periods.length) state.periods = ['bulanan'];
+    state.cycle = state.periods.includes('bulanan') ? 'bulanan' : state.periods[0];
     renderAll();
     initMotion();
   }).catch(() => {
@@ -46,9 +54,10 @@
     $('#waFloat').href = wa(hello);
 
     // Fakta hero — diambil dari data, bukan angka hiasan
-    const monthly = rooms.map((r) => r.priceMonthly).filter(Boolean);
     const facts = [];
-    if (monthly.length) facts.push(['Mulai dari', `${rpShort(Math.min(...monthly))}/bln`]);
+    const firstPer = state.periods.find((k) => k !== 'harian') || state.periods[0];
+    const cheap = rooms.map((r) => priceOf(r, firstPer)).filter(Boolean);
+    if (cheap.length) facts.push(['Mulai dari', `${rpShort(Math.min(...cheap))}/${PERIODS[firstPer][1]}`]);
     facts.push(['Jumlah kamar', `${rooms.length} di ${properties.length} lokasi`]);
     if (site.surveyHours) facts.push(['Jam survei', site.surveyHours.split(',')[0]]);
     $('#heroFacts').innerHTML = facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
@@ -62,6 +71,7 @@
     renderChips();
     renderRooms();
     renderLokasi();
+    renderToggle();
     renderForm();
     renderWaitForm();
     renderFaq();
@@ -69,10 +79,10 @@
     $('#year').textContent = new Date().getFullYear();
     if (site.surveyHours) {
       $('#surveyHours').textContent = `Jadwal survei: ${site.surveyHours}`;
-      $('#stepSurvey').textContent = `Datang melihat kamar dan lingkungan sebelum memutuskan. Jadwal survei: ${site.surveyHours}.`;
+      $('#stepSurvey').textContent = `Pemilik memastikan kamar tersedia, lalu mengabari lewat WhatsApp. Boleh survei dulu (${site.surveyHours}).`;
     }
     const pay = [site.depositInfo, site.paymentMethods].filter(Boolean).join(' ');
-    if (pay) $('#stepPay').textContent = pay;
+    if (pay) $('#stepPay').textContent = `Transfer DP, unggah buktinya di dashboard, dan terima bukti booking resmi. ${pay}`;
   }
 
   // ---------- tab dua rumah ----------
@@ -147,29 +157,48 @@
   $('#onlyAvailable').addEventListener('change', (e) => { state.onlyAvailable = e.target.checked; renderRooms(); });
 
   const toggle = $('#cycleToggle');
+  // Tombol periode dibuat dari periode yang dibuka pemilik (Pengaturan kos).
+  function renderToggle() {
+    const per = state.periods;
+    toggle.style.setProperty('--n', per.length); toggle.dataset.n = per.length;
+    toggle.hidden = per.length < 2;
+    toggle.innerHTML = '<span class="toggle__pill" aria-hidden="true"></span>' + per.map((k) => `<button role="radio" aria-checked="${k === state.cycle}" tabindex="${k === state.cycle ? 0 : -1}" data-cycle="${k}">${PERIODS[k][0]}</button>`).join('');
+    toggle.style.setProperty('--i', per.indexOf(state.cycle));
+    updateHint();
+  }
   toggle.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b || b.dataset.cycle === state.cycle) return;
     setCycle(b.dataset.cycle);
   });
   toggle.addEventListener('keydown', (e) => {
-    if (['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); setCycle(state.cycle === 'bulanan' ? 'tahunan' : 'bulanan'); $(`[data-cycle="${state.cycle}"]`, toggle).focus(); }
+    if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault(); const per = state.periods; const i = per.indexOf(state.cycle);
+    setCycle(per[(i + (e.key === 'ArrowRight' ? 1 : -1) + per.length) % per.length]); $(`[data-cycle="${state.cycle}"]`, toggle).focus();
   });
   function setCycle(c) {
-    state.cycle = c; toggle.dataset.cycle = c;
+    state.cycle = c; toggle.dataset.cycle = c; toggle.style.setProperty('--i', state.periods.indexOf(c));
     $$('button', toggle).forEach((x) => { x.setAttribute('aria-checked', x.dataset.cycle === c); x.tabIndex = x.dataset.cycle === c ? 0 : -1; });
-    updatePrices(true);
+    renderRooms();
     updateHint();
+    booking?.setPeriod(c);
   }
   function updateHint() {
+    if (state.cycle === 'harian') { $('#cycleHint').textContent = 'Harga per malam, cocok untuk tamu atau masa ujian.'; return; }
+    if (state.cycle === 'semesteran') { $('#cycleHint').textContent = 'Bayar per 6 bulan, pas untuk satu semester.'; return; }
     const rooms = state.data?.rooms.filter((r) => r.priceMonthly && r.priceYearly) || [];
-    if (!rooms.length) return;
+    if (!rooms.length) { $('#cycleHint').textContent = ''; return; }
     const saving = Math.round(rooms.reduce((s, r) => s + (r.priceMonthly * 12 - r.priceYearly), 0) / rooms.length / 50000) * 50000;
-    $('#cycleHint').textContent = saving > 0
+    $('#cycleHint').textContent = saving > 0 && state.periods.includes('tahunan')
       ? (state.cycle === 'tahunan' ? `Rata-rata hemat sekitar ${rp(saving)} per tahun dibanding bayar bulanan.` : `Sewa tahunan rata-rata hemat sekitar ${rp(saving)}.`)
       : '';
   }
 
-  function priceOf(r) { return state.cycle === 'tahunan' ? r.priceYearly : r.priceMonthly; }
+  // Harga kamar untuk periode tertentu; 0 bila kos tidak membuka periode itu.
+  function priceOf(r, cycle = state.cycle) {
+    const p = state.data?.properties.find((x) => x.id === r.propertyId);
+    if (p?.periods && !p.periods.includes(cycle)) return 0;
+    return Number(r[PERIODS[cycle][2]]) || 0;
+  }
 
   function renderRooms() {
     if (!state.data) return;
@@ -187,20 +216,23 @@
     const row = (r) => {
       const kos = propName(r.propertyId);
       const avail = r.status === 'kosong';
-      const ask = `Horas, saya mau tanya kamar ${r.code} di ${kos}. Apakah masih kosong untuk sewa ${state.cycle}?`;
+      const ask = `Horas, saya mau tanya kamar ${r.code} di ${kos}. Apakah masih kosong untuk sewa ${PERIODS[state.cycle][0].toLowerCase()}?`;
+      const price = priceOf(r);
+      const two = Number(r.capacity) === 2 ? `Bisa untuk 2 orang${r.extraPersonFee ? ` (+${rp(r.extraPersonFee)}/bln)` : ''}` : '';
       return `<li class="room ${avail ? '' : 'is-unavailable'}">
         <div class="room__code">${esc(r.code)}<span class="room__kos">${esc(kos)}</span>${(r.photos || []).length ? `<button type="button" class="room__thumb" data-lightbox="room:${r.id}" data-index="0" aria-label="Lihat ${r.photos.length} foto kamar ${esc(r.code)}"><img src="${esc(r.photos[0])}" alt="" loading="lazy"><span>${r.photos.length} foto</span></button>` : ''}</div>
         <div class="room__info">
           <div class="room__type">${esc(r.type)}</div>
           <div class="room__meta">${[r.sizeM2, r.floor].filter(Boolean).map(esc).join(', ')}</div>
+          ${two ? `<div class="room__cap">${esc(two)}</div>` : ''}
           <span class="status status--${r.status}">${STATUS[r.status] || esc(r.status)}</span>
         </div>
         <div class="room__fac">${(r.facilities || []).map(esc).join(', ')}${r.note ? `<span class="room__note">${esc(r.note)}</span>` : ''}</div>
-        <div class="room__price"><span class="room__amount" data-id="${r.id}">${rp(priceOf(r))}</span><span class="room__per">per ${state.cycle === 'tahunan' ? 'tahun' : 'bulan'}</span></div>
+        <div class="room__price">${price ? `<span class="room__amount" data-id="${r.id}">${rp(price)}</span><span class="room__per">per ${PERIODS[state.cycle][1]}</span>` : `<span class="room__per">Tidak tersedia untuk sewa ${PERIODS[state.cycle][0].toLowerCase()}</span>`}</div>
         <div class="room__actions">
           ${avail
-            ? `<a class="btn btn--red btn--sm" href="${esc(wa(ask))}" target="_blank" rel="noopener">Tanya kamar ini</a>
-               <a class="btn btn--ghost btn--sm" href="#survei" data-survey="${r.propertyId}" data-room="${r.id}">Jadwalkan survei</a>`
+            ? `<a class="btn btn--red btn--sm" href="#survei" data-survey="${r.propertyId}" data-room="${r.id}">Pesan kamar ini</a>
+               <a class="btn btn--ghost btn--sm" href="${esc(wa(ask))}" target="_blank" rel="noopener">Tanya lewat WA</a>`
             : `<a class="btn btn--ghost btn--sm" href="#tunggu" data-wait="${r.propertyId}" data-pref="${esc(`Seperti kamar ${r.code} (${r.type || ''})`.replace(' ()', ''))}">Kabari saya bila kosong</a>`}
         </div>
       </li>`;
@@ -214,34 +246,6 @@
     updateHint();
   }
 
-  // Animasi angka harga saat toggle bulanan/tahunan (merespons tindakan pengguna).
-  function updatePrices(animate) {
-    $$('.room__per').forEach((el) => { el.textContent = `per ${state.cycle === 'tahunan' ? 'tahun' : 'bulan'}`; });
-    $$('.room__amount').forEach((el) => {
-      const r = state.data.rooms.find((x) => x.id === el.dataset.id); if (!r) return;
-      const to = priceOf(r);
-      const from = Number(el.dataset.v || (state.cycle === 'tahunan' ? r.priceMonthly : r.priceYearly));
-      el.dataset.v = to;
-      if (!animate || reduce) { el.textContent = rp(to); return; }
-      const t0 = performance.now(), dur = 650;
-      const step = (t) => {
-        const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
-        el.textContent = rp(Math.round((from + (to - from) * e) / 1000) * 1000);
-        if (p < 1) requestAnimationFrame(step); else el.textContent = rp(to);
-      };
-      requestAnimationFrame(step);
-    });
-    // Rangkai ulang tautan WA agar menyebut lama sewa yang dipilih
-    renderRoomsLinksOnly();
-  }
-  function renderRoomsLinksOnly() {
-    $$('.room').forEach((li) => {
-      const code = $('.room__code', li).firstChild.textContent; const kos = $('.room__kos', li).textContent;
-      const a = $('.btn--red', li);
-      if (a) a.href = wa(`Horas, saya mau tanya kamar ${code} di ${kos}. Apakah masih kosong untuk sewa ${state.cycle}?`);
-    });
-  }
-
   // Tombol pintasan: saring kamar / isi formulir survei
   document.addEventListener('click', (e) => {
     const f = e.target.closest('[data-filter]');
@@ -253,10 +257,7 @@
       if (!$('#waitForm').hidden) setTimeout(() => $('#waitForm [name=name]').focus({ preventScroll: true }), 600);
     }
     const s = e.target.closest('[data-survey]');
-    if (s) {
-      $('#fProperty').value = s.dataset.survey; fillRoomOptions();
-      if (s.dataset.room) $('#fRoom').value = s.dataset.room;
-    }
+    if (s && booking) { if (s.dataset.room) booking.setRoom(s.dataset.room); else booking.setProperty(s.dataset.survey); }
   });
 
   // ---------- lokasi & aturan ----------
@@ -277,50 +278,11 @@
       </article>`).join('');
   }
 
-  // ---------- formulir survei ----------
+  // ---------- formulir reservasi (menggantikan formulir survei) ----------
   function renderForm() {
-    $('#fProperty').innerHTML = state.data.properties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-    fillRoomOptions();
-    const d = new Date(); const pad = (n) => String(n).padStart(2, '0');
-    const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    $('#fDate').min = today; $('#fDate').value = today;
+    if (!window.BonaBooking || !$('#bookingBox')) return;
+    booking = BonaBooking.mount($('#bookingBox'), { properties: state.data.properties, rooms: state.data.rooms, period: state.cycle });
   }
-  function fillRoomOptions() {
-    const pid = $('#fProperty').value;
-    const rooms = state.data.rooms.filter((r) => r.propertyId === pid && r.status === 'kosong');
-    $('#fRoom').innerHTML = '<option value="">Belum tahu, mau lihat dulu</option>' +
-      rooms.map((r) => `<option value="${r.id}">${esc(r.code)} — ${esc(r.type)}</option>`).join('');
-  }
-  $('#fProperty').addEventListener('change', fillRoomOptions);
-
-  $('#surveyForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target; const err = $('#formError'); const btn = $('#surveySubmit');
-    $$('[aria-invalid]', form).forEach((x) => x.removeAttribute('aria-invalid'));
-    const body = Object.fromEntries(new FormData(form));
-    const missing = ['name', 'phone', 'date'].filter((k) => !String(body[k] || '').trim());
-    if (missing.length) {
-      missing.forEach((k) => form.elements[k].setAttribute('aria-invalid', 'true'));
-      err.textContent = 'Lengkapi nama, nomor WhatsApp, dan tanggal survei.'; err.hidden = false;
-      form.elements[missing[0]].focus(); return;
-    }
-    btn.disabled = true; btn.textContent = 'Mengirim…'; err.hidden = true;
-    try {
-      const res = await fetch(API + '/surveys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const out = await res.json();
-      if (!res.ok) throw new Error(out.error || 'Permintaan belum terkirim.');
-      const kos = propName(body.propertyId);
-      const tgl = new Date(body.date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
-      $('#doneText').textContent = `Kami akan menghubungi ${body.name} di ${body.phone} untuk konfirmasi survei ${kos} pada ${tgl}, ${body.time}.`;
-      $('#doneWa').href = wa(`Horas, saya ${body.name}. Saya baru mengisi formulir survei ${kos} untuk ${tgl} jam ${body.time}.`);
-      window.bonaEvent?.('generate_lead', { form: 'survei', kos, durasi: body.duration || '' });
-      form.hidden = true; const done = $('#surveyDone'); done.hidden = false; done.focus();
-    } catch (ex) {
-      err.textContent = ex.message + ' Atau hubungi kami langsung lewat WhatsApp.'; err.hidden = false;
-    } finally {
-      btn.disabled = false; btn.textContent = 'Kirim permintaan survei';
-    }
-  });
 
   // ---------- formulir daftar tunggu ----------
   function renderWaitForm() {
