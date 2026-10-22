@@ -39,7 +39,8 @@
       const prices = Object.entries(p.priceFrom || {}).filter(([k]) => st.period === 'semua' || k === st.period).slice(0, 3);
       return `<a class="kcard" href="/kos/?k=${encodeURIComponent(p.slug)}">
         <div class="kcard__img">${p.photo ? `<img src="${esc(p.photo)}" alt="Foto ${esc(p.name)}" loading="lazy">` : '<div class="ph">Foto menyusul</div>'}
-          <span class="kcard__badge ${p.freeRooms ? '' : 'is-full'}">${p.freeRooms ? `${p.freeRooms} kamar kosong` : 'Sedang penuh'}</span></div>
+          <span class="kcard__badge ${p.freeRooms ? '' : 'is-full'}">${p.freeRooms ? `${p.freeRooms} kamar kosong` : 'Sedang penuh'}</span>
+          ${p.logo ? `<span class="kcard__logo"><img src="${esc(p.logo)}" alt="Logo ${esc(p.name)}" loading="lazy"></span>` : ''}</div>
         <div class="kcard__body">
           <span class="kcard__name">${esc(p.name)}</span>
           <span class="kcard__meta">${[p.gender ? `Kos ${p.gender.toLowerCase()}` : '', p.city, p.twoPerson ? 'ada kamar untuk 2 orang' : ''].filter(Boolean).map(esc).join(', ')}</span>

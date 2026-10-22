@@ -16,6 +16,8 @@ const DEFAULTS: Record<string, Row> = {
   surveys: { status: 'baru' },
   activity_log: { ok: true },
   partner_applications: { status: 'baru', admin_note: '', address: '', note: '' },
+  listings: { status: 'baru', description: '', price: null, price_note: '', photos: [], seller_info: '', area: '', admin_note: '', featured: false, expires_on: null, approved_at: null, ip: '' },
+  places: { status: 'aktif', description: '', address: '', maps_query: '', whatsapp: '', open_hours: '', price_note: '', distance_note: '', photo: '', suggested_by: '', admin_note: '', sort: 50, ip: '' },
 };
 const UNIQUE: Record<string, string[]> = { leads: ['code', 'username'], owners: ['username'], properties: ['slug'] };
 function fill(table: string, r: Row) {
@@ -93,6 +95,7 @@ export function createClient() {
       upload: async (p: string, buf: Uint8Array) => { files.set(`${b}/${p}`, buf); return { error: null }; },
       createSignedUrl: async (p: string) => ({ data: { signedUrl: `https://signed/${p}` }, error: files.has(`private/${p}`) ? null : { message: 'nf' } }),
       createSignedUrls: async (ps: string[]) => ({ data: ps.map((p) => ({ path: p, signedUrl: `https://signed/${p}` })), error: null }),
+      remove: async (ps: string[]) => { ps.forEach((x) => files.delete(`${b}/${x}`)); return { data: null, error: null }; },
       download: async (p: string) => (files.has(`${b}/${p}`) ? { data: new Blob([files.get(`${b}/${p}`)!]), error: null } : { data: null, error: { message: 'nf' } }),
     }) },
     auth: {

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Titip Jualan &amp; Jasa Mahasiswa — Bonaasina</title>
+  <meta name="description" content="Barang dan jasa dari mahasiswa dan anak kos sekitar Kos Asina &amp; Kos Bona. Pasang iklan gratis, pembeli menghubungi lewat WhatsApp.">
+  <meta name="theme-color" content="#F7EDE3">
+  <meta property="og:title" content="Titip Jualan &amp; Jasa Mahasiswa — Bonaasina">
+  <meta property="og:description" content="Barang dan jasa dari mahasiswa dan anak kos sekitar Kos Asina &amp; Kos Bona. Pasang iklan gratis, pembeli menghubungi lewat WhatsApp.">
+  <meta property="og:image" content="/assets/img/logo-bonaasina.png">
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261022b">
+  <link rel="stylesheet" href="/css/site.css?v=20261022b">
+  <link rel="stylesheet" href="/css/kos.css?v=20261022b">
+</head>
+<body>
+  <header class="nav is-scrolled" id="nav">
+    <a class="nav__brand" href="/" aria-label="Bonaasina, ke beranda"><img src="/assets/img/mark.webp" alt="" width="54" height="37"><span>Bonaasina</span></a>
+    <nav class="nav__links" aria-label="Menu utama">
+      <a href="/">Kos Asina &amp; Bona</a>
+      <a href="/kos-sekitar/">Kos sekitar</a>
+      <a href="/sekitar/">Info sekitar</a>
+      <a href="/titip/" aria-current="page">Titip jualan</a>
+      <a href="/mitra/">Jadi mitra</a>
+    </nav>
+    <a class="btn btn--ink btn--sm nav__cta" href="/akun/">Reservasi saya</a>
+  </header>
+
+  <main class="page" id="top">
+    <div class="page__head">
+      <div>
+        <p class="crumbs"><a href="/">Bonaasina</a> / Titip jualan</p>
+        <h1>Titip jualan &amp; jasa</h1>
+        <p>Barang dan jasa dari mahasiswa dan anak kos di sekitar Kos Asina &amp; Kos Bona. Hubungi penjual langsung lewat WhatsApp.</p>
+      </div>
+      <a class="btn btn--red" href="#pasang">Pasang iklan gratis</a>
+    </div>
+    <div class="kfilters">
+      <div class="chips" role="group" aria-label="Jenis" id="kindChips"></div>
+      <div class="chips chips--scroll" role="group" aria-label="Kategori" id="catChips"></div>
+      <label class="ksearch"><span class="sr-only">Cari</span><input type="search" id="q" placeholder="Cari barang atau jasa…" autocomplete="off"></label>
+    </div>
+    <div class="tgrid" id="grid" aria-live="polite"><p class="muted">Memuat…</p></div>
+    <p class="safe">Bonaasina hanya mempertemukan penjual dan pembeli; pembayaran tidak lewat website. Tips aman: bertemu di tempat ramai, cek barang dulu, dan jangan transfer sebelum yakin.</p>
+
+    <section class="pasang" id="pasang" aria-labelledby="pasangTitle">
+      <div class="pasang__intro">
+        <p class="eyebrow">Gratis untuk mahasiswa &amp; anak kos</p>
+        <h2 id="pasangTitle">Pasang iklan</h2>
+        <p>Isi formulir singkat ini. Admin mengecek iklan Anda (biasanya kurang dari 1×24 jam), lalu mengabari lewat WhatsApp saat iklan sudah tampil. Iklan tampil 60 hari.</p>
+        <ol class="mini-steps"><li>Isi formulir &amp; foto</li><li>Admin cek &amp; tayangkan</li><li>Pembeli chat Anda di WhatsApp</li></ol>
+      </div>
+      <form class="form" id="tjForm" novalidate>
+        <fieldset class="form__radios"><legend>Mau menawarkan apa?</legend>
+          <label><input type="radio" name="kind" value="jual" checked> Barang</label>
+          <label><input type="radio" name="kind" value="jasa"> Jasa</label>
+        </fieldset>
+        <div class="form__row">
+          <label>Nama barang/jasa<input name="title" maxlength="80" required placeholder="Mis. Nastar homemade 500 gr"></label>
+          <label>Kategori<select name="category" id="tjCat"></select></label>
+        </div>
+        <label>Keterangan<textarea name="description" rows="3" maxlength="1200" required placeholder="Kondisi, ukuran, cara pesan, waktu tersedia…"></textarea></label>
+        <div class="form__row">
+          <label>Harga <span class="opt">(kosongkan bila nego)</span><input name="price" inputmode="numeric" placeholder="65000"></label>
+          <label>Keterangan harga <span class="opt">(opsional)</span><input name="priceNote" maxlength="40" placeholder="per toples, per jam, mulai dari"></label>
+        </div>
+        <div><p class="flabel">Foto <span class="opt">(maks. 3, opsional tapi disarankan)</span></p>
+          <div class="tphotos" id="tjPhotos"><label class="tphotos__add">+ Foto<input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden></label></div></div>
+        <div class="form__row">
+          <label>Nama Anda<input name="sellerName" maxlength="80" required autocomplete="name"></label>
+          <label>Nomor WhatsApp<input name="sellerPhone" inputmode="tel" required autocomplete="tel" placeholder="0812 3456 7890"></label>
+        </div>
+        <div class="form__row">
+          <label>Kampus/jurusan atau kos <span class="opt">(opsional)</span><input name="sellerInfo" maxlength="80" placeholder="Mis. IT Del, Kos Asina"></label>
+          <label>Lokasi ambil/antar <span class="opt">(opsional)</span><input name="area" maxlength="80" placeholder="Mis. bisa antar sekitar Sitoluama"></label>
+        </div>
+        <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <p class="form__note">Nomor WhatsApp Anda tidak ditampilkan; pembeli menekan tombol chat yang langsung membuka WhatsApp Anda. Barang terlarang, obat, atau penipuan akan ditolak.</p>
+        <p class="form__error" id="tjErr" role="alert" hidden></p>
+        <button class="btn btn--red btn--block" type="submit">Kirim iklan</button>
+      </form>
+      <div class="form__done" id="tjDone" hidden><h3>Iklan terkirim!</h3><p>Terima kasih. Admin akan mengecek dan mengabari Anda lewat WhatsApp saat iklan sudah tampil.</p><button class="btn btn--ghost" type="button" id="tjAgain">Pasang iklan lain</button></div>
+    </section>
+  </main>
+
+  <footer class="footer footer--std">
+    <div class="footer__std">
+      <a class="footer__brand" href="/"><img src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="420" height="371" loading="lazy" data-brand-logo></a>
+      <div><strong>Cari kos</strong><a href="/">Kos Asina &amp; Kos Bona</a><a href="/kos-sekitar/">Kos sekitar</a><a href="/akun/">Reservasi saya</a></div>
+      <div><strong>Sekitar kos</strong><a href="/sekitar/">Warung, laundry &amp; toko</a><a href="/titip/">Titip jualan &amp; jasa</a><a href="/titip/#pasang">Pasang iklan gratis</a></div>
+      <div><strong>Pemilik kos</strong><a href="/mitra/">Jadi mitra Bonaasina</a><a href="/pemilik/">Masuk pemilik</a></div>
+      <div><strong>Penghuni</strong><a href="/penghuni/">Masuk dashboard penghuni</a><a href="/cek/">Cek keaslian dokumen</a></div>
+    </div>
+    <p class="footer__small">© <span id="year"></span> Bonaasina, Kos Asina &amp; Kos Bona.</p>
+  </footer>
+
+  <script src="/js/config.js?v=20261022b"></script>
+  <script src="/titip/titip.js?v=20261022b" defer></script>
+  <script src="/js/nav.js?v=20261022b" defer></script>
+  <script src="/js/analytics.js?v=20261022b" defer></script>
+</body>
+</html>

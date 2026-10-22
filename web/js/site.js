@@ -76,6 +76,7 @@
     renderWaitForm();
     renderFaq();
     renderFooter();
+    renderSekitar();
     $('#year').textContent = new Date().getFullYear();
     if (site.surveyHours) {
       $('#surveyHours').textContent = `Jadwal survei: ${site.surveyHours}`;
@@ -260,7 +261,7 @@
     if (s && booking) { if (s.dataset.room) booking.setRoom(s.dataset.room); else booking.setProperty(s.dataset.survey); }
   });
 
-  // ---------- lokasi & aturan ----------
+  // ---------- lokasi (aturan kos hanya tampil di dashboard penghuni) ----------
   function renderLokasi() {
     $('#lokasiGrid').innerHTML = state.data.properties.map((p) => `
       <article class="place">
@@ -273,7 +274,6 @@
           <div><p class="place__name">${esc(p.name)}</p><p class="place__addr">${esc(p.address)}</p>
             ${p.mapsQuery ? `<p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.mapsQuery)}" target="_blank" rel="noopener">Buka di Google Maps</a></p>` : ''}</div>
           ${(p.nearby || []).length ? `<div><h3>Dekat dengan</h3><ul>${p.nearby.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}
-          ${(p.rules || []).length ? `<div><h3>Aturan ${esc(p.name)}</h3><ul>${p.rules.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}
         </div>
       </article>`).join('');
   }
@@ -339,8 +339,30 @@
 
   function renderFooter() {
     const { site, properties } = state.data;
+    // Logo dari pengaturan admin: logo Bonaasina + logo tiap kos.
+    if (site.brandLogo) { $('#heroLogo').src = site.brandLogo; $$('[data-brand-logo]').forEach((im) => { im.src = site.brandLogo; }); }
+    const logos = properties.filter((p) => p.logo);
+    if (logos.length) {
+      const side = logos.map((p) => `<img src="${esc(p.logo)}" alt="Logo ${esc(p.name)}" loading="lazy">`);
+      const mid = `<img src="${esc(site.brandLogo || '/assets/img/logo-bonaasina.webp')}" alt="Logo Bonaasina" loading="lazy" class="footer__main">`;
+      $('#footerLogos').innerHTML = side.length >= 2 ? [side[0], mid, ...side.slice(1)].join('') : [mid, ...side].join('');
+    }
     $('#footerInfo').innerHTML = properties.map((p) => `<div><strong>${esc(p.name)}</strong>${esc(p.address)}</div>`).join('') +
       `<div><strong>Hubungi pemilik</strong><a href="${esc(wa('Horas, saya mau tanya soal kos.'))}" target="_blank" rel="noopener">WhatsApp ${esc(site.whatsapp || '')}</a></div>`;
+  }
+
+  // ---------- sekitar kos: tempat penting & titip jualan (data dari halaman /sekitar dan /titip) ----------
+  const PLACE_ICON = { makan: '🍛', toko: '🛒', laundry: '🧺', fotokopi: '🖨️', kesehatan: '💊', transport: '🛵', ibadah: '⛪', lainnya: '📍' };
+  async function renderSekitar() {
+    const box = $('#sekitarList'); if (!box) return;
+    try {
+      const [pl, tj] = await Promise.all([fetch(API + '/sekitar').then((r) => r.json()), fetch(API + '/titip').then((r) => r.json())]);
+      const places = (pl.places || []).slice(0, 6);
+      box.innerHTML = places.length ? places.map((p) => `<li><span class="near__ico" aria-hidden="true">${PLACE_ICON[p.category] || '📍'}</span><div><strong>${esc(p.name)}</strong><span>${esc([pl.categories?.[p.category], p.distanceNote].filter(Boolean).join(', '))}</span></div></li>`).join('')
+        : '<li class="near__empty">Daftar warung, laundry, dan toko terdekat sedang kami lengkapi.</li>';
+      const n = (tj.listings || []).length;
+      $('#titipCount').textContent = n ? `${n} barang & jasa sedang ditawarkan` : 'Jadi yang pertama memasang iklan';
+    } catch { box.innerHTML = '<li class="near__empty">Info sekitar belum bisa dimuat.</li>'; }
   }
 
   // ---------- gerak ----------
@@ -381,7 +403,7 @@
       if (window.ScrollTrigger) {
         gsap.registerPlugin(ScrollTrigger);
         // Logo sedikit tenggelam saat hero discroll lewat
-        gsap.to('#heroLogo', { yPercent: 10, scale: .94, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true } });
+        if (matchMedia('(min-width: 861px)').matches) gsap.to('#heroLogo', { yPercent: 10, scale: .94, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true } });
       }
     }
   }

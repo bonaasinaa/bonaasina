@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Info Sekitar Kos: Warung, Laundry &amp; Toko — Bonaasina</title>
+  <meta name="description" content="Warung makan, laundry, toko, dan tempat penting di sekitar Kos Asina &amp; Kos Bona.">
+  <meta name="theme-color" content="#F7EDE3">
+  <meta property="og:title" content="Info Sekitar Kos: Warung, Laundry &amp; Toko — Bonaasina">
+  <meta property="og:description" content="Warung makan, laundry, toko, dan tempat penting di sekitar Kos Asina &amp; Kos Bona.">
+  <meta property="og:image" content="/assets/img/logo-bonaasina.png">
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261022b">
+  <link rel="stylesheet" href="/css/site.css?v=20261022b">
+  <link rel="stylesheet" href="/css/kos.css?v=20261022b">
+</head>
+<body>
+  <header class="nav is-scrolled" id="nav">
+    <a class="nav__brand" href="/" aria-label="Bonaasina, ke beranda"><img src="/assets/img/mark.webp" alt="" width="54" height="37"><span>Bonaasina</span></a>
+    <nav class="nav__links" aria-label="Menu utama">
+      <a href="/">Kos Asina &amp; Bona</a>
+      <a href="/kos-sekitar/">Kos sekitar</a>
+      <a href="/sekitar/" aria-current="page">Info sekitar</a>
+      <a href="/titip/">Titip jualan</a>
+      <a href="/mitra/">Jadi mitra</a>
+    </nav>
+    <a class="btn btn--ink btn--sm nav__cta" href="/akun/">Reservasi saya</a>
+  </header>
+
+  <main class="page" id="top">
+    <div class="page__head">
+      <div>
+        <p class="crumbs"><a href="/">Bonaasina</a> / Info sekitar</p>
+        <h1>Info sekitar kos</h1>
+        <p>Warung makan, laundry, toko, fotokopi, dan tempat penting lain di dekat Kos Asina &amp; Kos Bona. Dipilih oleh pengelola dan penghuni.</p>
+      </div>
+      <a class="btn btn--ghost" href="#usul">Usulkan tempat</a>
+    </div>
+    <div class="kfilters">
+      <div class="chips chips--scroll" role="group" aria-label="Kategori" id="catChips"></div>
+      <label class="ksearch"><span class="sr-only">Cari</span><input type="search" id="q" placeholder="Cari tempat…" autocomplete="off"></label>
+    </div>
+    <div class="pgrid" id="grid" aria-live="polite"><p class="muted">Memuat…</p></div>
+
+    <a class="titip-cta" href="/titip/"><div><p class="eyebrow">Titip jualan &amp; jasa</p><h2>Cari kue rumahan, les privat, atau jasa antar?</h2><p>Lihat barang dan jasa dari mahasiswa sekitar, atau pasang iklan Anda gratis.</p></div><span class="btn btn--red">Buka Titip jualan</span></a>
+
+    <section class="pasang" id="usul" aria-labelledby="usulTitle">
+      <div class="pasang__intro">
+        <p class="eyebrow">Bantu teman kos</p>
+        <h2 id="usulTitle">Usulkan tempat</h2>
+        <p>Tahu warung enak, laundry kilat, atau bengkel yang jujur di sekitar sini? Kirim usulan; admin mengecek dulu sebelum menampilkannya.</p>
+      </div>
+      <form class="form" id="usulForm" novalidate>
+        <div class="form__row">
+          <label>Nama tempat<input name="name" maxlength="80" required placeholder="Mis. Warung Bu Tiur"></label>
+          <label>Kategori<select name="category" id="usulCat"></select></label>
+        </div>
+        <label>Kenapa layak dicoba? <span class="opt">(opsional)</span><textarea name="description" rows="2" maxlength="600" placeholder="Mis. mie gomak enak, porsi besar, buka sampai malam"></textarea></label>
+        <div class="form__row">
+          <label>Lokasi / jarak <span class="opt">(opsional)</span><input name="distanceNote" maxlength="80" placeholder="Mis. depan gerbang kampus"></label>
+          <label>Jam buka <span class="opt">(opsional)</span><input name="openHours" maxlength="80" placeholder="07.00–21.00"></label>
+        </div>
+        <label>Nama &amp; WhatsApp Anda <span class="opt">(opsional, bila admin perlu bertanya)</span><input name="suggestedBy" maxlength="120"></label>
+        <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <p class="form__error" id="usulErr" role="alert" hidden></p>
+        <button class="btn btn--red btn--block" type="submit">Kirim usulan</button>
+      </form>
+      <div class="form__done" id="usulDone" hidden><h3>Terima kasih!</h3><p>Usulan Anda sudah masuk. Tempat akan tampil setelah dicek admin.</p><button class="btn btn--ghost" type="button" id="usulAgain">Usulkan tempat lain</button></div>
+    </section>
+  </main>
+
+  <footer class="footer footer--std">
+    <div class="footer__std">
+      <a class="footer__brand" href="/"><img src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="420" height="371" loading="lazy" data-brand-logo></a>
+      <div><strong>Cari kos</strong><a href="/">Kos Asina &amp; Kos Bona</a><a href="/kos-sekitar/">Kos sekitar</a><a href="/akun/">Reservasi saya</a></div>
+      <div><strong>Sekitar kos</strong><a href="/sekitar/">Warung, laundry &amp; toko</a><a href="/titip/">Titip jualan &amp; jasa</a><a href="/titip/#pasang">Pasang iklan gratis</a></div>
+      <div><strong>Pemilik kos</strong><a href="/mitra/">Jadi mitra Bonaasina</a><a href="/pemilik/">Masuk pemilik</a></div>
+      <div><strong>Penghuni</strong><a href="/penghuni/">Masuk dashboard penghuni</a><a href="/cek/">Cek keaslian dokumen</a></div>
+    </div>
+    <p class="footer__small">© <span id="year"></span> Bonaasina, Kos Asina &amp; Kos Bona.</p>
+  </footer>
+
+  <script src="/js/config.js?v=20261022b"></script>
+  <script src="/sekitar/sekitar.js?v=20261022b" defer></script>
+  <script src="/js/nav.js?v=20261022b" defer></script>
+  <script src="/js/analytics.js?v=20261022b" defer></script>
+</body>
+</html>

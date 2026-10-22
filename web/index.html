@@ -12,8 +12,8 @@
   <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
   <link rel="preload" href="/fonts/libre-caslon-display-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="/css/fonts.css?v=20261022a">
-  <link rel="stylesheet" href="/css/site.css?v=20261022a">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261022b">
+  <link rel="stylesheet" href="/css/site.css?v=20261022b">
 </head>
 <body>
   <a class="skip" href="#kamar">Langsung ke daftar kamar</a>
@@ -30,12 +30,11 @@
       <span>Bonaasina</span>
     </a>
     <nav class="nav__links" aria-label="Menu utama">
-      <a href="#rumah">Dua rumah</a>
       <a href="#kamar">Kamar & harga</a>
-      <a href="#cara">Cara menyewa</a>
       <a href="#lokasi">Lokasi</a>
-      <a href="#tanya">Tanya jawab</a>
       <a href="/kos-sekitar/">Kos sekitar</a>
+      <a href="/sekitar/">Info sekitar</a>
+      <a href="/titip/">Titip jualan</a>
     </nav>
     <a class="btn btn--ink btn--sm nav__cta" href="#survei">Pesan kamar</a>
     <button class="nav__menu" id="menuBtn" type="button" aria-expanded="false" aria-controls="mobileMenu">Menu</button>
@@ -43,9 +42,11 @@
       <a href="#rumah">Dua rumah</a>
       <a href="#kamar">Kamar & harga</a>
       <a href="#cara">Cara menyewa</a>
-      <a href="#lokasi">Lokasi & aturan</a>
+      <a href="#lokasi">Lokasi & sekitar</a>
       <a href="#tanya">Tanya jawab</a>
       <a href="/kos-sekitar/">Kos sekitar</a>
+      <a href="/sekitar/">Info warung & laundry sekitar</a>
+      <a href="/titip/">Titip jualan & jasa</a>
       <a href="/akun/">Reservasi saya</a>
       <a class="btn btn--red" href="#survei">Pesan kamar</a>
     </nav>
@@ -82,7 +83,7 @@
     <section class="section rumah" id="rumah" aria-labelledby="rumahTitle">
       <div class="section__head">
         <h2 id="rumahTitle">Dua rumah, satu pengelola.</h2>
-        <p>Pilih yang paling cocok. Harga, aturan, dan fasilitasnya bisa berbeda.</p>
+        <p>Pilih yang paling cocok. Harga dan fasilitasnya bisa berbeda.</p>
       </div>
       <div class="tabs" role="tablist" aria-label="Pilih kos" id="propTabs"></div>
       <div class="rumah__stage" id="propStage"></div>
@@ -128,10 +129,23 @@
     <!-- LOKASI & ATURAN -->
     <section class="section lokasi" id="lokasi" aria-labelledby="lokasiTitle">
       <div class="section__head">
-        <h2 id="lokasiTitle">Lokasi & aturan</h2>
-        <p>Baca aturannya sebelum survei supaya tidak ada yang mengejutkan.</p>
+        <h2 id="lokasiTitle">Lokasi &amp; sekitar</h2>
+        <p>Lihat letak kos, lalu kenali warung, laundry, dan toko di dekatnya.</p>
       </div>
       <div class="lokasi__grid" id="lokasiGrid"></div>
+      <div class="near">
+        <div class="near__card">
+          <div class="near__head"><div><p class="eyebrow">Info sekitar</p><h3>Warung, laundry &amp; toko terdekat</h3></div><a class="btn btn--ghost btn--sm" href="/sekitar/">Lihat semua</a></div>
+          <ul class="near__list" id="sekitarList"><li class="near__empty">Memuat…</li></ul>
+        </div>
+        <a class="near__card near__card--titip" href="/titip/">
+          <p class="eyebrow">Titip jualan &amp; jasa</p>
+          <h3>Barang dan jasa dari mahasiswa sekitar</h3>
+          <p>Kue rumahan, buku bekas, les privat, desain, sampai jasa antar. Hubungi penjual langsung lewat WhatsApp, atau pasang iklan Anda gratis.</p>
+          <span class="near__count" id="titipCount">&nbsp;</span>
+          <span class="btn btn--red btn--sm">Lihat &amp; pasang iklan</span>
+        </a>
+      </div>
     </section>
 
     <!-- RESERVASI (dulu: formulir survei) -->
@@ -202,14 +216,15 @@
   </main>
 
   <footer class="footer">
-    <div class="footer__logos">
+    <div class="footer__logos" id="footerLogos">
       <img src="/assets/img/logo-asina.webp" alt="Logo Kos Asina" width="300" height="340" loading="lazy">
-      <img src="/assets/img/logo-bonaasina.webp" alt="Logo Bonaasina" width="420" height="371" loading="lazy" class="footer__main">
+      <img src="/assets/img/logo-bonaasina.webp" alt="Logo Bonaasina" width="420" height="371" loading="lazy" class="footer__main" data-brand-logo>
       <img src="/assets/img/logo-bona.webp" alt="Logo Kos Bona" width="300" height="324" loading="lazy">
     </div>
     <div class="footer__info" id="footerInfo"></div>
     <div class="footer__std footer__std--links">
       <div><strong>Cari kos</strong><a href="/kos-sekitar/">Kos sekitar</a><a href="/akun/">Reservasi saya</a></div>
+      <div><strong>Sekitar kos</strong><a href="/sekitar/">Warung, laundry &amp; toko</a><a href="/titip/">Titip jualan &amp; jasa</a><a href="/titip/#pasang">Pasang iklan gratis</a></div>
       <div><strong>Pemilik kos</strong><a href="/mitra/">Jadi mitra Bonaasina</a><a href="/pemilik/">Masuk pemilik</a></div>
       <div><strong>Penghuni</strong><a href="/penghuni/">Masuk dashboard penghuni</a><a href="/cek/">Cek keaslian dokumen</a></div>
     </div>
@@ -221,12 +236,12 @@
     <span>Chat pemilik</span>
   </a>
 
-  <script src="/js/config.js?v=20261022a"></script>
+  <script src="/js/config.js?v=20261022b"></script>
   <script src="/vendor/gsap.min.js" defer></script>
   <script src="/vendor/ScrollTrigger.min.js" defer></script>
   <script src="/vendor/lenis.min.js" defer></script>
-  <script src="/js/booking.js?v=20261022a" defer></script>
-  <script src="/js/site.js?v=20261022a" defer></script>
-  <script src="/js/analytics.js?v=20261022a" defer></script>
+  <script src="/js/booking.js?v=20261022b" defer></script>
+  <script src="/js/site.js?v=20261022b" defer></script>
+  <script src="/js/analytics.js?v=20261022b" defer></script>
 </body>
 </html>

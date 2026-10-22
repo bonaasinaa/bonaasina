@@ -32,7 +32,7 @@
     if (waUrl) { $('#waFloat').href = waUrl; $('#waFloat').hidden = false; }
     box.innerHTML = `
       <p class="crumbs"><a href="/">Bonaasina</a> / <a href="/kos-sekitar/">Kos sekitar</a> / ${esc(p.name)}</p>
-      <div class="page__head"><div><h1>${esc(p.name)}</h1>${p.tagline ? `<p>${esc(p.tagline)}</p>` : ''}
+      <div class="page__head"><div><div class="kd__title">${p.logo ? `<span class="kd__logo"><img src="${esc(p.logo)}" alt="Logo ${esc(p.name)}"></span>` : ""}<h1>${esc(p.name)}</h1></div>${p.tagline ? `<p>${esc(p.tagline)}</p>` : ''}
         <div class="kd__tags">${p.gender ? `<span>Kos ${esc(p.gender.toLowerCase())}</span>` : ''}${p.city ? `<span>${esc(p.city)}</span>` : ''}<span>${free ? `${free} kamar kosong` : 'Sedang penuh'}</span>${p.checkedAt ? `<span class="is-fresh">Ketersediaan dicek ${ago(p.checkedAt)}</span>` : ''}
           ${p.periods.map((k) => `<span>${PERIODS[k][0]}</span>`).join('')}</div></div></div>
       <div class="kd">
@@ -44,12 +44,11 @@
             <ul class="rooms" id="rooms"></ul></section>
           <div class="kd__cols">
             ${(p.facilities || []).length ? `<div><h3>Fasilitas bersama</h3><ul class="kd__list">${p.facilities.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
-            ${(p.rules || []).length ? `<div><h3>Aturan kos</h3><ul class="kd__list">${p.rules.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
             ${(p.nearby || []).length ? `<div><h3>Dekat dengan</h3><ul class="kd__list">${p.nearby.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : ''}
             ${p.bookingPolicy ? `<div><h3>Aturan booking &amp; pembatalan</h3><p class="kd__desc" style="margin-top:12px">${esc(p.bookingPolicy)}</p></div>` : ''}
           </div>
           <section><h2>Lokasi</h2><p class="kd__desc" style="margin:10px 0 16px">${esc(p.address || '')}</p>
-            ${p.mapsQuery ? `<div class="kd__map"><iframe title="Peta ${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps?q=${encodeURIComponent(p.mapsQuery)}&output=embed"></iframe></div><p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.mapsQuery)}" target="_blank" rel="noopener">Buka di Google Maps</a></p>` : '<p class="muted">Titik peta belum diatur. Tanyakan lokasi lewat chat atau WhatsApp.</p>'}</section>
+            ${p.mapsQuery ? `<div class="kd__map"><iframe title="Peta ${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps?q=${encodeURIComponent(p.mapsQuery)}&output=embed"></iframe></div><p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.mapsQuery)}" target="_blank" rel="noopener">Buka di Google Maps</a></p>` : '<p class="muted">Titik peta belum diatur. Tanyakan lokasi lewat chat atau WhatsApp.</p>'}<p style="margin-top:10px"><a href="/sekitar/">Lihat warung, laundry &amp; toko di sekitar →</a></p></section>
         </div>
         <aside class="kd__side" id="pesan">
           <div class="kd__contact"><h3>Pesan kamar</h3><p>Belum perlu membayar. Pemilik memastikan kamarnya ada dulu${p.minBooking ? `, lalu Anda membayar booking/DP minimal ${rp(p.minBooking)} langsung ke rekening pemilik` : ''}. Setelah DP diterima, Anda mendapat bukti booking resmi.</p>

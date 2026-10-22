@@ -18,6 +18,9 @@
     wa: 'M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.4-.7-2.8-1.1-4.6-4-4.8-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2.1 1-2.4c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .6l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1.1c.2-.3.4-.2.7-.1l2 .9c.3.2.5.2.6.4.1.1.1.8-.2 1.5Z',
     bell: 'M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5-6.7V3a2 2 0 1 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z',
     menu: 'M3 6h18v2H3V6Zm0 5h18v2H3v-2Zm0 5h18v2H3v-2Z',
+    bag: 'M7 7V6a5 5 0 0 1 10 0v1h3l-1 15H5L4 7h3Zm2 0h6V6a3 3 0 0 0-6 0v1Z',
+    pin: 'M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z',
+    image: 'M4 4h16v16H4V4Zm2 2v9.6l3.5-3.5 3 3 2.5-2.5 3 3V6H6Zm9 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z',
     tool: 'M22.7 19 13.6 9.9a6 6 0 0 0-7.9-7.6l3.9 3.9-2.8 2.8-4-3.9A6 6 0 0 0 10.4 13l9.1 9.1a1 1 0 0 0 1.4 0l1.8-1.8a1 1 0 0 0 0-1.3Z',
   };
   const ico = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ICONS.check}"/></svg>`;
@@ -124,6 +127,11 @@
     });
   }
 
+  // Menu aktif selalu terlihat di menu samping yang panjang.
+  function keepActiveVisible() {
+    const nav = document.getElementById('sideNav'); if (!nav) return;
+    new MutationObserver(() => { const a = nav.querySelector('a[aria-current="page"]'); if (a) a.scrollIntoView({ block: 'nearest' }); }).observe(nav, { attributes: true, subtree: true, attributeFilter: ['aria-current'] });
+  }
   // Navigasi bawah di HP: menu bertanda data-bnav + tombol Menu yang membuka laci.
   function bottomNav() {
     const nav = document.getElementById('sideNav'); const menuBtn = document.getElementById('menuBtn');
@@ -141,7 +149,7 @@
     const m = document.createElement('button'); m.type = 'button'; m.innerHTML = `${ico('menu')}<span class="lbl">Menu</span>`;
     m.onclick = () => menuBtn.click(); bar.appendChild(m);
     const dot = document.getElementById('navDot');
-    if (dot) { const b = document.createElement('span'); b.className = 'badge'; b.style.minWidth = '10px'; b.style.height = '10px'; b.hidden = true; m.appendChild(b); new MutationObserver(() => { b.hidden = dot.hidden; }).observe(dot, { attributes: true }); }
+    if (dot) { const b = document.createElement('span'); b.className = 'badge badge--dot'; b.hidden = true; m.appendChild(b); new MutationObserver(() => { b.hidden = dot.hidden; }).observe(dot, { attributes: true }); }
     const sync = () => { const cur = nav.querySelector('a[aria-current="page"]')?.dataset.view; bar.querySelectorAll('a').forEach((l) => (l.dataset.view === cur ? l.setAttribute('aria-current', 'page') : l.removeAttribute('aria-current'))); };
     new MutationObserver(sync).observe(nav, { attributes: true, subtree: true, attributeFilter: ['aria-current'] });
     const app = document.getElementById('app') || document.body; app.appendChild(bar); sync();
@@ -155,9 +163,52 @@
     w.innerHTML = html || ''; play(w, false);
   }
 
+  /** Garis kecil untuk kartu angka: values = angka berurutan. */
+  function spark(values) {
+    const v = (values || []).map((x) => Number(x) || 0); if (v.length < 2) return '';
+    const max = Math.max(...v), min = Math.min(...v), W = 100, Hh = 30, span = max - min || 1;
+    const pts = v.map((y, i) => [(i / (v.length - 1)) * W, Hh - ((y - min) / span) * (Hh - 4) - 2]);
+    const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+    return `<svg class="spark" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" aria-hidden="true"><path class="a" d="${d} L${W} ${Hh} L0 ${Hh} Z"/><path class="l" d="${d}" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+  // Pilih logo: pratinjau + unggah. Logo diperkecil ke WebP (tetap transparan) sebelum diunggah.
+  function logoField(name, url, label = 'Logo', fallback = '/assets/img/mark.webp') {
+    return `<div class="span-all"><label>${esc(label)} <span class="hint">PNG/WebP transparan paling bagus, maks. 5 MB.</span></label>
+      <div class="logo-pick mt" data-logo="${esc(name)}" data-fallback="${esc(fallback)}"><div class="logo-pick__img"><img src="${esc(url || fallback)}" alt=""></div>
+      <div class="btn-row"><label class="btn btn--ghost btn--sm">${ico('image')}Ganti logo<input type="file" accept="image/png,image/webp,image/jpeg" hidden></label>
+      <button type="button" class="btn btn--ghost btn--sm" data-logo-reset>Pakai logo bawaan</button></div></div>
+      <input type="hidden" name="${esc(name)}" value="${esc(url || '')}"></div>`;
+  }
+  function shrinkLogo(file, max = 720) {
+    return new Promise((resolve) => {
+      const img = new Image(); const u = URL.createObjectURL(file);
+      img.onload = () => {
+        const k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+        c.toBlob((b) => resolve(b || file), 'image/webp', 0.92);
+      };
+      img.onerror = () => resolve(file); img.src = u;
+    });
+  }
+  /** upload(blob) → Promise<url> */
+  function bindLogo(root, name, upload, onError) {
+    const box = root.querySelector(`[data-logo="${name}"]`); if (!box) return;
+    const hidden = root.querySelector(`input[type=hidden][name="${name}"]`), img = box.querySelector('img');
+    box.querySelector('input[type=file]').addEventListener('change', async (e) => {
+      const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+      box.classList.add('is-busy');
+      try { const url = await upload(await shrinkLogo(f)); hidden.value = url; img.src = url; }
+      catch (ex) { onError?.(ex); } finally { box.classList.remove('is-busy'); }
+    });
+    box.querySelector('[data-logo-reset]').addEventListener('click', () => { hidden.value = box.dataset.fallback; img.src = box.dataset.fallback; });
+  }
+  const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  const BLN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const longDate = (iso) => { const d = iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`) : new Date(); return `${HARI[d.getDay()]}, ${d.getDate()} ${BLN[d.getMonth()]} ${d.getFullYear()}`; };
   const greet = () => { const h = new Date().getHours(); return h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 19 ? 'Selamat sore' : 'Selamat malam'; };
 
-  window.BonaDash = { ico, avatar, donut, colbars, funnel, short, play, sideWidget, greet };
-  const init = () => { collapsibleGroups(); bottomNav(); watchMain(); };
+  window.BonaDash = { ico, avatar, donut, colbars, funnel, short, play, sideWidget, greet, spark, longDate, logoField, bindLogo };
+  const init = () => { collapsibleGroups(); bottomNav(); watchMain(); keepActiveVisible(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();

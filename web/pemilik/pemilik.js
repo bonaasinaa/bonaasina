@@ -211,15 +211,15 @@
     const propLine = !props.length ? 'Belum ada kos.' : [liveList.length ? `${names(liveList)} sudah tampil di Kos Sekitar Bonaasina.` : '', offList.length ? `${names(offList)} belum tampil di website.` : ''].filter(Boolean).join(' ');
     main.innerHTML = `
       <section class="hello">
-        <div><p class="hello__kicker">${D.greet()}. Dashboard pemilik kos</p>
-          <h1>Horas, ${esc(call)}</h1>
+        <div><p class="hello__kicker">${D.longDate()}</p>
+          <h1>Horas, ${esc(call)}.</h1>
           <p>${propLine} ${todoN ? `Ada <strong>${todoN} hal</strong> yang menunggu Anda.` : 'Tidak ada yang mendesak.'}</p></div>
-        <div class="hello__actions"><a class="btn btn--light" href="#reservasi">Lihat reservasi</a><a class="btn btn--ghost" href="#kamar">Atur kamar</a></div>
+        <div class="hello__actions"><a class="btn btn--ghost" href="#kamar">Atur kamar</a><a class="btn btn--light" href="#reservasi">Lihat reservasi</a></div>
       </section>
       ${props.filter((p) => p.status !== 'aktif').map(setupCard).join('')}
       ${stale.map((p) => `<div class="notice"><p><strong>Status kamar ${esc(p.name)} terakhir dicek ${p.checkedAt ? relTime(p.checkedAt) : 'belum pernah'}.</strong> Pastikan kamar kosong/terisi sudah benar supaya calon penyewa tidak kecewa.</p><button class="btn btn--sm" data-checked="${p.id}">Status kamar sudah benar</button></div>`).join('')}
-      <div class="grid grid--stats">
-        <a class="panel stat stat--red stat--link ${n.baru ? 'stat--alert' : ''}" href="#reservasi"><p class="stat__label">Reservasi baru</p><span class="stat__ico">${D.ico('bell')}</span><p class="stat__value" data-count="${n.baru}">${n.baru}</p><p class="stat__sub">${n.baru ? 'Perlu dikonfirmasi' : 'Belum ada yang baru'}</p></a>
+      <div class="grid grid--stats grid--hero">
+        <a class="panel stat stat--red stat--link" href="#reservasi"><p class="stat__label">Reservasi baru</p><span class="stat__ico">${D.ico('bell')}</span><p class="stat__value" data-count="${n.baru}">${n.baru}</p><p class="stat__sub">${n.baru ? 'Perlu dikonfirmasi' : 'Belum ada yang baru'}</p></a>
         <a class="panel stat stat--amber stat--link" href="#reservasi"><p class="stat__label">Reservasi berjalan</p><span class="stat__ico">${D.ico('calendar')}</span><p class="stat__value" data-count="${running}">${running}</p><p class="stat__sub">Menunggu DP atau persetujuan</p></a>
         <a class="panel stat stat--green stat--link" href="#reservasi"><p class="stat__label">Booking berhasil</p><span class="stat__ico">${D.ico('check')}</span><p class="stat__value" data-count="${success}">${success}</p><p class="stat__sub">Lewat Bonaasina</p></a>
         <a class="panel stat stat--blue stat--link" href="#kamar"><p class="stat__label">Kamar kosong</p><span class="stat__ico">${D.ico('bed')}</span><p class="stat__value" data-count="${free}">${free}</p><p class="stat__sub">dari ${data.rooms.length} kamar</p><div class="meter" style="--tone:var(--blue)"><i data-w="${data.rooms.length ? (free / data.rooms.length) * 100 : 0}"></i></div></a>
@@ -388,8 +388,9 @@
           <label class="span-all">Kalimat utama<input name="tagline" value="${esc(p.tagline)}" placeholder="Dekat kampus, tenang, aman."></label>
           <label class="span-all">Deskripsi<textarea name="description" rows="4">${esc(p.description)}</textarea></label>
           <label>Fasilitas bersama <span class="hint">satu per baris</span><textarea name="facilities" rows="5">${lines(p.facilities)}</textarea></label>
-          <label>Aturan kos <span class="hint">satu per baris</span><textarea name="rules" rows="5">${lines(p.rules)}</textarea></label>
+          <label>Aturan kos <span class="hint">satu per baris. Tidak tampil di website; sampaikan ke penyewa saat masuk.</span><textarea name="rules" rows="5">${lines(p.rules)}</textarea></label>
           <label class="span-all">Dekat dengan <span class="hint">satu per baris</span><textarea name="nearby" rows="3">${lines(p.nearby)}</textarea></label>
+          ${window.BonaDash.logoField('logo', p.logo, 'Logo kos (tampil di kartu kos & halaman kos)')}
           ${photoField('photos', p.photos || [])}
         </div>
         <div class="panel fields">
@@ -413,6 +414,7 @@
         <div class="form-actions"><button class="btn btn--red" type="submit">Simpan</button></div>
       </form>`;
     bindPhotos(main, 'photos');
+    window.BonaDash.bindLogo(main, 'logo', async (blob) => (await BonaLoader.during('Mengunggah logo…', () => api('POST', '/upload', undefined, blob))).url, (ex) => toast(ex.message, true));
     $('#propSel')?.addEventListener('change', (e) => { propSel = e.target.value; route(); });
     $('#kosForm').onsubmit = async (e) => {
       e.preventDefault();

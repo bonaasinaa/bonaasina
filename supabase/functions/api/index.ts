@@ -8,6 +8,7 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.4
 import bcrypt from 'npm:bcryptjs@2.4.3';
 import { contractPdf, receiptPdf, cardPdf, qrSvg, terbilang, DEFAULT_CONTRACT_TEMPLATE } from './docs.ts';
 import { createMarket } from './market.ts';
+import { createCommunity } from './community.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const secretKeys = safeJson(Deno.env.get('SUPABASE_SECRET_KEYS'));
@@ -266,7 +267,7 @@ function on(method: string, path: string, fn: Handler, opts: { raw?: boolean } =
 const created = (body: unknown) => ({ __status: 201, body });
 
 // ================================================================ PUBLIK
-export const PUBLIC_PROPERTY_FIELDS = ['id', 'slug', 'name', 'shortName', 'logo', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'facilities', 'rules', 'nearby', 'photos', 'kind', 'city', 'periods', 'minBooking', 'bookingPolicy', 'visitHours', 'chatEnabled', 'checkedAt'];
+export const PUBLIC_PROPERTY_FIELDS = ['id', 'slug', 'name', 'shortName', 'logo', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'facilities', 'nearby', 'photos', 'kind', 'city', 'periods', 'minBooking', 'bookingPolicy', 'visitHours', 'chatEnabled', 'checkedAt'];
 export const PUBLIC_ROOM_FIELDS = ['id', 'propertyId', 'code', 'type', 'sizeM2', 'floor', 'priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'capacity', 'extraPersonFee', 'facilities', 'photos', 'note'];
 on('GET', '/public', async () => {
   const [s, allProps, rooms, active, partners] = await Promise.all([
@@ -279,7 +280,7 @@ on('GET', '/public', async () => {
   const ids = new Set(props.map((p) => p.id));
   const occ = new Set((active || []).map((t) => t.room_id));
   return {
-    site: pick(s, ['siteName', 'tagline', 'ownerName', 'whatsapp', 'depositInfo', 'paymentMethods', 'faq', 'heroWords', 'surveyHours']),
+    site: pick(s, ['siteName', 'tagline', 'ownerName', 'whatsapp', 'depositInfo', 'paymentMethods', 'faq', 'heroWords', 'surveyHours', 'brandLogo']),
     whatsappNormalized: normalizePhone(s.whatsapp),
     partnersCount: partners.count ?? 0,
     properties: props.sort(bySort).map((p) => ({ ...pick(p, PUBLIC_PROPERTY_FIELDS), waEnabled: p.waEnabled !== false })),
@@ -287,6 +288,15 @@ on('GET', '/public', async () => {
       ...pick(r, PUBLIC_ROOM_FIELDS),
       status: occ.has(r.id) ? 'terisi' : r.status,
     })).sort(byCode),
+  };
+});
+
+// Logo & kontak untuk header/footer halaman publik selain beranda (ringan, tanpa data kamar).
+on('GET', '/brand', async () => {
+  const [s, props] = await Promise.all([getSettings(), q<Row[]>(sb.from('properties').select('name, logo, kind, status, sort'))]);
+  return {
+    brandLogo: s.brandLogo || '', whatsapp: normalizePhone(s.whatsapp || ''),
+    properties: (props || []).filter((p) => p.kind !== 'mitra' && p.status === 'aktif').sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)).map((p) => ({ name: p.name, logo: p.logo })),
   };
 });
 
@@ -424,6 +434,7 @@ on('GET', '/admin/summary', async () => {
     tenantsWithoutContract: tenants.filter((t) => t.status === 'aktif' && !ctr.some((c) => c.tenantId === t.id && ['menunggu', 'aktif', 'akan_habis', 'akan_mulai'].includes(c.phase))).length,
     waitlistToNotify: (waitlist || []).filter((w) => w.status === 'perlu_dikabari').length,
     market: await market.adminCounts(),
+    community: await community.counts(),
   };
 });
 
@@ -794,12 +805,13 @@ on('GET', '/admin/reports.csv', async ({ url }, log) => {
 
 // ================================================================ ADMIN — pengaturan, unggah, cadangan
 const SETTING_FIELDS = ['siteName', 'tagline', 'ownerName', 'whatsapp', 'paymentInfo', 'paymentMethods', 'depositInfo', 'reminderTemplate', 'invoiceLeadDays', 'surveyHours',
-  'bonaBankInfo', 'waTemplateConfirm', 'waTemplateReject', 'marketIntro', 'ownBankInfo'];
+  'bonaBankInfo', 'waTemplateConfirm', 'waTemplateReject', 'marketIntro', 'ownBankInfo', 'brandLogo'];
 const SETTING_NUMBERS: Record<string, [number, number]> = { invoiceLeadDays: [0, 60], feeDueDays: [1, 30], dpHours: [1, 168], leadResponseHours: [1, 168] };
 on('GET', '/admin/settings', async () => ({ ...market.marketDefaults(), ...(await getSettings()), defaultReminderTemplate: DEFAULT_TEMPLATE, defaultContractTemplate: DEFAULT_CONTRACT_TEMPLATE, defaultInspectionItems: DEFAULT_INSPECTION_ITEMS, ...market.marketTemplates() }));
 on('PUT', '/admin/settings', async ({ body: b }, log) => {
   const cur = await getSettings(); const patch: Row = {};
   for (const k of SETTING_FIELDS) if (b[k] !== undefined && k !== 'invoiceLeadDays') patch[k] = str(b[k], 2000);
+  if (patch.brandLogo && !okPhoto(patch.brandLogo)) patch.brandLogo = '';
   for (const [k, [lo, hi]] of Object.entries(SETTING_NUMBERS)) if (b[k] !== undefined && b[k] !== '') patch[k] = Math.max(lo, Math.min(num(b[k]), hi));
   if (b.feeDefaultType !== undefined) patch.feeDefaultType = b.feeDefaultType === 'nominal' ? 'nominal' : 'persen';
   if (b.feeDefaultValue !== undefined) {
@@ -830,7 +842,7 @@ on('POST', '/admin/upload', async ({ req }, log) => {
 }, { raw: true });
 on('GET', '/admin/export', async (_c, log) => {
   log({ action: 'export', summary: 'Mengunduh cadangan seluruh data' });
-  const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues', 'contracts', 'room_inspections', 'waitlist', 'announcements', 'announcement_reads', 'chore_tasks', 'chore_reports', 'owners', 'leads', 'messages', 'notifications', 'partner_applications'];
+  const tables = ['settings', 'properties', 'rooms', 'tenants', 'invoices', 'surveys', 'expenses', 'issues', 'contracts', 'room_inspections', 'waitlist', 'announcements', 'announcement_reads', 'chore_tasks', 'chore_reports', 'owners', 'leads', 'messages', 'notifications', 'partner_applications', 'listings', 'places'];
   const out: Row = { exportedAt: new Date().toISOString() };
   for (const t of tables) out[t] = (await q<Row[]>(sb.from(t).select('*'))).map((r) => ({ ...r, portal_token_hash: undefined, password_hash: undefined }));
   return out;
@@ -1593,6 +1605,12 @@ const market = createMarket({
   readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
   background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
   PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort, createProperty,
+});
+
+// ================================================================ TITIP JUALAN & TEMPAT SEKITAR (community.ts)
+const community = createCommunity({
+  sb, q, one, insert, update, str, num, isDate, pick, toCamel, bad, notFound, HttpError, on, created, readImage, putFile, randomToken, clientInfo,
+  normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL,
 });
 
 // ---------------------------------------------------------------- server

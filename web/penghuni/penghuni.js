@@ -202,18 +202,18 @@
     const late = unpaid.some((i) => i.overdue);
     main.innerHTML = `
       <section class="hello">
-        <div><p class="hello__kicker">${D.greet()}. Dashboard penghuni</p>
-          <h1>Horas, ${esc(first)}</h1>
+        <div><p class="hello__kicker">${D.longDate(today)}</p>
+          <h1>Horas, ${esc(first)}.</h1>
           <p>Kamar ${esc(room?.code || '-')}${room?.type ? `, ${esc(room.type)}` : ''} di ${esc(property?.name || 'Bonaasina')}. Sewa ${rp(tenant.rentAmount)} per ${CW(tenant.rentCycle)}.</p></div>
-        <div class="hello__actions">${unpaid[0] ? '<a class="btn btn--light" href="#tagihan">Bayar tagihan</a>' : ''}${wa ? `<a class="btn btn--ghost" href="${esc(wa)}" target="_blank" rel="noopener">${D.ico('wa')}Chat pengelola</a>` : ''}</div>
+        <div class="hello__actions">${wa ? `<a class="btn btn--ghost btn--wa" href="${esc(wa)}" target="_blank" rel="noopener">${D.ico('wa')}Chat pengelola</a>` : ''}${unpaid[0] ? '<a class="btn btn--light" href="#tagihan">Bayar tagihan</a>' : ''}</div>
       </section>
-      <section class="panel"><h2>Yang perlu Anda lakukan</h2>${notifications.length ? `<div class="todo">${notifications.map((n) => `<a href="#${n.view}" class="${n.urgent ? 'is-urgent' : ''}"><span class="dot"></span><span>${esc(n.text)}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu Anda lakukan sekarang.</p>'}</section>
-      <div class="grid grid--stats mt">
+      <div class="grid grid--stats grid--hero">
         <a class="panel stat ${late ? 'stat--red stat--alert' : unpaid[0] ? 'stat--amber' : 'stat--green'} stat--link" href="#tagihan"><p class="stat__label">Tagihan berikutnya</p><span class="stat__ico">${D.ico(unpaid[0] ? 'wallet' : 'check')}</span><p class="stat__value">${unpaid[0] ? rp(unpaid[0].amount) : 'Lunas'}</p><p class="stat__sub">${unpaid[0] ? `${esc(unpaid[0].periodLabel)}, jatuh tempo ${tgl(unpaid[0].dueDate)}` : 'Tidak ada yang perlu dibayar'}</p></a>
         <a class="panel stat stat--blue stat--link" href="#kontrak"><p class="stat__label">Kontrak</p><span class="stat__ico">${D.ico('calendar')}</span><p class="stat__value">${current ? (current.phase === 'menunggu' ? 'Perlu disetujui' : current.daysLeft !== null && current.daysLeft >= 0 ? `${current.daysLeft} hari` : PHASE[current.phase]) : '-'}</p><p class="stat__sub">${current ? (current.phase === 'menunggu' ? esc(current.number) : `Berakhir ${tgl(current.endDate)}`) : 'Belum ada kontrak'}</p></a>
         <a class="panel stat stat--green stat--link" href="#piket"><p class="stat__label">Piket Anda berikutnya</p><span class="stat__ico">${D.ico('tool')}</span><p class="stat__value">${nextChore ? (nextChore.date === today ? 'Hari ini' : hari(nextChore.date)) : '-'}</p><p class="stat__sub">${nextChore ? `${esc(nextChore.name)}, ${tgl(nextChore.date)}` : 'Belum ada jadwal'}</p></a>
         <a class="panel stat stat--amber stat--link" href="#pengumuman"><p class="stat__label">Pengumuman</p><span class="stat__ico">${D.ico('bell')}</span><p class="stat__value">${unread ? `${unread} baru` : 'Tidak ada'}</p><p class="stat__sub">${latestAnn ? esc(latestAnn.title) : 'Belum ada pengumuman'}</p></a>
       </div>
+      <section class="panel mt"><h2>Yang perlu Anda lakukan</h2>${notifications.length ? `<div class="todo">${notifications.map((n) => `<a href="#${n.view}" class="${n.urgent ? 'is-urgent' : ''}"><span class="dot"></span><span>${esc(n.text)}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu Anda lakukan sekarang.</p>'}</section>
       ${(property?.rules || []).length ? `<section class="panel mt"><h2>Aturan ${esc(property.name)}</h2><ul class="rules">${property.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></section>` : ''}`;
     D.sideWidget(unpaid[0] ? `<small>Tagihan berikutnya</small><strong style="font-size:1.4rem">${rp(unpaid[0].amount)}</strong><small>${late ? 'Sudah lewat jatuh tempo' : `Jatuh tempo ${tgl(unpaid[0].dueDate)}`}</small>` : '<small>Status bayar</small><strong style="font-size:1.4rem">Lunas</strong><small>Terima kasih sudah tepat waktu</small>');
   }

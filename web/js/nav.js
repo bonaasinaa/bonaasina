@@ -12,4 +12,7 @@
   btn.addEventListener('click', () => set(menu.hidden));
   menu.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { set(false); btn.focus(); } });
+  // Logo Bonaasina dari pengaturan admin (bila sudah diganti).
+  const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
+  fetch(API + '/brand').then((r) => r.json()).then((b) => { if (b.brandLogo) document.querySelectorAll('[data-brand-logo]').forEach((im) => { im.src = b.brandLogo; }); }).catch(() => {});
 })();

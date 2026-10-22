@@ -177,9 +177,9 @@
   }
 
   // ---------- router ----------
-  const views = { ringkasan, tagihan, laporan, penghuni, kontrak, pengumuman, piket, kerusakan, kamar, survei, tunggu, aktivitas, pengaturan, reservasi, persetujuan, daftar, mitra, pemilik, fee, notifikasi };
+  const views = { ringkasan, tagihan, laporan, penghuni, kontrak, pengumuman, piket, kerusakan, kamar, survei, tunggu, aktivitas, pengaturan, reservasi, persetujuan, daftar, mitra, pemilik, fee, notifikasi, titip, tempat };
   const TITLES = { ringkasan: 'Ringkasan', tagihan: 'Tagihan', laporan: 'Laporan', penghuni: 'Penghuni', kontrak: 'Kontrak', pengumuman: 'Pengumuman', piket: 'Piket', kerusakan: 'Kerusakan', kamar: 'Kamar & kos', survei: 'Survei', tunggu: 'Daftar tunggu', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan',
-    reservasi: 'Reservasi', persetujuan: 'Persetujuan & refund', daftar: 'Pendaftaran mitra', mitra: 'Mitra kos', pemilik: 'Pemilik kos', fee: 'Fee & aturan', notifikasi: 'Notifikasi' };
+    reservasi: 'Reservasi', persetujuan: 'Persetujuan & refund', daftar: 'Pendaftaran mitra', mitra: 'Mitra kos', pemilik: 'Pemilik kos', fee: 'Fee & aturan', notifikasi: 'Notifikasi', titip: 'Titip jualan', tempat: 'Tempat sekitar' };
   const hashParams = () => new URLSearchParams(location.hash.split('?')[1] || '');
   // Data yang dibutuhkan tiap menu; diambil bersamaan sebelum halaman digambar.
   const deps = (name, p = new URLSearchParams()) => ({
@@ -187,7 +187,7 @@
     penghuni: p.get('id') ? [`/tenants/${p.get('id')}/detail`, '/settings'] : ['/tenants', '/rooms'],
     kontrak: ['/contracts', '/summary', '/tenants'], pengumuman: ['/announcements'], piket: ['/chores'], tunggu: ['/waitlist'],
     kamar: ['/rooms', '/properties'], survei: ['/surveys'], kerusakan: ['/issues'],
-    reservasi: ['/leads', '/rooms', '/properties'], persetujuan: ['/leads'], daftar: ['/applications'], mitra: ['/partners', '/owners', '/rooms'], pemilik: ['/owners'], fee: ['/settings', '/leads', '/partners'], notifikasi: ['/notifications'],
+    reservasi: ['/leads', '/rooms', '/properties'], persetujuan: ['/leads'], daftar: ['/applications'], mitra: ['/partners', '/owners', '/rooms'], pemilik: ['/owners'], fee: ['/settings', '/leads', '/partners'], notifikasi: ['/notifications'], titip: ['/listings'], tempat: ['/places'],
     laporan: [`/reports?year=${repYear}`, '/expenses'], aktivitas: [activityPath()], pengaturan: ['/settings'],
   }[name] || []);
   const currentView = () => { const n = (location.hash.slice(1) || 'ringkasan').split('?')[0]; return views[n] ? n : 'ringkasan'; };
@@ -274,7 +274,8 @@
     set('#badgeKontrak', (s.contractsEnding || 0) + (s.contractDecisions || 0)); set('#badgeTunggu', s.waitlistToNotify || 0);
     const m = s.market || {};
     set('#badgeRes', (m.leadsNew || 0)); set('#badgeAppr', (m.approvals || 0) + (m.refunds || 0) + (m.feeToReturn || 0)); set('#badgeMitra', m.partnersPending || 0); set('#badgeDaftar', m.applications || 0); set('#badgeNotif', m.notifUnread || 0);
-    const total = s.overdue + s.proofsPending + s.newSurveys + s.openIssues + (s.contractsEnding || 0) + (s.contractDecisions || 0) + (s.waitlistToNotify || 0) + (m.leadsNew || 0) + (m.approvals || 0) + (m.refunds || 0) + (m.partnersPending || 0) + (m.applications || 0);
+    const cm = s.community || {}; set('#badgeTitip', cm.listingsNew || 0); set('#badgeTempat', cm.placesSuggested || 0);
+    const total = s.overdue + s.proofsPending + s.newSurveys + s.openIssues + (s.contractsEnding || 0) + (s.contractDecisions || 0) + (s.waitlistToNotify || 0) + (m.leadsNew || 0) + (m.approvals || 0) + (m.refunds || 0) + (m.partnersPending || 0) + (m.applications || 0) + (s.community?.listingsNew || 0) + (s.community?.placesSuggested || 0);
     $('#navDot').hidden = !total;
   }
   async function refreshBadges() {
@@ -322,15 +323,15 @@
     const todoCount = todoItems(s).reduce((a, [n]) => a + n, 0);
     main.innerHTML = `
       <section class="hello">
-        <div><p class="hello__kicker">${D.greet()}. Hari ini ${tgl(s.today)}</p>
-          <h1>Ringkasan Bonaasina</h1>
-          <p>${todoCount ? `Ada <strong>${todoCount} hal</strong> yang menunggu Anda hari ini.` : 'Semua beres hari ini. Tidak ada yang mendesak.'}${s.newInvoices ? ` ${s.newInvoices} tagihan baru dibuat otomatis.` : ''}</p></div>
-        <div class="hello__actions"><a class="btn btn--light" href="#tagihan">Buka tagihan</a><a class="btn btn--ghost" href="/" target="_blank" rel="noopener">Lihat website</a></div>
+        <div><p class="hello__kicker">${D.longDate(s.today)}</p>
+          <h1>${D.greet()}, ${esc((cache.settings?.ownerName || 'Admin').split(' ')[0])}.</h1>
+          <p>${todoCount ? `Ada <strong>${todoCount} hal</strong> yang menunggu Anda hari ini${s.overdue ? `, termasuk <strong>${s.overdue} tagihan telat</strong>` : ''}.` : 'Semua beres hari ini. Tidak ada yang mendesak.'}${s.newInvoices ? ` ${s.newInvoices} tagihan baru dibuat otomatis.` : ''}</p></div>
+        <div class="hello__actions"><a class="btn btn--ghost" href="/" target="_blank" rel="noopener">Lihat website</a><a class="btn btn--light" href="#tagihan">Buka tagihan</a></div>
       </section>${sample}
-      <div class="grid grid--stats">
+      <div class="grid grid--stats grid--hero">
+        <a class="panel stat stat--green stat--link" href="#laporan"><p class="stat__label">Uang masuk bulan ini</p><span class="stat__ico">${D.ico('wallet')}</span><p class="stat__value" data-count="${s.incomeThisMonth}" data-fmt="rp">${rp(s.incomeThisMonth)}</p><p class="stat__sub">Pengeluaran ${rp(s.expensesThisMonth)}</p>${rep && rep.months.some((m) => m.income) ? D.spark(rep.months.slice(0, m0 + 1).map((m) => m.income)) : ''}</a>
         <a class="panel stat stat--red stat--link ${s.overdue ? 'stat--alert' : ''}" href="#tagihan"><p class="stat__label">Tunggakan</p><span class="stat__ico">${D.ico('alarm')}</span><p class="stat__value" data-count="${s.overdueAmount}" data-fmt="rp">${rp(s.overdueAmount)}</p><p class="stat__sub">${s.overdue ? `${s.overdue} tagihan lewat jatuh tempo` : 'Tidak ada yang telat'}</p></a>
         <a class="panel stat stat--amber stat--link" href="#tagihan"><p class="stat__label">Jatuh tempo ${cache.settings?.invoiceLeadDays ?? 7} hari lagi</p><span class="stat__ico">${D.ico('calendar')}</span><p class="stat__value" data-count="${s.dueSoonAmount}" data-fmt="rp">${rp(s.dueSoonAmount)}</p><p class="stat__sub">${s.dueSoon} tagihan</p></a>
-        <a class="panel stat stat--green stat--link" href="#laporan"><p class="stat__label">Uang masuk bulan ini</p><span class="stat__ico">${D.ico('wallet')}</span><p class="stat__value" data-count="${s.incomeThisMonth}" data-fmt="rp">${rp(s.incomeThisMonth)}</p><p class="stat__sub">Pengeluaran ${rp(s.expensesThisMonth)}</p></a>
         <div class="panel stat stat--blue ${check ? 'stat--alert' : ''}"><p class="stat__label">Perlu dicek</p><span class="stat__ico">${D.ico('inbox')}</span><p class="stat__value" data-count="${check}">${check}</p><p class="stat__sub"><a href="#tagihan">${s.proofsPending} bukti bayar</a>, <a href="#kerusakan">${s.openIssues} kerusakan</a>, <a href="#survei">${s.newSurveys} survei</a></p></div>
       </div>
       <div class="dash-split mt">
@@ -345,12 +346,14 @@
         <td class="actions"><button class="btn btn--red btn--sm" data-proof="${i.id}">Cek bukti</button></td></tr>`).join('')}</tbody></table></div>` : ''}
       <div class="panel mt"><h2>Perlu ditagih sekarang <a class="small" href="#tagihan">Semua tagihan</a></h2>${invRows(overdue, 'Tidak ada tunggakan. Semua penghuni membayar tepat waktu.')}</div>
       <div class="panel mt"><h2>Akan jatuh tempo</h2>${invRows(soon, 'Belum ada tagihan yang akan jatuh tempo dalam waktu dekat.')}</div>
-      <div class="panel mt"><h2>Kos Sekitar <a class="small" href="#reservasi">Semua reservasi</a></h2>
+      <div class="panel mt"><h2>Kos Sekitar &amp; komunitas <a class="small" href="#reservasi">Semua reservasi</a></h2>
         <div class="mini-stats">
           <a href="#reservasi"><span class="stat__ico" style="--tint:var(--amber-50);--tone:var(--amber)">${D.ico('calendar')}</span><b>${mk.leadsNew || 0}</b><span>reservasi baru</span></a>
           <a href="#persetujuan"><span class="stat__ico" style="--tint:var(--blue-50);--tone:var(--blue)">${D.ico('check')}</span><b>${(mk.approvals || 0) + (mk.refunds || 0)}</b><span>perlu disetujui</span></a>
           <a href="#daftar"><span class="stat__ico" style="--tint:var(--red-50);--tone:var(--red)">${D.ico('people')}</span><b>${mk.applications || 0}</b><span>pendaftaran mitra</span></a>
           <a href="#mitra"><span class="stat__ico" style="--tint:var(--green-50);--tone:var(--green)">${D.ico('home')}</span><b>${mk.partnersPending || 0}</b><span>kos minta tampil</span></a>
+          <a href="#titip"><span class="stat__ico" style="--tint:var(--amber-50);--tone:var(--amber)">${D.ico('bag')}</span><b>${s.community?.listingsNew || 0}</b><span>titip jualan baru</span></a>
+          <a href="#tempat"><span class="stat__ico" style="--tint:var(--blue-50);--tone:var(--blue)">${D.ico('pin')}</span><b>${s.community?.placesSuggested || 0}</b><span>usulan tempat</span></a>
         </div></div>`;
     D.sideWidget(`<small>Kamar terisi</small><strong>${filled}<span>dari ${tot}</span></strong><div class="meter"><i data-w="${occPct}"></i></div><small>${sum('kosong')} kamar siap disewakan</small>`);
     $('#clearSample')?.addEventListener('click', async () => {
@@ -378,6 +381,8 @@
       [s.market?.applications, '#daftar', 'pendaftaran mitra baru menunggu ditinjau', true],
       [s.market?.partnersPending, '#mitra', 'kos mitra minta ditampilkan di website', true],
       [s.market?.feeToReturn, '#persetujuan', 'fee perlu dikembalikan ke pemilik (refund)', false],
+      [s.community?.listingsNew, '#titip', 'titip jualan/jasa baru menunggu dicek', true],
+      [s.community?.placesSuggested, '#tempat', 'usulan tempat sekitar menunggu dicek', false],
     ].filter(([n]) => n);
   }
   function todoPanel(s) {
@@ -624,7 +629,7 @@
     setProps(allProps); const props = cache.properties;
     const own = new Set(props.map((p) => p.id)); const rooms = allRooms.filter((r) => own.has(r.propertyId));
     main.innerHTML = head('Kamar & kos', 'Ubah status, harga, foto, dan informasi yang tampil di website.', '<button class="btn btn--red" data-add-room>Tambah kamar</button>') +
-      `<div class="prop-cards">${props.map((p) => `<div class="panel prop-card"><img src="${esc(p.logo)}" alt=""><div style="flex:1"><strong>${esc(p.name)}</strong><p class="small muted">${esc(p.gender ? 'Kos ' + p.gender.toLowerCase() + ', ' : '')}${(p.photos || []).length} foto, ${p.mapsQuery ? 'peta sudah diatur' : 'peta belum diatur'}</p></div><button class="btn btn--ghost btn--sm" data-edit-prop="${p.id}">Ubah info kos</button></div>`).join('')}</div>` +
+      `<div class="prop-cards">${props.map((p) => `<div class="panel prop-card"><div class="logo-box"><img src="${esc(p.logo)}" alt="Logo ${esc(p.name)}"></div><div style="flex:1"><strong>${esc(p.name)}</strong><p class="small muted">${esc(p.gender ? 'Kos ' + p.gender.toLowerCase() + ', ' : '')}${(p.photos || []).length} foto, ${p.mapsQuery ? 'peta sudah diatur' : 'peta belum diatur'}</p></div><button class="btn btn--ghost btn--sm" data-edit-prop="${p.id}">Ubah info kos</button></div>`).join('')}</div>` +
       props.map((p) => {
         const list = rooms.filter((r) => r.propertyId === p.id);
         return `<div class="room-head"><h2>${esc(p.name)}</h2><span class="muted small">${list.filter((r) => r.effectiveStatus === 'kosong').length} kosong dari ${list.length} kamar</span></div>
@@ -677,6 +682,7 @@
       e.target.value = '';
     });
   }
+  const uploadBlob = async (blob) => (await api('POST', '/upload', undefined, blob)).url;
   // Perkecil foto dari HP (sering 4–10 MB) sebelum diunggah, supaya website tetap ringan.
   function shrink(file, max = 1800) {
     return new Promise((resolve) => {
@@ -736,7 +742,8 @@
         <label class="span-all">Alamat lengkap<input name="address" value="${esc(p.address)}"></label>
         <label class="span-all">Titik peta <span class="hint">nama tempat di Google Maps, atau koordinat seperti 2.3333,99.0667</span><input name="mapsQuery" value="${esc(p.mapsQuery)}" placeholder="Contoh: 2.3333,99.0667"></label>
         <label>Fasilitas bersama <span class="hint">satu per baris</span><textarea name="facilities" rows="5">${lines(p.facilities)}</textarea></label>
-        <label>Aturan kos <span class="hint">satu per baris</span><textarea name="rules" rows="5">${lines(p.rules)}</textarea></label>
+        <label>Aturan kos <span class="hint">satu per baris, hanya tampil di dashboard penghuni</span><textarea name="rules" rows="5">${lines(p.rules)}</textarea></label>
+        ${window.BonaDash.logoField('logo', p.logo, 'Logo kos')}
         <label class="span-all">Dekat dengan <span class="hint">satu per baris, misalnya "Pasar — 5 menit"</span><textarea name="nearby" rows="3">${lines(p.nearby)}</textarea></label>
         ${photoField('photos', p.photos || [])}
         <p class="fieldset-title span-all">Periode sewa yang dibuka</p>
@@ -759,7 +766,7 @@
         <label class="span-all">Catatan untuk pemilik <span class="hint">tampil di dashboard pemilik</span><input name="reviewNote" value="${esc(p.reviewNote || '')}"></label>` : ''}
       </div>`,
       wide: true,
-      onOpen: (b) => bindPhotos(b, 'photos'),
+      onOpen: (b) => { bindPhotos(b, 'photos'); window.BonaDash.bindLogo(b, 'logo', uploadBlob, (ex) => toast(ex.message, true)); },
       onOk: async (d) => { d.photos = JSON.parse(d.photos || '[]');
         d.periods = Object.keys(CYCLE_NAME).filter((k) => d[`per_${k}`]); Object.keys(CYCLE_NAME).forEach((k) => delete d[`per_${k}`]);
         d.chatEnabled = d.chatEnabled === 'on'; d.waEnabled = d.waEnabled === 'on'; await api('PUT', `/properties/${p.id}`, d); setProps(await api('GET', '/properties')); toast('Info kos disimpan.'); route(); },
@@ -1422,6 +1429,7 @@
         </div>
         <div class="panel fields">
           <p class="fieldset-title">Halaman depan</p>
+          ${window.BonaDash.logoField('brandLogo', s.brandLogo || '/assets/img/logo-bonaasina.webp', 'Logo Bonaasina (header, footer & halaman masuk)', '/assets/img/logo-bonaasina.webp')}
           <label>Kalimat pembuka<input name="tagline" value="${esc(s.tagline)}"></label>
           <label>Kata yang berganti di judul <span class="hint">satu per baris: "Pulang ke kamar yang …"</span><textarea name="heroWords" rows="4">${lines(s.heroWords)}</textarea></label>
         </div>
@@ -1458,6 +1466,7 @@
         .replaceAll('{rekening}', $('[name=paymentInfo]').value || '-');
     };
     preview(); $('#tpl').oninput = preview; $('[name=paymentInfo]').addEventListener('input', preview);
+    window.BonaDash.bindLogo(main, 'brandLogo', uploadBlob, (ex) => toast(ex.message, true));
     $('#tplReset').onclick = () => { $('#tpl').value = s.defaultReminderTemplate; preview(); };
     $('#ctrTplReset').onclick = () => { $('#ctrTpl').value = s.defaultContractTemplate; };
     $('#faqAdd').onclick = () => { $('#faqRows').insertAdjacentHTML('beforeend', faqRow({ q: '', a: '' })); $('#faqRows .faq-row:last-child input').focus(); };
@@ -1617,9 +1626,124 @@
         <label>Fee<select name="feeType"><option value="">Ikut fee bawaan</option><option value="persen" ${p.feeType === 'persen' ? 'selected' : ''}>Persen dari DP</option><option value="nominal" ${p.feeType === 'nominal' ? 'selected' : ''}>Nominal tetap per booking</option></select></label>
         <label>Nilai fee <span class="hint">% atau Rp</span><input type="number" name="feeValue" min="0" step="0.5" value="${p.feeValue ?? ''}"></label>
         <label class="span-all">Pesan untuk pemilik <span class="hint">opsional, tampil di dashboard pemilik</span><input name="reviewNote" value="${esc(p.reviewNote || '')}" placeholder="Mis. tambahkan foto kamar mandi sebelum ditampilkan"></label>
-        <p class="hint span-all">Foto, kamar, harga, rekening, dan aturan kos diisi oleh pemilik dari dashboard-nya.</p></div>`,
+        ${window.BonaDash.logoField('logo', p.logo, 'Logo kos')}
+        <p class="hint span-all">Foto, kamar, harga, rekening, dan aturan kos diisi oleh pemilik dari dashboard-nya. Logo juga bisa diganti pemilik.</p></div>`,
+      onOpen: (b) => window.BonaDash.bindLogo(b, 'logo', uploadBlob, (ex) => toast(ex.message, true)),
       onOk: async (d) => { await api('PUT', `/properties/${p.id}`, d); setProps(await api('GET', '/properties')); toast('Tersimpan.'); route(); },
     });
+  }
+
+  // ========== TITIP JUALAN & JASA ==========
+  let titipFilter = 'baru';
+  async function titip() {
+    const D = window.BonaDash;
+    const { listings: all, categories } = await get('/listings');
+    const today = new Date().toISOString().slice(0, 10);
+    const isExp = (l) => l.status === 'aktif' && l.expiresOn && l.expiresOn < today;
+    const list = all.filter((l) => titipFilter === 'semua' || (titipFilter === 'kedaluwarsa' ? isExp(l) : l.status === titipFilter && !(titipFilter === 'aktif' && isExp(l))));
+    const n = (st) => all.filter((l) => l.status === st && !(st === 'aktif' && isExp(l))).length;
+    const ST = { baru: ['Menunggu dicek', 'baru'], aktif: ['Tampil', 'aktif'], ditolak: ['Ditolak', 'batal'], selesai: ['Selesai/laku', 'keluar'] };
+    main.innerHTML = head('Titip jualan & jasa', 'Iklan barang dan jasa mahasiswa dari halaman <a href="/titip/" target="_blank" rel="noopener">Titip jualan</a>. Cek isinya, lalu tampilkan. Pembeli menghubungi penjual langsung lewat WhatsApp.',
+      '<a class="btn btn--ghost" href="/titip/" target="_blank" rel="noopener">Lihat halaman</a><button class="btn btn--red" id="addTitip">Tambah iklan</button>') + `
+      <div class="toolbar"><div class="seg" id="tjSeg">${[['baru', `Menunggu (${n('baru')})`], ['aktif', `Tampil (${n('aktif')})`], ['kedaluwarsa', 'Lewat masa tayang'], ['selesai', 'Selesai'], ['ditolak', 'Ditolak'], ['semua', 'Semua']].map(([k, t]) => `<button aria-pressed="${titipFilter === k}" data-k="${k}">${t}</button>`).join('')}</div></div>
+      ${list.length ? `<div class="apps">${list.map((l) => `<article class="panel listing-card">
+        <div class="listing-card__top">${l.photos?.[0] ? `<a class="listing-card__img" href="${esc(l.photos[0])}" target="_blank" rel="noopener"><img src="${esc(l.photos[0])}" alt="" loading="lazy"></a>` : `<div class="listing-card__img is-empty">${D.ico(l.kind === 'jasa' ? 'tool' : 'bag')}</div>`}
+          <div style="min-width:0;flex:1"><div class="row-between"><span class="pill pill--${isExp(l) ? 'berakhir' : ST[l.status][1]}">${isExp(l) ? 'Lewat masa tayang' : ST[l.status][0]}</span>${l.featured ? '<span class="pill pill--info">Disorot</span>' : ''}</div>
+          <h2 style="margin:8px 0 2px">${esc(l.title)}</h2><p class="small muted">${l.kind === 'jasa' ? 'Jasa' : 'Jualan'}, ${esc(l.category)}</p>
+          <p class="listing-card__price">${l.price != null ? rp(l.price) : 'Harga nego'}${l.priceNote ? ` <span>${esc(l.priceNote)}</span>` : ''}</p></div></div>
+        <p class="small" style="white-space:pre-wrap">${esc(l.description)}</p>
+        <dl class="kv"><dt>Penjual</dt><dd>${esc(l.sellerName)}${l.sellerInfo ? `, ${esc(l.sellerInfo)}` : ''}</dd><dt>WhatsApp</dt><dd><a href="https://wa.me/${esc(l.waSeller)}" target="_blank" rel="noopener">${esc(l.sellerPhone)}</a></dd>
+          ${l.area ? `<dt>Lokasi</dt><dd>${esc(l.area)}</dd>` : ''}<dt>Masuk</dt><dd>${MK.relTime(l.createdAt)}</dd>${l.expiresOn ? `<dt>Tayang sampai</dt><dd>${tgl(l.expiresOn)}</dd>` : ''}${l.adminNote ? `<dt>Catatan admin</dt><dd>${esc(l.adminNote)}</dd>` : ''}</dl>
+        <div class="btn-row">${l.status === 'baru' ? `<button class="btn btn--green btn--sm" data-tj-ok="${l.id}">Tampilkan</button><button class="btn btn--ghost btn--sm" data-tj-no="${l.id}">Tolak</button>` : ''}
+          ${l.status === 'aktif' && !isExp(l) ? `<button class="btn btn--ghost btn--sm" data-tj-done="${l.id}">Tandai laku/selesai</button>` : ''}${isExp(l) || l.status === 'selesai' ? `<button class="btn btn--ghost btn--sm" data-tj-ok="${l.id}">Tayangkan lagi</button>` : ''}
+          <button class="btn btn--ghost btn--sm" data-tj-edit="${l.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-tj-del="${l.id}" aria-label="Hapus iklan">Hapus</button></div></article>`).join('')}</div>`
+        : `<div class="panel empty">${titipFilter === 'baru' ? 'Belum ada iklan baru. Bagikan tautan <strong>' + esc(location.host) + '/titip</strong> ke grup mahasiswa.' : 'Tidak ada data.'}</div>`}`;
+    $('#tjSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; titipFilter = b.dataset.k; route(); };
+    const form = (l = {}) => `<div class="fields fields--2">
+        <label>Jenis<select name="kind" id="tjKind">${[['jual', 'Jualan barang'], ['jasa', 'Jasa']].map(([k, v]) => `<option value="${k}" ${l.kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        <label>Kategori<select name="category" id="tjCat"></select></label>
+        <label class="span-all">Nama barang/jasa<input name="title" value="${esc(l.title || '')}" required></label>
+        <label class="span-all">Keterangan<textarea name="description" rows="3">${esc(l.description || '')}</textarea></label>
+        <label>Harga <span class="hint">kosong = nego</span><input type="number" name="price" min="0" step="500" value="${l.price ?? ''}"></label>
+        <label>Keterangan harga<input name="priceNote" value="${esc(l.priceNote || '')}" placeholder="per jam, mulai dari, dll."></label>
+        <label>Nama penjual<input name="sellerName" value="${esc(l.sellerName || '')}" required></label>
+        <label>WhatsApp penjual<input name="sellerPhone" inputmode="tel" value="${esc(l.sellerPhone || '')}" required></label>
+        <label>Kampus/jurusan atau kos<input name="sellerInfo" value="${esc(l.sellerInfo || '')}"></label>
+        <label>Lokasi ambil/antar<input name="area" value="${esc(l.area || '')}"></label>
+        <label>Tayang sampai<input type="date" name="expiresOn" value="${esc(l.expiresOn || '')}"></label>
+        <label><input type="checkbox" name="featured" ${l.featured ? 'checked' : ''}> Sorot di urutan atas</label>
+        ${photoField('photos', l.photos || [])}</div>`;
+    const bindForm = (b, l = {}) => {
+      const fill = () => { const k = $('#tjKind', b).value; $('#tjCat', b).innerHTML = categories[k].map((c) => `<option ${l.category === c ? 'selected' : ''}>${esc(c)}</option>`).join(''); };
+      fill(); $('#tjKind', b).onchange = fill; bindPhotos(b, 'photos');
+    };
+    const prep = (d) => { d.photos = JSON.parse(d.photos || '[]'); d.featured = d.featured === 'on'; return d; };
+    $('#addTitip').onclick = () => openDialog({ title: 'Tambah iklan', ok: 'Simpan & tampilkan', wide: true, body: form(), onOpen: (b) => bindForm(b),
+      onOk: async (d) => { d = prep(d); const r = await api('POST', '/listings', d); toast('Iklan ditambahkan.'); titipFilter = 'aktif'; route(); return r; } });
+    main.onclick = async (e) => {
+      const t = (k) => e.target.closest(`[data-tj-${k}]`)?.getAttribute(`data-tj-${k}`);
+      const id = t('ok') || t('no') || t('done') || t('edit') || t('del'); if (!id) return;
+      const l = all.find((x) => x.id === id);
+      const setStatus = async (status, extra = {}) => {
+        const out = await api('PUT', `/listings/${id}`, { status, ...extra });
+        toast(status === 'aktif' ? 'Iklan tampil di website.' : status === 'ditolak' ? 'Iklan ditolak.' : 'Iklan ditandai selesai.'); route();
+        if (out.wa) setTimeout(() => waDialog('Kabari penjual', 'Kirim kabar supaya penjual tahu status iklannya.', { url: out.wa, text: decodeURIComponent(out.wa.split('text=')[1] || '') }), 80);
+      };
+      try {
+        if (t('ok')) await setStatus('aktif', l.status !== 'baru' ? { expiresOn: '' } : {});
+        if (t('done')) await setStatus('selesai');
+        if (t('no')) openDialog({ title: `Tolak "${l.title}"`, ok: 'Tolak', body: '<label>Alasan <span class="hint">opsional, ikut dalam pesan WhatsApp</span><input name="adminNote" placeholder="Mis. foto kurang jelas atau barang tidak boleh dijual"></label>', onOk: async (d) => setStatus('ditolak', d) });
+        if (t('edit')) openDialog({ title: 'Ubah iklan', ok: 'Simpan', wide: true, body: form(l), onOpen: (b) => bindForm(b, l), onOk: async (d) => { await api('PUT', `/listings/${id}`, prep(d)); toast('Perubahan disimpan.'); route(); } });
+        if (t('del')) { if (!(await askConfirm('Hapus iklan?', `"${l.title}" dan fotonya akan dihapus permanen.`, 'Hapus'))) return; await api('DELETE', `/listings/${id}`); toast('Iklan dihapus.'); route(); }
+      } catch (ex) { toast(ex.message, true); }
+    };
+  }
+
+  // ========== TEMPAT SEKITAR ==========
+  let tempatFilter = 'aktif';
+  async function tempat() {
+    const D = window.BonaDash;
+    const { places: all, categories } = await get('/places');
+    const list = all.filter((p) => tempatFilter === 'semua' || p.status === tempatFilter);
+    const n = (st) => all.filter((p) => p.status === st).length;
+    const ST = { usulan: ['Usulan baru', 'baru'], aktif: ['Tampil', 'aktif'], ditolak: ['Ditolak', 'batal'], tutup: ['Tutup', 'keluar'] };
+    main.innerHTML = head('Tempat sekitar', 'Warung, toko, laundry, dan tempat penting lain di sekitar kos. Tampil di halaman <a href="/sekitar/" target="_blank" rel="noopener">Info sekitar</a>; pengunjung juga bisa mengusulkan tempat baru.',
+      '<a class="btn btn--ghost" href="/sekitar/" target="_blank" rel="noopener">Lihat halaman</a><button class="btn btn--red" id="addPlace">Tambah tempat</button>') + `
+      <div class="toolbar"><div class="seg" id="tpSeg">${[['aktif', `Tampil (${n('aktif')})`], ['usulan', `Usulan (${n('usulan')})`], ['tutup', 'Tutup'], ['ditolak', 'Ditolak'], ['semua', 'Semua']].map(([k, t]) => `<button aria-pressed="${tempatFilter === k}" data-k="${k}">${t}</button>`).join('')}</div></div>
+      <div class="table-wrap">${list.length ? `<table><thead><tr><th>Tempat</th><th>Kategori</th><th>Jarak & jam buka</th><th>Status</th><th></th></tr></thead><tbody>${list.map((p) => `<tr>
+        <td data-label="Tempat"><div class="who-cell">${p.photo ? `<img class="av" src="${esc(p.photo)}" alt="" style="object-fit:cover">` : D.avatar(p.name)}<div><strong>${esc(p.name)}</strong><span class="sub">${esc(p.address || p.description || '-')}</span>${p.status === 'usulan' && p.suggestedBy ? `<span class="sub">Diusulkan: ${esc(p.suggestedBy)}</span>` : ''}</div></div></td>
+        <td data-label="Kategori">${esc(categories[p.category] || p.category)}</td>
+        <td data-label="Jarak & jam">${esc(p.distanceNote || '-')}<span class="sub">${esc(p.openHours || '')}</span></td>
+        <td data-label="Status"><span class="pill pill--${ST[p.status][1]}">${ST[p.status][0]}</span></td>
+        <td class="actions">${p.status === 'usulan' ? `<button class="btn btn--green btn--sm" data-tp-ok="${p.id}">Tampilkan</button><button class="btn btn--ghost btn--sm" data-tp-no="${p.id}">Tolak</button>` : ''}<button class="btn btn--ghost btn--sm" data-tp-edit="${p.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-tp-del="${p.id}">Hapus</button></td></tr>`).join('')}</tbody></table>`
+        : `<div class="empty">${tempatFilter === 'aktif' ? 'Belum ada tempat. Tambahkan warung, laundry, atau toko terdekat supaya calon penyewa tahu suasana sekitar kos.' : 'Tidak ada data.'}</div>`}</div>`;
+    $('#tpSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; tempatFilter = b.dataset.k; route(); };
+    const form = (p = {}) => `<div class="fields fields--2">
+        <label>Nama tempat<input name="name" value="${esc(p.name || '')}" required></label>
+        <label>Kategori<select name="category">${Object.entries(categories).map(([k, v]) => `<option value="${k}" ${p.category === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+        <label class="span-all">Keterangan singkat<textarea name="description" rows="2" placeholder="Mis. Nasi campur dan mie gomak, porsi besar">${esc(p.description || '')}</textarea></label>
+        <label>Jarak dari kos<input name="distanceNote" value="${esc(p.distanceNote || '')}" placeholder="3 menit jalan kaki dari Kos Asina"></label>
+        <label>Jam buka<input name="openHours" value="${esc(p.openHours || '')}" placeholder="07.00–21.00"></label>
+        <label>Kisaran harga<input name="priceNote" value="${esc(p.priceNote || '')}" placeholder="Mulai Rp12.000"></label>
+        <label>WhatsApp <span class="hint">opsional</span><input name="whatsapp" inputmode="tel" value="${esc(p.whatsapp || '')}"></label>
+        <label class="span-all">Alamat<input name="address" value="${esc(p.address || '')}"></label>
+        <label class="span-all">Titik peta <span class="hint">nama di Google Maps atau koordinat</span><input name="mapsQuery" value="${esc(p.mapsQuery || '')}"></label>
+        <label>Urutan <span class="hint">angka kecil tampil lebih dulu</span><input type="number" name="sort" min="0" max="999" value="${p.sort ?? 50}"></label>
+        <label>Status<select name="status">${Object.entries(ST).map(([k, [v]]) => `<option value="${k}" ${(p.status || 'aktif') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+        ${photoField('photoList', p.photo ? [p.photo] : [])}</div>`;
+    const prep = (d) => { d.photo = JSON.parse(d.photoList || '[]')[0] || ''; delete d.photoList; return d; };
+    $('#addPlace').onclick = () => openDialog({ title: 'Tambah tempat', ok: 'Simpan', wide: true, body: form(), onOpen: (b) => bindPhotos(b, 'photoList'),
+      onOk: async (d) => { await api('POST', '/places', prep(d)); toast('Tempat ditambahkan.'); route(); } });
+    main.onclick = async (e) => {
+      const t = (k) => e.target.closest(`[data-tp-${k}]`)?.getAttribute(`data-tp-${k}`);
+      const id = t('ok') || t('no') || t('edit') || t('del'); if (!id) return;
+      const p = all.find((x) => x.id === id);
+      try {
+        if (t('ok') || t('no')) { await api('PUT', `/places/${id}`, { status: t('ok') ? 'aktif' : 'ditolak' }); toast(t('ok') ? 'Tempat tampil di website.' : 'Usulan ditolak.'); route(); }
+        if (t('edit')) openDialog({ title: `Ubah ${p.name}`, ok: 'Simpan', wide: true, body: form(p), onOpen: (b) => bindPhotos(b, 'photoList'), onOk: async (d) => { await api('PUT', `/places/${id}`, prep(d)); toast('Perubahan disimpan.'); route(); } });
+        if (t('del')) { if (!(await askConfirm('Hapus tempat?', `${p.name} akan dihapus dari daftar.`, 'Hapus'))) return; await api('DELETE', `/places/${id}`); toast('Tempat dihapus.'); route(); }
+      } catch (ex) { toast(ex.message, true); }
+    };
   }
 
   // ---------- pendaftaran mitra ----------
