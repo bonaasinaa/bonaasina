@@ -183,7 +183,7 @@
   const hashParams = () => new URLSearchParams(location.hash.split('?')[1] || '');
   // Data yang dibutuhkan tiap menu; diambil bersamaan sebelum halaman digambar.
   const deps = (name, p = new URLSearchParams()) => ({
-    ringkasan: ['/summary', '/invoices'], tagihan: ['/invoices', '/tenants'],
+    ringkasan: ['/summary', '/invoices', `/reports?year=${new Date().getFullYear()}`], tagihan: ['/invoices', '/tenants'],
     penghuni: p.get('id') ? [`/tenants/${p.get('id')}/detail`, '/settings'] : ['/tenants', '/rooms'],
     kontrak: ['/contracts', '/summary', '/tenants'], pengumuman: ['/announcements'], piket: ['/chores'], tunggu: ['/waitlist'],
     kamar: ['/rooms', '/properties'], survei: ['/surveys'], kerusakan: ['/issues'],
@@ -294,43 +294,65 @@
 
   // ========== RINGKASAN ==========
   async function ringkasan() {
-    const [s, inv] = await Promise.all([get('/summary'), get('/invoices')]);
+    const D = window.BonaDash;
+    const [s, inv, rep] = await Promise.all([get('/summary'), get('/invoices'), get(`/reports?year=${new Date().getFullYear()}`).catch(() => null)]);
     const overdue = inv.filter((i) => i.status === 'belum' && i.overdue).slice(0, 6);
     const soon = inv.filter((i) => i.status === 'belum' && !i.overdue).slice(0, 6);
     const proofs = inv.filter((i) => i.status === 'belum' && i.proofStatus === 'menunggu');
     const sample = s.isSample ? `<div class="notice"><p><strong>Kamar, harga, deskripsi, nomor WhatsApp, dan rekening masih contoh.</strong> Perbarui di menu Kamar & kos dan Pengaturan sebelum website dibagikan ke calon penyewa.</p><button class="btn btn--sm" id="clearSample">Sudah saya perbarui</button></div>` : '';
-    const occ = s.perProperty.map((p) => {
-      const pct = (n) => (p.total ? (n / p.total) * 100 : 0);
-      return `<div class="occ__row"><div class="occ__top"><strong>${esc(p.name)}</strong><span>${p.terisi} dari ${p.total} terisi</span></div>
-        <div class="occ__bar" role="img" aria-label="${p.terisi} terisi, ${p.kosong} kosong, ${p.dipesan} dipesan, ${p.perbaikan} perbaikan">
-          <span class="c-terisi" style="width:${pct(p.terisi)}%"></span><span class="c-dipesan" style="width:${pct(p.dipesan)}%"></span><span class="c-kosong" style="width:${pct(p.kosong)}%"></span><span class="c-perbaikan" style="width:${pct(p.perbaikan)}%"></span>
-        </div></div>`;
-    }).join('');
+    const sum = (k) => s.perProperty.reduce((a, p) => a + (p[k] || 0), 0);
+    const tot = sum('total'), filled = sum('terisi');
+    const occPct = tot ? Math.round((filled / tot) * 100) : 0;
+    const donut = D.donut([
+      { label: 'Terisi', value: filled, color: 'var(--ink)' }, { label: 'Dipesan', value: sum('dipesan'), color: '#C99A3B' },
+      { label: 'Kosong', value: sum('kosong'), color: 'var(--green)' }, { label: 'Perbaikan', value: sum('perbaikan'), color: 'var(--red)' },
+    ], { value: `${occPct}%`, label: 'terisi' });
+    const perProp = s.perProperty.map((p) => `<div class="occ__row"><div class="occ__top"><strong>${esc(p.name)}</strong><span>${p.terisi} dari ${p.total} terisi${p.kosong ? `, <b style="color:var(--green)">${p.kosong} kosong</b>` : ''}</span></div>
+        <div class="meter"><i data-w="${p.total ? (p.terisi / p.total) * 100 : 0}"></i></div></div>`).join('');
+    const m0 = new Date().getMonth();
+    const months = rep ? rep.months.map((m, i) => ({ ...m, i })).slice(Math.max(0, m0 - 5), m0 + 1) : [];
+    const income = months.some((m) => m.income) ? D.colbars(months.map((m) => ({ label: BULAN[m.i], value: m.income, text: rp(m.income), short: m.income ? D.short(m.income) : '–', now: m.i === m0 })), 'Uang masuk per bulan') : '<div class="empty empty--calm">Belum ada pembayaran tercatat dalam 6 bulan terakhir. Grafik akan terisi setelah tagihan ditandai lunas.</div>';
+    const mk = s.market || {};
+    const check = s.proofsPending + s.openIssues + s.newSurveys;
     const invRows = (list, emptyText) => list.length ? `<table><tbody>${list.map((i) => `<tr>
-        <td data-label="Penghuni"><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></td>
+        <td data-label="Penghuni"><div class="who-cell">${D.avatar(i.tenantName)}<div><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></div></div></td>
         <td data-label="Jatuh tempo" class="nowrap">${tgl(i.dueDate)}${i.overdue ? `<span class="sub" style="color:var(--red)">lewat ${i.overdueDays} hari</span>` : ''}</td>
-        <td class="num" data-label="Jumlah">${rp(i.amount)}</td>
-        <td class="actions"><button class="btn btn--green btn--sm" data-remind="${i.id}">Kirim pengingat WA</button><button class="btn btn--ghost btn--sm" data-pay="${i.id}">Tandai lunas</button></td></tr>`).join('')}</tbody></table>` : `<div class="empty">${emptyText}</div>`;
-    main.innerHTML = head('Ringkasan', `Hari ini ${tgl(s.today)}.${s.newInvoices ? ` ${s.newInvoices} tagihan baru dibuat otomatis.` : ''}`,
-      '<a class="btn btn--ghost" href="/" target="_blank" rel="noopener">Lihat website</a>') + sample + `
+        <td class="num" data-label="Jumlah"><strong>${rp(i.amount)}</strong></td>
+        <td class="actions"><button class="btn btn--ghost btn--sm btn--wa" data-remind="${i.id}" title="Kirim pengingat lewat WhatsApp">${D.ico('wa')}Ingatkan</button><button class="btn btn--ghost btn--sm" data-pay="${i.id}">Tandai lunas</button></td></tr>`).join('')}</tbody></table>` : `<div class="empty empty--calm">${emptyText}</div>`;
+    const todoCount = todoItems(s).reduce((a, [n]) => a + n, 0);
+    main.innerHTML = `
+      <section class="hello">
+        <div><p class="hello__kicker">${D.greet()}. Hari ini ${tgl(s.today)}</p>
+          <h1>Ringkasan Bonaasina</h1>
+          <p>${todoCount ? `Ada <strong>${todoCount} hal</strong> yang menunggu Anda hari ini.` : 'Semua beres hari ini. Tidak ada yang mendesak.'}${s.newInvoices ? ` ${s.newInvoices} tagihan baru dibuat otomatis.` : ''}</p></div>
+        <div class="hello__actions"><a class="btn btn--light" href="#tagihan">Buka tagihan</a><a class="btn btn--ghost" href="/" target="_blank" rel="noopener">Lihat website</a></div>
+      </section>${sample}
       <div class="grid grid--stats">
-        <div class="panel stat ${s.overdue ? 'stat--alert' : ''}"><p class="stat__label">Tunggakan</p><p class="stat__value">${rp(s.overdueAmount)}</p><p class="stat__sub">${s.overdue} tagihan lewat jatuh tempo</p></div>
-        <div class="panel stat"><p class="stat__label">Jatuh tempo ${cache.settings?.invoiceLeadDays ?? 7} hari ke depan</p><p class="stat__value">${rp(s.dueSoonAmount)}</p><p class="stat__sub">${s.dueSoon} tagihan</p></div>
-        <div class="panel stat"><p class="stat__label">Uang masuk bulan ini</p><p class="stat__value">${rp(s.incomeThisMonth)}</p><p class="stat__sub">Pengeluaran ${rp(s.expensesThisMonth)}</p></div>
-        <div class="panel stat ${s.proofsPending ? 'stat--alert' : ''}"><p class="stat__label">Perlu dicek</p><p class="stat__value">${s.proofsPending + s.openIssues + s.newSurveys}</p><p class="stat__sub"><a href="#tagihan">${s.proofsPending} bukti bayar</a>, <a href="#kerusakan">${s.openIssues} kerusakan</a>, <a href="#survei">${s.newSurveys} survei</a></p></div>
+        <a class="panel stat stat--red stat--link ${s.overdue ? 'stat--alert' : ''}" href="#tagihan"><p class="stat__label">Tunggakan</p><span class="stat__ico">${D.ico('alarm')}</span><p class="stat__value" data-count="${s.overdueAmount}" data-fmt="rp">${rp(s.overdueAmount)}</p><p class="stat__sub">${s.overdue ? `${s.overdue} tagihan lewat jatuh tempo` : 'Tidak ada yang telat'}</p></a>
+        <a class="panel stat stat--amber stat--link" href="#tagihan"><p class="stat__label">Jatuh tempo ${cache.settings?.invoiceLeadDays ?? 7} hari lagi</p><span class="stat__ico">${D.ico('calendar')}</span><p class="stat__value" data-count="${s.dueSoonAmount}" data-fmt="rp">${rp(s.dueSoonAmount)}</p><p class="stat__sub">${s.dueSoon} tagihan</p></a>
+        <a class="panel stat stat--green stat--link" href="#laporan"><p class="stat__label">Uang masuk bulan ini</p><span class="stat__ico">${D.ico('wallet')}</span><p class="stat__value" data-count="${s.incomeThisMonth}" data-fmt="rp">${rp(s.incomeThisMonth)}</p><p class="stat__sub">Pengeluaran ${rp(s.expensesThisMonth)}</p></a>
+        <div class="panel stat stat--blue ${check ? 'stat--alert' : ''}"><p class="stat__label">Perlu dicek</p><span class="stat__ico">${D.ico('inbox')}</span><p class="stat__value" data-count="${check}">${check}</p><p class="stat__sub"><a href="#tagihan">${s.proofsPending} bukti bayar</a>, <a href="#kerusakan">${s.openIssues} kerusakan</a>, <a href="#survei">${s.newSurveys} survei</a></p></div>
+      </div>
+      <div class="dash-split mt">
+        <div class="panel"><h2>Uang masuk 6 bulan terakhir <a class="small" href="#laporan">Laporan lengkap</a></h2>${income}</div>
+        <div class="panel"><h2>Hunian kamar <a class="small" href="#kamar">Kelola kamar</a></h2>${donut}<div class="occ mt">${perProp}</div></div>
       </div>
       ${todoPanel(s)}
       ${proofs.length ? `<div class="panel mt"><h2>Bukti bayar menunggu dicek</h2><table><tbody>${proofs.map((i) => `<tr>
-        <td data-label="Penghuni"><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></td>
+        <td data-label="Penghuni"><div class="who-cell">${D.avatar(i.tenantName)}<div><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></div></div></td>
         <td data-label="Dikirim" class="nowrap">${tgl(i.proofUploadedAt)}</td>
         <td class="num" data-label="Jumlah">${rp(i.amount)}</td>
         <td class="actions"><button class="btn btn--red btn--sm" data-proof="${i.id}">Cek bukti</button></td></tr>`).join('')}</tbody></table></div>` : ''}
-      <div class="grid grid--2 mt">
-        <div class="panel"><h2>Hunian kamar</h2><div class="occ">${occ}</div>
-          <div class="legend"><span><i class="c-terisi"></i>Terisi</span><span><i class="c-dipesan"></i>Dipesan</span><span><i class="c-kosong"></i>Kosong</span><span><i class="c-perbaikan"></i>Perbaikan</span></div></div>
-        <div class="panel"><h2>Perlu ditagih sekarang <a class="small" href="#tagihan">Semua tagihan</a></h2>${invRows(overdue, 'Tidak ada tunggakan. Semua penghuni membayar tepat waktu.')}</div>
-      </div>
-      <div class="panel mt"><h2>Akan jatuh tempo</h2>${invRows(soon, 'Belum ada tagihan yang akan jatuh tempo dalam waktu dekat.')}</div>`;
+      <div class="panel mt"><h2>Perlu ditagih sekarang <a class="small" href="#tagihan">Semua tagihan</a></h2>${invRows(overdue, 'Tidak ada tunggakan. Semua penghuni membayar tepat waktu.')}</div>
+      <div class="panel mt"><h2>Akan jatuh tempo</h2>${invRows(soon, 'Belum ada tagihan yang akan jatuh tempo dalam waktu dekat.')}</div>
+      <div class="panel mt"><h2>Kos Sekitar <a class="small" href="#reservasi">Semua reservasi</a></h2>
+        <div class="mini-stats">
+          <a href="#reservasi"><span class="stat__ico" style="--tint:var(--amber-50);--tone:var(--amber)">${D.ico('calendar')}</span><b>${mk.leadsNew || 0}</b><span>reservasi baru</span></a>
+          <a href="#persetujuan"><span class="stat__ico" style="--tint:var(--blue-50);--tone:var(--blue)">${D.ico('check')}</span><b>${(mk.approvals || 0) + (mk.refunds || 0)}</b><span>perlu disetujui</span></a>
+          <a href="#daftar"><span class="stat__ico" style="--tint:var(--red-50);--tone:var(--red)">${D.ico('people')}</span><b>${mk.applications || 0}</b><span>pendaftaran mitra</span></a>
+          <a href="#mitra"><span class="stat__ico" style="--tint:var(--green-50);--tone:var(--green)">${D.ico('home')}</span><b>${mk.partnersPending || 0}</b><span>kos minta tampil</span></a>
+        </div></div>`;
+    D.sideWidget(`<small>Kamar terisi</small><strong>${filled}<span>dari ${tot}</span></strong><div class="meter"><i data-w="${occPct}"></i></div><small>${sum('kosong')} kamar siap disewakan</small>`);
     $('#clearSample')?.addEventListener('click', async () => {
       if (!(await askConfirm('Data sudah diperbarui?', 'Pengingat ini akan disembunyikan. Pastikan harga, nomor WhatsApp, dan rekening sudah benar.', 'Ya, sembunyikan'))) return;
       cache.settings = await api('PUT', '/settings', { isSample: false }); toast('Pengingat disembunyikan.'); route();
@@ -338,8 +360,8 @@
     bindInvoiceActions(inv);
   }
 
-  function todoPanel(s) {
-    const items = [
+  function todoItems(s) {
+    return [
       [s.proofsPending, '#tagihan', 'bukti bayar menunggu dicek', true],
       [s.contractDecisions, '#kontrak', 'penghuni memilih perpanjang atau berhenti', true],
       [s.waitlistToNotify, '#tunggu', 'calon penyewa perlu dikabari, ada kamar kosong', true],
@@ -357,6 +379,9 @@
       [s.market?.partnersPending, '#mitra', 'kos mitra minta ditampilkan di website', true],
       [s.market?.feeToReturn, '#persetujuan', 'fee perlu dikembalikan ke pemilik (refund)', false],
     ].filter(([n]) => n);
+  }
+  function todoPanel(s) {
+    const items = todoItems(s);
     return `<div class="panel mt"><h2>Perlu tindakan</h2>${items.length ? `<div class="todo">${items.map(([n, href, text, urgent]) => `<a href="${href}" class="${urgent ? 'is-urgent' : ''}"><span class="count">${n}</span><span>${text}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu ditindaklanjuti.</p>'}</div>`;
   }
 
@@ -449,13 +474,13 @@
       const q = invQuery.toLowerCase();
       if (q) list = list.filter((i) => `${i.tenantName} ${i.roomCode} ${i.periodLabel}`.toLowerCase().includes(q));
       $('#invTable').innerHTML = list.length ? `<table><thead><tr><th>Penghuni</th><th>Periode</th><th>Jatuh tempo</th><th class="num">Jumlah</th><th>Status</th><th></th></tr></thead><tbody>${list.map((i) => `<tr>
-        <td data-label="Penghuni"><strong>${esc(i.tenantName)}</strong><span class="sub">Kamar ${esc(i.roomCode)}, ${esc(propName(i.propertyId))}</span></td>
+        <td data-label="Penghuni"><div class="who-cell">${window.BonaDash.avatar(i.tenantName)}<div><strong>${esc(i.tenantName)}</strong><span class="sub">Kamar ${esc(i.roomCode)}, ${esc(propName(i.propertyId))}</span></div></div></td>
         <td data-label="Periode">${esc(i.periodLabel)}${i.cycle !== 'bulanan' && CYCLE_NAME[i.cycle] ? `<span class="sub">Sewa ${CYCLE_NAME[i.cycle].toLowerCase()}</span>` : ''}</td>
         <td data-label="Jatuh tempo">${tgl(i.dueDate)}${i.overdue ? `<span class="sub" style="color:var(--red)">lewat ${i.overdueDays} hari</span>` : ''}${i.lastRemindedAt ? `<span class="sub">Diingatkan ${tgl(i.lastRemindedAt)}</span>` : ''}</td>
         <td class="num" data-label="Jumlah">${rp(i.amount)}${i.status === 'lunas' && i.paidAmount !== i.amount ? `<span class="sub">dibayar ${rp(i.paidAmount)}</span>` : ''}</td>
         <td data-label="Status">${i.status === 'lunas' ? `<span class="pill pill--lunas">Lunas ${tgl(i.paidAt)}</span>` : i.proofStatus === 'menunggu' ? '<span class="pill pill--dikonfirmasi">Bukti dikirim</span>' : i.overdue ? '<span class="pill pill--terlambat">Terlambat</span>' : '<span class="pill pill--belum">Belum bayar</span>'}${i.proofStatus === 'ditolak' && i.status === 'belum' ? `<span class="sub">Bukti ditolak: ${esc(i.proofNote)}</span>` : ''}</td>
         <td class="actions">${i.status === 'belum'
-          ? (i.proofStatus === 'menunggu' ? `<button class="btn btn--red btn--sm" data-proof="${i.id}">Cek bukti</button>` : `<button class="btn btn--green btn--sm" data-remind="${i.id}">Kirim pengingat WA</button>`) + `<button class="btn btn--ghost btn--sm" data-pay="${i.id}">Tandai lunas</button>`
+          ? (i.proofStatus === 'menunggu' ? `<button class="btn btn--red btn--sm" data-proof="${i.id}">Cek bukti</button>` : `<button class="btn btn--ghost btn--sm btn--wa" data-remind="${i.id}" title="Kirim pengingat lewat WhatsApp">${window.BonaDash.ico('wa')}Ingatkan</button>`) + `<button class="btn btn--ghost btn--sm" data-pay="${i.id}">Tandai lunas</button>`
           : `<button class="btn btn--ghost btn--sm" data-receipt="${i.id}">Kuitansi</button><button class="btn btn--ghost btn--sm" data-unpay="${i.id}">Batalkan lunas</button>`}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty">${invFilter === 'terlambat' ? 'Tidak ada tagihan terlambat.' : 'Tidak ada tagihan untuk pilihan ini.'}</div>`;
     };
@@ -495,7 +520,7 @@
     const draw = () => {
       const list = tenants.filter((t) => tenantFilter === 'semua' || t.status === tenantFilter);
       $('#tnTable').innerHTML = list.length ? `<table><thead><tr><th>Nama</th><th>Kamar</th><th>Sewa</th><th>Mulai</th><th>Akun</th><th>Tagihan</th><th></th></tr></thead><tbody>${list.map((t) => `<tr>
-        <td data-label="Nama"><a href="#penghuni?id=${t.id}"><strong>${esc(t.name)}</strong></a><span class="sub">${esc(t.phone || 'Belum ada nomor WA')}${t.occupation ? `, ${esc(t.occupation)}` : ''}</span></td>
+        <td data-label="Nama"><div class="who-cell">${window.BonaDash.avatar(t.name)}<div><a href="#penghuni?id=${t.id}"><strong>${esc(t.name)}</strong></a><span class="sub">${esc(t.phone || 'Belum ada nomor WA')}${t.occupation ? `, ${esc(t.occupation)}` : ''}</span></div></div></td>
         <td data-label="Kamar">${esc(t.room?.code || '-')}<span class="sub">${esc(propName(t.room?.propertyId))}</span></td>
         <td data-label="Sewa">${rp(t.rentAmount)}<span class="sub">per ${cycleWord(t.rentCycle)}${t.coName ? ', 2 orang' : ''}</span></td>
         <td data-label="Mulai">${tgl(t.startDate)}${t.endDate ? `<span class="sub">${t.status === 'keluar' ? 'Keluar' : 'Sampai'} ${tgl(t.endDate)}</span>` : ''}</td>
@@ -746,7 +771,7 @@
     const list = await get('/surveys');
     main.innerHTML = head('Survei', 'Permintaan survei dari website. Hubungi lewat WhatsApp, lalu ubah statusnya.') +
       `<div class="table-wrap">${list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Jadwal</th><th>Catatan</th><th>Status</th><th></th></tr></thead><tbody>${list.map((s) => `<tr>
-        <td data-label="Calon penyewa"><strong>${esc(s.name)}</strong><span class="sub">${esc(s.phone)}${s.occupation ? `, ${esc(s.occupation)}` : ''}</span></td>
+        <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(s.name)}<div><strong>${esc(s.name)}</strong><span class="sub">${esc(s.phone)}${s.occupation ? `, ${esc(s.occupation)}` : ''}</span></div></div></td>
         <td data-label="Kos & kamar">${esc(s.propertyName)}<span class="sub">${s.roomCode ? `Kamar ${esc(s.roomCode)}` : 'Kamar belum dipilih'}, sewa ${esc(s.duration)}</span></td>
         <td data-label="Jadwal">${tgl(s.date)}<span class="sub">${esc(s.time)}</span></td>
         <td data-label="Catatan" class="wrap">${esc(s.note) || '<span class="muted">-</span>'}</td>
@@ -863,7 +888,7 @@
     return `/activity?${p}`;
   }
   const WAKTU = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const ACTOR = { admin: 'Admin', penghuni: 'Penghuni', publik: 'Publik', pemilik: 'Pemilik mitra', customer: 'Customer' };
+  const ACTOR = { admin: 'Admin', penghuni: 'Penghuni', publik: 'Publik', pemilik: 'Pemilik mitra', customer: 'Penyewa Kos Sekitar' };
   const relTime = (iso) => {
     const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
     if (m < 1) return 'baru saja'; if (m < 60) return `${m} menit lalu`;
@@ -883,11 +908,11 @@
       <div class="grid grid--stats">
         <div class="panel stat"><p class="stat__label">Aktivitas 30 hari</p><p class="stat__value">${c.semua}</p><p class="stat__sub">semua pengguna</p></div>
         <div class="panel stat"><p class="stat__label">Oleh admin</p><p class="stat__value">${c.admin}</p><p class="stat__sub">masuk, ubah data, unduh</p></div>
-        <div class="panel stat"><p class="stat__label">Penghuni & publik</p><p class="stat__value">${c.penghuni + c.publik + (c.pemilik || 0) + (c.customer || 0)}</p><p class="stat__sub">${c.penghuni} penghuni, ${c.pemilik || 0} pemilik, ${c.customer || 0} customer, ${c.publik} website</p></div>
+        <div class="panel stat"><p class="stat__label">Penghuni & publik</p><p class="stat__value">${c.penghuni + c.publik + (c.pemilik || 0) + (c.customer || 0)}</p><p class="stat__sub">${c.penghuni} penghuni, ${c.pemilik || 0} pemilik, ${c.customer || 0} penyewa Kos Sekitar, ${c.publik} website</p></div>
         <div class="panel stat ${c.gagal ? 'stat--alert' : ''}"><p class="stat__label">Percobaan gagal</p><p class="stat__value">${c.gagal}</p><p class="stat__sub">login salah, link tidak berlaku</p></div>
       </div>
       <div class="toolbar mt">
-        <div class="seg" id="actSeg">${[['semua', 'Semua'], ['admin', 'Admin'], ['penghuni', 'Penghuni'], ['pemilik', 'Pemilik mitra'], ['customer', 'Customer'], ['publik', 'Publik'], ['gagal', 'Gagal']].map(([k, l]) => `<button aria-pressed="${actFilter === k}" data-k="${k}">${l}</button>`).join('')}</div>
+        <div class="seg" id="actSeg">${[['semua', 'Semua'], ['admin', 'Admin'], ['penghuni', 'Penghuni'], ['pemilik', 'Pemilik mitra'], ['customer', 'Penyewa Kos Sekitar'], ['publik', 'Publik'], ['gagal', 'Gagal']].map(([k, l]) => `<button aria-pressed="${actFilter === k}" data-k="${k}">${l}</button>`).join('')}</div>
         <input class="search" type="search" placeholder="Cari nama, aktivitas, kamar, atau IP" value="${esc(actQuery)}" id="actSearch" aria-label="Cari aktivitas">
       </div>
       <div class="table-wrap">${data.items.length ? `<table class="table--log"><thead><tr><th>Waktu (WIB)</th><th>Pengguna</th><th>Aktivitas</th><th>Perangkat & IP</th></tr></thead><tbody id="actBody">${actRows(data.items)}</tbody></table>`
@@ -1114,7 +1139,7 @@
           ${x?.tenantNote ? `<span class="sub">Catatan penghuni: "${esc(x.tenantNote)}"</span>` : ''}</div>
         <div class="btn-row">${x ? `<button class="btn btn--ghost btn--sm" data-insp-view="${kind}">Lihat</button>` : ''}<button class="btn btn--${x ? 'ghost' : 'red'} btn--sm" data-insp-edit="${kind}">${x ? 'Ubah' : 'Isi sekarang'}</button></div></div>`;
     };
-    main.innerHTML = `<a class="back" href="#penghuni">← Semua penghuni</a>` + head(esc(t.name), `${d.room ? `Kamar ${esc(d.room.code)}, ${esc(d.property?.name || '')}` : 'Belum ada kamar'} · ${active ? `penghuni sejak ${tglPanjang(t.startDate)}` : `keluar ${tglPanjang(t.endDate)}`}`,
+    main.innerHTML = `<a class="back" href="#penghuni">← Semua penghuni</a>` + head(esc(t.name), `${d.room ? `Kamar ${esc(d.room.code)}, ${esc(d.property?.name || '')}` : 'Belum ada kamar'}, ${active ? `penghuni sejak ${tglPanjang(t.startDate)}` : `keluar ${tglPanjang(t.endDate)}`}`,
       `${active ? '' : '<span class="pill pill--keluar">Sudah keluar</span>'}<button class="btn btn--ghost" data-edit-t>Ubah data</button>${active ? '<button class="btn btn--ghost" data-out-t>Catat keluar</button>' : ''}`) + `
       <div class="detail-grid">
         <section class="panel"><h2>Akun login dashboard</h2>
@@ -1258,12 +1283,12 @@
         const pct = a.audienceCount ? Math.round((a.read.length / a.audienceCount) * 100) : 0;
         const expired = a.expiresOn && a.expiresOn < today();
         return `<article class="ann ${a.priority === 'penting' ? 'ann--penting' : ''}">
-          <div class="ann__head"><div><h3>${esc(a.title)}</h3><p class="ann__meta">${esc(a.propertyName)} · ${WAKTU.format(new Date(a.createdAt))} WIB${a.expiresOn ? ` · ${expired ? 'berakhir' : 'tampil sampai'} ${tgl(a.expiresOn)}` : ''}</p></div>
+          <div class="ann__head"><div><h3>${esc(a.title)}</h3><p class="ann__meta">${esc(a.propertyName)}, ${WAKTU.format(new Date(a.createdAt))} WIB${a.expiresOn ? `, ${expired ? 'berakhir' : 'tampil sampai'} ${tgl(a.expiresOn)}` : ''}</p></div>
             <div class="btn-row">${a.priority === 'penting' ? '<span class="pill pill--penting">Penting</span>' : ''}${a.pinned ? '<span class="pill pill--info">Disematkan</span>' : ''}${expired ? '<span class="pill pill--berakhir">Tidak tampil lagi</span>' : ''}</div></div>
           ${a.body ? `<p class="ann__body">${esc(a.body)}</p>` : ''}
           <div class="readbar" role="img" aria-label="${a.read.length} dari ${a.audienceCount} penghuni sudah membaca"><span style="width:${pct}%"></span></div>
           <p class="ann__meta">Sudah dibaca ${a.read.length} dari ${a.audienceCount} penghuni.</p>
-          ${a.unread.length ? `<details><summary class="small" style="cursor:pointer;font-weight:600">Belum membaca (${a.unread.length})</summary><div class="who mt">${a.unread.map((u) => u.waUrl ? `<a href="${esc(u.waUrl)}" target="_blank" rel="noopener" title="Ingatkan lewat WhatsApp">${esc(u.name)} · WA</a>` : `<span>${esc(u.name)}</span>`).join('')}</div></details>` : ''}
+          ${a.unread.length ? `<details><summary class="small" style="cursor:pointer;font-weight:600">Belum membaca (${a.unread.length})</summary><div class="who mt">${a.unread.map((u) => u.waUrl ? `<a href="${esc(u.waUrl)}" target="_blank" rel="noopener" title="Ingatkan lewat WhatsApp">${esc(u.name)}, WA</a>` : `<span>${esc(u.name)}</span>`).join('')}</div></details>` : ''}
           ${a.read.length ? `<details><summary class="small" style="cursor:pointer">Sudah membaca (${a.read.length})</summary><div class="who mt">${a.read.map((u) => `<span>${esc(u.name)}</span>`).join('')}</div></details>` : ''}
           <div class="btn-row"><a class="btn btn--green btn--sm" href="${esc(waShare(`PENGUMUMAN BONAASINA\n${a.title}\n\n${a.body}\n\nBaca juga di dashboard penghuni: ${SITE}/penghuni/#pengumuman`))}" target="_blank" rel="noopener">Bagikan ke grup WA</a>
             <button class="btn btn--ghost btn--sm" data-ann-edit="${a.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-ann-del="${a.id}">Hapus</button></div>
@@ -1309,12 +1334,12 @@
     const missed = d.items.filter((i) => i.status === 'terlewat' && i.date >= addDays(d.today, -7)).length;
     main.innerHTML = head('Piket', 'Jadwal kebersihan bergilir otomatis di antara penghuni aktif. Penghuni yang bertugas mengirim foto bukti dari dashboard.', '<button class="btn btn--red" data-chore-new>Tambah jadwal piket</button>') + `
       <section class="panel"><h2>Tugas piket</h2>${d.tasks.length ? `<div class="list">${d.tasks.map((t) => `<div class="list__item"><div><strong>${esc(t.name)}</strong> ${t.active ? '' : '<span class="pill pill--nonaktif">Nonaktif</span>'}
-          <span class="sub">${esc(t.propertyName)} · ${FREQ[t.frequency]}${t.frequency === 'harian' ? '' : `, mulai ${hariOf(t.startDate)} ${tgl(t.startDate)}`} · ${t.mode === 'bersama' ? 'semua penghuni bersama' : `${t.peoplePerTurn} orang per giliran`}</span>${t.description ? `<span class="sub">${esc(t.description)}</span>` : ''}</div>
+          <span class="sub">${esc(t.propertyName)}, ${FREQ[t.frequency]}${t.frequency === 'harian' ? '' : `, mulai ${hariOf(t.startDate)} ${tgl(t.startDate)}`}, ${t.mode === 'bersama' ? 'semua penghuni bersama' : `${t.peoplePerTurn} orang per giliran`}</span>${t.description ? `<span class="sub">${esc(t.description)}</span>` : ''}</div>
           <div class="btn-row"><button class="btn btn--ghost btn--sm" data-chore-edit="${t.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-chore-del="${t.id}">Hapus</button></div></div>`).join('')}</div>`
         : '<p class="muted">Belum ada jadwal. Contoh: "Sapu & pel lorong" setiap minggu 2 orang bergilir, atau "Kerja bakti" setiap bulan semua penghuni.</p>'}</section>
       <div class="toolbar mt"><div class="seg" id="chSeg">${[['datang', 'Jadwal 14 hari ke depan'], ['riwayat', `Riwayat${missed ? ` (${missed} terlewat)` : ''}`]].map(([k, l]) => `<button aria-pressed="${choreTab === k}" data-k="${k}">${l}</button>`).join('')}</div></div>
       <section class="panel">${Object.keys(byDate).length ? Object.entries(byDate).map(([date, list]) => `<div class="day"><p class="day__label ${date === d.today ? 'is-today' : ''}">${date === d.today ? 'Hari ini, ' : ''}${hariOf(date)} ${tglPanjang(date)}</p><div class="list">${list.map((i) => `<div class="list__item"><div><strong>${esc(i.name)}</strong> <span class="pill pill--${i.status}">${CHORE_STATUS[i.status]}</span>
-          <span class="sub">${esc(i.propertyName)} · ${i.assigned.length ? esc(i.assigned.join(', ')) : 'Belum ada penghuni aktif'}</span>
+          <span class="sub">${esc(i.propertyName)}, ${i.assigned.length ? esc(i.assigned.join(', ')) : 'Belum ada penghuni aktif'}</span>
           ${i.report ? `<span class="sub">Dilaporkan ${esc(i.report.by)}, ${WAKTU.format(new Date(i.report.at))} WIB${i.report.note ? `: "${esc(i.report.note)}"` : ''}</span><div class="thumbs">${i.report.photos.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="Foto piket ${esc(i.name)}"></a>`).join('')}</div>` : ''}</div></div>`).join('')}</div></div>`).join('')
         : `<p class="muted">${choreTab === 'datang' ? 'Tidak ada jadwal piket dalam 14 hari ke depan.' : 'Belum ada riwayat piket.'}</p>`}</section>`;
     $('#chSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; choreTab = b.dataset.k; route(); };
@@ -1364,7 +1389,7 @@
     main.innerHTML = head('Daftar tunggu', 'Calon penyewa yang mendaftar saat kos penuh. Begitu ada kamar kosong, mereka otomatis ditandai "Perlu dikabari".') + `
       <div class="toolbar"><div class="seg" id="wlSeg">${[['perlu_dikabari', 'Perlu dikabari'], ['menunggu', 'Menunggu kamar'], ['dikabari', 'Sudah dikabari'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${wlFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
       <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Calon penyewa</th><th>Minat</th><th>Didaftar</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((w) => `<tr>
-        <td data-label="Calon penyewa"><strong>${esc(w.name)}</strong><span class="sub">${esc(w.phone)}</span></td>
+        <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(w.name)}<div><strong>${esc(w.name)}</strong><span class="sub">${esc(w.phone)}</span></div></div></td>
         <td data-label="Minat" class="wrap">${esc(w.propertyName)}${w.roomPref ? `<span class="sub">${esc(w.roomPref)}</span>` : ''}${w.budget ? `<span class="sub">Anggaran ${rp(w.budget)}/bulan</span>` : ''}${w.moveDate ? `<span class="sub">Rencana masuk ${tgl(w.moveDate)}</span>` : ''}${w.note ? `<span class="sub">"${esc(w.note)}"</span>` : ''}</td>
         <td data-label="Didaftar">${tgl(w.createdAt)}</td>
         <td data-label="Status"><select class="inline" data-wl-status="${w.id}" aria-label="Status ${esc(w.name)}">${Object.entries(WL).map(([k, l]) => `<option value="${k}" ${w.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${w.matchedRoom ? `<span class="sub">Kamar ${esc(w.matchedRoom.code)} ${esc(w.matchedRoom.propertyName || '')} ${w.matchedRoom.status === 'kosong' ? 'kosong' : `(${STATUS_KAMAR[w.matchedRoom.status] || w.matchedRoom.status})`}</span>` : ''}${w.notifiedAt ? `<span class="sub">Dikabari ${tgl(w.notifiedAt)}</span>` : ''}</td>
@@ -1468,9 +1493,9 @@
     || (l.propertyKind !== 'mitra' && ['baru', 'dp_dikirim'].includes(l.status)) || (l.propertyKind !== 'mitra' && l.visitStatus === 'diminta' && ['baru', 'menunggu_dp'].includes(l.status));
 
   function leadRows(list, empty) {
-    return list.length ? `<table><thead><tr><th>Customer</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th class="num">DP / fee</th><th></th></tr></thead><tbody>${list.map((l) => `<tr>
-      <td data-label="Customer"><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread && l.propertyKind !== 'mitra' ? `<span class="unread">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, ${MK.relTime(l.createdAt)}</span></td>
-      <td data-label="Kos & kamar">${esc(l.propertyName)}<span class="sub">${esc(l.roomCode || 'kamar belum dipilih')} · ${l.propertyKind === 'mitra' ? `mitra: ${esc(l.ownerName)}` : 'kos Bonaasina'}</span></td>
+    return list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th class="num">DP / fee</th><th></th></tr></thead><tbody>${list.map((l) => `<tr>
+      <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(l.name)}<div><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread && l.propertyKind !== 'mitra' ? `<span class="unread">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, ${MK.relTime(l.createdAt)}</span></div></div></td>
+      <td data-label="Kos & kamar">${esc(l.propertyName)}<span class="sub">${esc(l.roomCode || 'kamar belum dipilih')}, ${l.propertyKind === 'mitra' ? `mitra: ${esc(l.ownerName)}` : 'kos Bonaasina'}</span></td>
       <td data-label="Sewa">${esc(l.periodLabel)}<span class="sub">mulai ${tgl(l.moveDate)}${l.people === 2 ? ', 2 orang' : ''}</span></td>
       <td data-label="Status">${MK.pill(l)}${MK.flags(l)}</td>
       <td class="num" data-label="DP / fee">${l.dpAmount ? rp(l.dpAmount) : '-'}${l.feeAmount ? `<span class="sub">fee ${rp(l.feeAmount)}</span>` : ''}</td>
@@ -1489,7 +1514,7 @@
       $('#resTable').innerHTML = leadRows(list, resFilter === 'tindakan' ? 'Tidak ada reservasi yang perlu tindakan admin.' : 'Tidak ada data.');
     };
     const n = all.filter(needsAdmin).length;
-    main.innerHTML = head('Reservasi', 'Semua reservasi dari website: Kos Asina & Bona (Anda sebagai pemilik, tanpa fee) dan kos mitra (dipantau, disetujui, dibantu bila pemilik kesulitan).') + `
+    main.innerHTML = head('Reservasi', 'Semua pesanan dari website. Kos Asina & Bona Anda kelola langsung, kos mitra cukup dipantau dan disetujui.') + `
       <div class="grid grid--stats">
         <div class="panel stat ${n ? 'stat--alert' : ''}"><p class="stat__label">Perlu tindakan admin</p><p class="stat__value">${n}</p><p class="stat__sub">persetujuan, refund, belum direspons</p></div>
         <div class="panel stat"><p class="stat__label">Berjalan</p><p class="stat__value">${all.filter(F.berjalan).length}</p><p class="stat__sub">${all.filter((l) => l.status === 'baru').length} menunggu konfirmasi</p></div>
@@ -1509,9 +1534,9 @@
     const l = await api('GET', `/leads/${id}`);
     const ctx = leadCtx(l);
     const own = l.propertyKind !== 'mitra';
-    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)}${own ? ' (kos Bonaasina — Anda pemiliknya)' : ` (mitra: ${esc(l.ownerName)})`} · ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`,
-      `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp customer</a>${!own && l.ownerPhone ? `<a class="btn btn--ghost" href="${esc(waMe(l.ownerPhone, `Horas ${l.ownerName}, ini admin Bonaasina soal reservasi ${l.name} (#${l.code}) di ${l.propertyName}. `))}" target="_blank" rel="noopener">WhatsApp pemilik</a>` : ''}`) +
-      `<div class="lead-grid"><div id="leadPanel">${MK.leadPanel(l, ctx)}</div><div><div id="chatBox"></div><p class="hint">${own ? 'Anda membalas sebagai pemilik kos.' : 'Pesan Anda tampil sebagai “Admin Bonaasina” bagi customer dan pemilik.'}</p></div></div>`;
+    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)}${own ? ' (kos Bonaasina — Anda pemiliknya)' : ` (mitra: ${esc(l.ownerName)})`}, ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`,
+      `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp penyewa</a>${!own && l.ownerPhone ? `<a class="btn btn--ghost" href="${esc(waMe(l.ownerPhone, `Horas ${l.ownerName}, ini admin Bonaasina soal reservasi ${l.name} (#${l.code}) di ${l.propertyName}. `))}" target="_blank" rel="noopener">WhatsApp pemilik</a>` : ''}`) +
+      `<div class="lead-grid"><div id="leadPanel">${MK.leadPanel(l, ctx)}</div><div><div id="chatBox"></div><p class="hint">${own ? 'Anda membalas sebagai pemilik kos.' : 'Pesan Anda tampil sebagai “Admin Bonaasina” bagi penyewa dan pemilik.'}</p></div></div>`;
     MK.bindLead($('#leadPanel'), l, ctx);
     $('[data-make-tenant]')?.addEventListener('click', async () => {
       const rooms = await get('/rooms');
@@ -1531,11 +1556,11 @@
     const groups = [
       ['Perlu disetujui', 'Pemilik sudah menerima DP dan mengirim bukti fee (atau tanpa fee). Periksa kedua bukti lalu setujui.', all.filter((l) => l.needsApproval)],
       ['Menunggu fee dari pemilik', 'DP sudah diterima pemilik, bukti fee belum ada.', all.filter((l) => l.status === 'dp_diterima' && ['belum', 'ditolak'].includes(l.feeStatus))],
-      ['Refund berjalan', 'Pantau supaya uang customer kembali. Anda bisa meminta pemilik memproses atau menutup refund.', all.filter((l) => ['diminta', 'dilaporkan', 'ditolak', 'dikirim'].includes(l.refundStatus))],
+      ['Refund berjalan', 'Pantau supaya uang penyewa kembali. Anda bisa meminta pemilik memproses atau menutup refund.', all.filter((l) => ['diminta', 'dilaporkan', 'ditolak', 'dikirim'].includes(l.refundStatus))],
       ['Fee perlu dikembalikan', 'Booking batal dan DP sudah dikembalikan; kembalikan fee ke pemilik lalu tandai.', all.filter((l) => l.feeToReturn)],
       ['Belum direspons pemilik', `Reservasi baru lebih dari ${cache.settings?.leadResponseHours || 24} jam tanpa jawaban. Hubungi pemilik atau bantu konfirmasi.`, all.filter((l) => l.noResponse)],
     ];
-    main.innerHTML = head('Persetujuan & refund', 'Setiap transaksi Kos Sekitar dinyatakan berhasil setelah Anda memeriksa bukti DP customer dan bukti fee pemilik.') +
+    main.innerHTML = head('Persetujuan & refund', 'Setiap transaksi Kos Sekitar dinyatakan berhasil setelah Anda memeriksa bukti DP penyewa dan bukti fee pemilik.') +
       groups.map(([t, sub, list]) => `<div class="panel mt"><h2>${t} <span class="pill pill--${list.length ? 'baru' : 'aktif'}">${list.length}</span></h2><p class="muted small" style="margin:-6px 0 10px">${sub}</p><div class="table-wrap">${leadRows(list, 'Tidak ada.')}</div></div>`).join('');
   }
 
@@ -1548,12 +1573,12 @@
       (parts.length ? parts.map((p) => {
         const rs = rooms.filter((r) => r.propertyId === p.id);
         return `<div class="panel mt"><div class="row-between"><div><h2 style="margin:0">${esc(p.name)} <span class="pill pill--${p.status === 'aktif' ? 'aktif' : p.status === 'menunggu' ? 'baru' : 'draf'}">${PROP_STATUS[p.status]}</span></h2>
-            <p class="muted small">${esc(p.owner ? `${p.owner.name} (${p.owner.username})` : 'Belum ada pemilik')} · ${esc(p.city || 'kota belum diisi')} · periode ${(p.periods || []).map((k) => CYCLE_NAME[k]).join(', ')} · fee ${esc(p.feeRule)} · DP min. ${rp(p.minBooking)}</p></div>
+            <p class="muted small">${esc(p.owner ? `${p.owner.name} (${p.owner.username})` : 'Belum ada pemilik')}, ${esc(p.city || 'kota belum diisi')}, periode ${(p.periods || []).map((k) => CYCLE_NAME[k]).join(', ')}, fee ${esc(p.feeRule)}, DP min. ${rp(p.minBooking)}</p></div>
             <div class="btn-row">${p.status === 'menunggu' ? `<button class="btn btn--green btn--sm" data-pub="${p.id}">Tampilkan di website</button>` : ''}${p.status === 'aktif' ? `<a class="btn btn--ghost btn--sm" href="/kos/?k=${esc(p.slug)}" target="_blank" rel="noopener">Lihat halaman</a>` : ''}<button class="btn btn--ghost btn--sm" data-edit-kos="${p.id}">Atur status & fee</button></div></div>
           <div class="grid grid--stats mt" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
             <div><p class="stat__label">Kamar kosong</p><p class="stat__value">${p.freeRooms}/${p.totalRooms}</p></div><div><p class="stat__label">Reservasi aktif</p><p class="stat__value">${p.leadsActive}</p></div>
             <div><p class="stat__label">Booking berhasil</p><p class="stat__value">${p.bookings}</p></div><div><p class="stat__label">Fee diterima</p><p class="stat__value">${rp(p.feeReceived)}</p></div><div><p class="stat__label">Fee belum masuk</p><p class="stat__value">${rp(p.feeOpen)}</p></div></div>
-          ${rs.length ? `<details class="mt"><summary class="small"><strong>${rs.length} kamar</strong> — lihat & ubah</summary><div class="table-wrap mt"><table><tbody>${rs.map((r) => `<tr><td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${Number(r.capacity) === 2 ? ', 2 orang' : ''}</span></td><td data-label="Harga">${(p.periods || []).map((k) => `${CYCLE_NAME[k]} ${rp(r[CYCLE_PRICE[k]])}`).join(' · ')}</td><td data-label="Status"><span class="pill pill--${r.effectiveStatus}">${STATUS_KAMAR[r.effectiveStatus]}</span></td></tr>`).join('')}</tbody></table></div></details>` : '<p class="hint mt">Belum ada kamar. Kamar, harga, dan foto diisi pemilik dari dashboard-nya.</p>'}
+          ${rs.length ? `<details class="mt"><summary class="small"><strong>${rs.length} kamar</strong> — lihat & ubah</summary><div class="table-wrap mt"><table><tbody>${rs.map((r) => `<tr><td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${Number(r.capacity) === 2 ? ', 2 orang' : ''}</span></td><td data-label="Harga">${(p.periods || []).map((k) => `${CYCLE_NAME[k]} ${rp(r[CYCLE_PRICE[k]])}`).join(', ')}</td><td data-label="Status"><span class="pill pill--${r.effectiveStatus}">${STATUS_KAMAR[r.effectiveStatus]}</span></td></tr>`).join('')}</tbody></table></div></details>` : '<p class="hint mt">Belum ada kamar. Kamar, harga, dan foto diisi pemilik dari dashboard-nya.</p>'}
           ${p.reviewNote ? `<p class="hint">Catatan untuk pemilik: ${esc(p.reviewNote)}</p>` : ''}</div>`;
       }).join('') : '<div class="panel empty mt">Belum ada kos mitra. Buat akun pemilik dulu di menu Pemilik kos, lalu tambahkan kosnya di sini.</div>');
     main.onclick = async (e) => {
@@ -1659,7 +1684,7 @@
   // ---------- pemilik kos ----------
   function ownerCredentials(o, password) {
     const link = `${SITE}/pemilik/`;
-    const msg = `Horas ${o.name}, akun pemilik kos mitra Bonaasina Anda sudah siap.\n\nAlamat: ${link}\nUsername: ${o.username}\nKata sandi sementara: ${password}\n\nSaat pertama masuk, Anda diminta membuat kata sandi sendiri. Lalu lengkapi info kos, kamar & harga, foto, rekening untuk DP, dan nomor WhatsApp, kemudian tekan "Ajukan tayang".\n\nAlur singkat: reservasi masuk → Anda konfirmasi kamar tersedia → customer transfer DP ke rekening Anda → Anda transfer fee ke Bonaasina → admin menyetujui dan bukti booking terbit.`;
+    const msg = `Horas ${o.name}, akun pemilik kos mitra Bonaasina Anda sudah siap.\n\nAlamat: ${link}\nUsername: ${o.username}\nKata sandi sementara: ${password}\n\nSaat pertama masuk, Anda diminta membuat kata sandi sendiri. Lalu lengkapi info kos, kamar & harga, foto, rekening untuk DP, dan nomor WhatsApp, kemudian tekan "Minta ditampilkan di website".\n\nAlur singkat: reservasi masuk → Anda konfirmasi kamar tersedia → penyewa transfer DP ke rekening Anda → Anda bayar biaya layanan ke Bonaasina → admin menyetujui dan bukti booking terbit.`;
     openDialog({
       title: 'Akun pemilik siap',
       body: `<p class="muted">Kata sandi sementara hanya ditampilkan sekarang.</p><dl class="kv mt"><dt>Alamat</dt><dd>${esc(link)}</dd><dt>Username</dt><dd>${esc(o.username)}</dd><dt>Kata sandi</dt><dd class="mono" style="font-size:15px !important">${esc(password)}</dd></dl>
@@ -1714,7 +1739,7 @@
     const sum = (f) => mit.filter(f).reduce((a, l) => a + l.feeAmount, 0);
     const byMonth = {};
     for (const l of mit.filter((x) => x.feeStatus === 'diterima')) { const k = (l.approvedAt || l.updatedAt || '').slice(0, 7); byMonth[k] = (byMonth[k] || 0) + l.feeAmount; }
-    main.innerHTML = head('Fee & aturan', 'Fee kemitraan dihitung dari uang booking/DP yang ditransfer customer ke pemilik. Fee per kos bisa diatur di Mitra kos → Atur status & fee.') + `
+    main.innerHTML = head('Fee & aturan', 'Fee kemitraan dihitung dari uang booking/DP yang ditransfer penyewa ke pemilik. Fee per kos bisa diatur di Mitra kos → Atur status & fee.') + `
       <div class="grid grid--stats">
         <div class="panel stat"><p class="stat__label">Fee diterima</p><p class="stat__value">${rp(sum((l) => l.feeStatus === 'diterima'))}</p><p class="stat__sub">${mit.filter((l) => l.feeStatus === 'diterima').length} booking</p></div>
         <div class="panel stat"><p class="stat__label">Menunggu dicek</p><p class="stat__value">${rp(sum((l) => l.feeStatus === 'dikirim'))}</p><p class="stat__sub"><a href="#persetujuan">Buka persetujuan</a></p></div>
@@ -1760,7 +1785,7 @@
   // ---------- notifikasi ----------
   async function notifikasi() {
     const n = await get('/notifications');
-    main.innerHTML = head('Notifikasi', 'Kabar terbaru dari reservasi, pemilik kos, dan customer.', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel">${MK.notifs(n.items)}</div>`;
+    main.innerHTML = head('Notifikasi', 'Kabar terbaru dari reservasi, pemilik kos, dan penyewa.', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel">${MK.notifs(n.items)}</div>`;
     $('#readAll')?.addEventListener('click', async () => { await api('POST', '/notifications/read', {}); route(); });
     main.onclick = async (e) => {
       const b = e.target.closest('[data-notif]'); if (!b) return;

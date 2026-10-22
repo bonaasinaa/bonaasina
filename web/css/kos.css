@@ -71,4 +71,4 @@
 .mitra-cta p { margin-top: 10px; color: var(--ijuk); max-width: 56ch; }
 .mitra-cta__btns { display: flex; gap: 10px; flex-wrap: wrap; }
 
-@media (max-width: 420px) { .nav__cta { display: inline-flex !important; margin-left: auto; } .nav__brand span { display: none; } }
+@media (max-width: 420px) { .nav__cta { display: inline-flex !important; margin-left: auto; } .nav__menu { margin-left: 8px; } .nav__brand span { display: none; } }

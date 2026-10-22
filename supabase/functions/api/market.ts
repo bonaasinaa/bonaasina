@@ -230,7 +230,7 @@ export function createMarket(H: Record<string, any>) {
       const p = await one('properties', r.propertyId);
       await sysMsg(r, 'Batas waktu pembayaran DP sudah lewat, reservasi otomatis kedaluwarsa. Pemilik bisa menawarkan ulang bila kamar masih tersedia.');
       await notifyCustomer(r, 'status', 'Batas bayar DP sudah lewat', `Reservasi di ${p?.name || 'kos'} kedaluwarsa. Hubungi pemilik bila masih berminat.`);
-      if (p) await notifyOwner(p, r, 'status', `Reservasi ${r.name} kedaluwarsa`, 'Customer belum mengirim bukti DP sampai batas waktu.');
+      if (p) await notifyOwner(p, r, 'status', `Reservasi ${r.name} kedaluwarsa`, 'Penyewa belum mengirim bukti DP sampai batas waktu.');
     }
   }
 
@@ -740,7 +740,7 @@ export function createMarket(H: Record<string, any>) {
     const l = await myLead(lead);
     need(l, 'baru', 'menunggu_dp', 'kedaluwarsa');
     const reason = str(b.reason, 400);
-    await save(l, { status: 'batal', cancelReason: reason || 'Dibatalkan customer.', cancelledBy: 'customer' });
+    await save(l, { status: 'batal', cancelReason: reason || 'Dibatalkan penyewa.', cancelledBy: 'customer' });
     const p = await one('properties', l.propertyId);
     await sysMsg(l, `Penyewa membatalkan reservasi.${reason ? ` Alasan: ${reason}` : ''}`);
     await notifyOwner(p, l, 'status', `${l.name} membatalkan reservasi`, reason);
@@ -776,7 +776,7 @@ export function createMarket(H: Record<string, any>) {
     const received = b.received === true || b.received === 'true';
     if (received) {
       if (l.refundStatus !== 'dikirim') throw bad('Pemilik belum mengirim bukti refund.');
-      await finishRefund(l, p, 'Customer mengonfirmasi dana refund sudah diterima.');
+      await finishRefund(l, p, 'Penyewa mengonfirmasi dana refund sudah diterima.');
       log({ action: 'customer.refund_ok', summary: 'Mengonfirmasi refund sudah diterima' });
       return { ok: true };
     }

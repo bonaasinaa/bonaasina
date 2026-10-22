@@ -200,17 +200,33 @@
     ].filter(([v]) => v);
     const stale = props.filter((p) => p.status === 'aktif' && (!p.checkedAt || Date.now() - Date.parse(p.checkedAt) > 14 * 864e5));
     const free = data.rooms.filter((r) => r.effectiveStatus === 'kosong' && !r.hidden).length;
-    main.innerHTML = head(`Horas, ${esc(data.owner.name.split(' ')[0])}`, `${props.length ? props.map((p) => esc(p.name)).join(', ') : 'Belum ada kos'} di Kos Sekitar Bonaasina.`) + `
+    const D = window.BonaDash;
+    const running = data.leads.filter((l) => ['menunggu_dp', 'dp_dikirim', 'dp_diterima'].includes(l.status)).length;
+    const success = data.leads.filter((l) => l.status === 'berhasil').length;
+    const todoN = todo.reduce((a, [v]) => a + v, 0);
+    const live = props.filter((p) => p.status === 'aktif').length;
+    const nm = data.owner.name.trim().split(/\s+/); const call = /^(pak|bapak|bu|ibu|kak|bang|opung|amang|inang)$/i.test(nm[0]) && nm[1] ? `${nm[0]} ${nm[1]}` : nm[0];
+    const names = (list) => list.map((p) => esc(p.name)).join(', ');
+    const liveList = props.filter((p) => p.status === 'aktif'), offList = props.filter((p) => p.status !== 'aktif');
+    const propLine = !props.length ? 'Belum ada kos.' : [liveList.length ? `${names(liveList)} sudah tampil di Kos Sekitar Bonaasina.` : '', offList.length ? `${names(offList)} belum tampil di website.` : ''].filter(Boolean).join(' ');
+    main.innerHTML = `
+      <section class="hello">
+        <div><p class="hello__kicker">${D.greet()}. Dashboard pemilik kos</p>
+          <h1>Horas, ${esc(call)}</h1>
+          <p>${propLine} ${todoN ? `Ada <strong>${todoN} hal</strong> yang menunggu Anda.` : 'Tidak ada yang mendesak.'}</p></div>
+        <div class="hello__actions"><a class="btn btn--light" href="#reservasi">Lihat reservasi</a><a class="btn btn--ghost" href="#kamar">Atur kamar</a></div>
+      </section>
       ${props.filter((p) => p.status !== 'aktif').map(setupCard).join('')}
       ${stale.map((p) => `<div class="notice"><p><strong>Status kamar ${esc(p.name)} terakhir dicek ${p.checkedAt ? relTime(p.checkedAt) : 'belum pernah'}.</strong> Pastikan kamar kosong/terisi sudah benar supaya calon penyewa tidak kecewa.</p><button class="btn btn--sm" data-checked="${p.id}">Status kamar sudah benar</button></div>`).join('')}
       <div class="grid grid--stats">
-        <div class="panel stat ${n.baru ? 'stat--alert' : ''}"><p class="stat__label">Reservasi baru</p><p class="stat__value">${n.baru}</p><p class="stat__sub">Belum dikonfirmasi</p></div>
-        <div class="panel stat"><p class="stat__label">Reservasi berjalan</p><p class="stat__value">${data.leads.filter((l) => ['menunggu_dp', 'dp_dikirim', 'dp_diterima'].includes(l.status)).length}</p><p class="stat__sub">Menunggu DP / persetujuan</p></div>
-        <div class="panel stat"><p class="stat__label">Booking berhasil</p><p class="stat__value">${data.leads.filter((l) => l.status === 'berhasil').length}</p><p class="stat__sub">Lewat Bonaasina</p></div>
-        <div class="panel stat"><p class="stat__label">Kamar kosong</p><p class="stat__value">${free}</p><p class="stat__sub">dari ${data.rooms.length} kamar</p></div>
+        <a class="panel stat stat--red stat--link ${n.baru ? 'stat--alert' : ''}" href="#reservasi"><p class="stat__label">Reservasi baru</p><span class="stat__ico">${D.ico('bell')}</span><p class="stat__value" data-count="${n.baru}">${n.baru}</p><p class="stat__sub">${n.baru ? 'Perlu dikonfirmasi' : 'Belum ada yang baru'}</p></a>
+        <a class="panel stat stat--amber stat--link" href="#reservasi"><p class="stat__label">Reservasi berjalan</p><span class="stat__ico">${D.ico('calendar')}</span><p class="stat__value" data-count="${running}">${running}</p><p class="stat__sub">Menunggu DP atau persetujuan</p></a>
+        <a class="panel stat stat--green stat--link" href="#reservasi"><p class="stat__label">Booking berhasil</p><span class="stat__ico">${D.ico('check')}</span><p class="stat__value" data-count="${success}">${success}</p><p class="stat__sub">Lewat Bonaasina</p></a>
+        <a class="panel stat stat--blue stat--link" href="#kamar"><p class="stat__label">Kamar kosong</p><span class="stat__ico">${D.ico('bed')}</span><p class="stat__value" data-count="${free}">${free}</p><p class="stat__sub">dari ${data.rooms.length} kamar</p><div class="meter" style="--tone:var(--blue)"><i data-w="${data.rooms.length ? (free / data.rooms.length) * 100 : 0}"></i></div></a>
       </div>
       <div class="panel mt"><h2>Perlu tindakan</h2>${todo.length ? `<div class="todo">${todo.map(([v, h, t, u]) => `<a href="${h}" class="${u ? 'is-urgent' : ''}"><span class="count">${v}</span><span>${t}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Reservasi baru akan muncul di sini dan di notifikasi.</p>'}</div>
       <div class="panel mt"><h2>Alur reservasi di Bonaasina</h2>${guide()}</div>`;
+    D.sideWidget(`<small>Kamar kosong</small><strong>${free}<span>dari ${data.rooms.length}</span></strong><div class="meter"><i data-w="${data.rooms.length ? (free / data.rooms.length) * 100 : 0}"></i></div><small>${live ? 'Kos Anda tampil di website' : 'Kos belum tampil di website'}</small>`);
     main.onclick = async (e) => {
       const sb = e.target.closest('[data-submit]');
       if (sb) { try { await api('POST', `/properties/${sb.dataset.submit}/submit`, {}); toast('Terkirim. Admin akan mengecek lalu menampilkan kos Anda.'); reload(); } catch (ex) { toast(ex.message, true); } return; }
@@ -233,7 +249,7 @@
     const draw = () => {
       const list = data.leads.filter((l) => !FILTERS[leadFilter] || FILTERS[leadFilter].includes(l.status) || (leadFilter === 'aktif' && ['diminta', 'dilaporkan'].includes(l.refundStatus)));
       $('#ldTable').innerHTML = list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th></th></tr></thead><tbody>${list.map((l) => `<tr>
-        <td data-label="Calon penyewa"><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread ? `<span class="unread" title="Pesan belum dibaca">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, masuk ${relTime(l.createdAt)}</span></td>
+        <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(l.name)}<div><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread ? `<span class="unread" title="Pesan belum dibaca">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, masuk ${relTime(l.createdAt)}</span></div></div></td>
         <td data-label="Kos & kamar">${esc(l.roomCode || 'Belum pilih kamar')}<span class="sub">${esc(l.propertyName)}</span></td>
         <td data-label="Sewa">${esc(l.periodLabel)}<span class="sub">mulai ${tgl(l.moveDate)}${l.people === 2 ? ', 2 orang' : ''}</span></td>
         <td data-label="Status">${M.pill(l)}${M.flags(l)}</td>
@@ -253,7 +269,7 @@
       minBooking: (x) => data.properties.find((p) => p.id === x.propertyId)?.minBooking || 0,
       reload: async () => { await reload(); },
     };
-    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)} · ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`, `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp penyewa</a>`) +
+    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)}, ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`, `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp penyewa</a>`) +
       `<div class="lead-grid"><div id="leadPanel">${M.leadPanel(l, ctx)}</div><div><div id="chatBox"></div><p class="hint">Penyewa membaca pesan ini di halaman reservasinya. ${l.chatEnabled ? '' : 'Chat sedang dimatikan di Kos saya.'}</p></div></div>`;
     M.bindLead($('#leadPanel'), l, ctx);
     chatBox = M.chat($('#chatBox'), {
@@ -278,7 +294,7 @@
     main.innerHTML = head('Kamar & harga', `Periode yang dibuka: ${per.map(([, t]) => t).join(', ')}. Ubah periode di menu Kos saya.`, `${propPicker()}<button class="btn btn--ghost" data-checked>Status kamar sudah benar</button><button class="btn btn--red" data-add>Tambah kamar</button>`) +
       `<p class="hint">Status yang tampil di website: Kosong (bisa dipesan), Dipesan (sudah ada DP), Terisi, Perbaikan. Terakhir dipastikan: ${p.checkedAt ? relTime(p.checkedAt) : 'belum pernah'}.</p>
       <div class="table-wrap mt">${rooms.length ? `<table><thead><tr><th>Kamar</th><th>Kapasitas</th>${per.map(([, t]) => `<th class="num">${t}</th>`).join('')}<th>Status</th><th></th></tr></thead><tbody>${rooms.map((r) => `<tr>
-        <td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${r.hidden ? ' · disembunyikan' : ''}${(r.photos || []).length ? ` · ${r.photos.length} foto` : ' · belum ada foto'}</span></td>
+        <td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${r.hidden ? ', disembunyikan' : ''}${(r.photos || []).length ? `, ${r.photos.length} foto` : ', belum ada foto'}</span></td>
         <td data-label="Kapasitas">${Number(r.capacity) === 2 ? `2 orang${r.extraPersonFee ? `<span class="sub">+${rp(r.extraPersonFee)}/bln bila berdua</span>` : ''}` : '1 orang'}</td>
         ${per.map(([, t, key]) => `<td class="num" data-label="${t}">${r[key] ? rp(r[key]) : '<span class="muted">-</span>'}</td>`).join('')}
         <td data-label="Status"><select class="inline" data-status="${r.id}" aria-label="Status ${esc(r.code)}">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>

@@ -353,3 +353,15 @@ p { margin: 0; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .ulos__track { animation: none; }
 }
+
+/* footer seragam untuk semua halaman publik */
+.footer__std { max-width: var(--max); margin: 0 auto; display: grid; grid-template-columns: 1.2fr repeat(3, 1fr); gap: 28px clamp(20px, 4vw, 56px); align-items: start; }
+.footer__std--links { grid-template-columns: repeat(3, 1fr); margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--line); }
+.footer__std strong { display: block; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--ijuk); margin-bottom: 10px; }
+.footer__std a { display: block; padding: 5px 0; text-decoration: none; color: var(--ink); font-weight: 500; }
+.footer__std a:hover { color: var(--red); }
+.footer__brand img { width: 150px; height: auto; }
+.footer--std .footer__small { padding-top: 20px; border-top: 1px solid var(--line); }
+.footer__small a { color: inherit; }
+@media (max-width: 760px) { .footer__std { grid-template-columns: 1fr 1fr; } .footer__brand { grid-column: 1 / -1; } .footer__std--links { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 380px) { .footer__std, .footer__std--links { grid-template-columns: 1fr; } }

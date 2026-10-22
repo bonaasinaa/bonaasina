@@ -197,16 +197,25 @@
     const nextChore = chores.filter((c) => c.mine && !c.report && c.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
     const latestAnn = announcements[0];
     const wa = waOwner(`Horas, saya ${tenant.name} dari kamar ${room?.code || ''}. `);
-    main.innerHTML = head(`Horas, ${esc(first)}`, `Kamar ${esc(room?.code || '-')}${room?.type ? `, ${esc(room.type)}` : ''} di ${esc(property?.name || 'Bonaasina')}. Sewa ${rp(tenant.rentAmount)} per ${CW(tenant.rentCycle)}.`,
-      wa ? `<a class="btn btn--green" href="${esc(wa)}" target="_blank" rel="noopener">Chat pengelola</a>` : '') + `
+    const D = window.BonaDash;
+    const unread = announcements.filter((x) => !x.read).length;
+    const late = unpaid.some((i) => i.overdue);
+    main.innerHTML = `
+      <section class="hello">
+        <div><p class="hello__kicker">${D.greet()}. Dashboard penghuni</p>
+          <h1>Horas, ${esc(first)}</h1>
+          <p>Kamar ${esc(room?.code || '-')}${room?.type ? `, ${esc(room.type)}` : ''} di ${esc(property?.name || 'Bonaasina')}. Sewa ${rp(tenant.rentAmount)} per ${CW(tenant.rentCycle)}.</p></div>
+        <div class="hello__actions">${unpaid[0] ? '<a class="btn btn--light" href="#tagihan">Bayar tagihan</a>' : ''}${wa ? `<a class="btn btn--ghost" href="${esc(wa)}" target="_blank" rel="noopener">${D.ico('wa')}Chat pengelola</a>` : ''}</div>
+      </section>
       <section class="panel"><h2>Yang perlu Anda lakukan</h2>${notifications.length ? `<div class="todo">${notifications.map((n) => `<a href="#${n.view}" class="${n.urgent ? 'is-urgent' : ''}"><span class="dot"></span><span>${esc(n.text)}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu Anda lakukan sekarang.</p>'}</section>
       <div class="grid grid--stats mt">
-        <a class="panel stat stat--link ${unpaid.some((i) => i.overdue) ? 'stat--alert' : ''}" href="#tagihan"><p class="stat__label">Tagihan berikutnya</p><p class="stat__value">${unpaid[0] ? rp(unpaid[0].amount) : 'Lunas'}</p><p class="stat__sub">${unpaid[0] ? `${esc(unpaid[0].periodLabel)}, jatuh tempo ${tgl(unpaid[0].dueDate)}` : 'Tidak ada yang perlu dibayar'}</p></a>
-        <a class="panel stat stat--link" href="#kontrak"><p class="stat__label">Kontrak</p><p class="stat__value">${current ? (current.phase === 'menunggu' ? 'Perlu disetujui' : current.daysLeft !== null && current.daysLeft >= 0 ? `${current.daysLeft} hari` : PHASE[current.phase]) : '-'}</p><p class="stat__sub">${current ? (current.phase === 'menunggu' ? esc(current.number) : `Berakhir ${tgl(current.endDate)}`) : 'Belum ada kontrak'}</p></a>
-        <a class="panel stat stat--link" href="#piket"><p class="stat__label">Piket Anda berikutnya</p><p class="stat__value">${nextChore ? (nextChore.date === today ? 'Hari ini' : hari(nextChore.date)) : '-'}</p><p class="stat__sub">${nextChore ? `${esc(nextChore.name)}, ${tgl(nextChore.date)}` : 'Belum ada jadwal'}</p></a>
-        <a class="panel stat stat--link" href="#pengumuman"><p class="stat__label">Pengumuman</p><p class="stat__value">${announcements.filter((a) => !a.read).length || 'Tidak ada'}${announcements.filter((a) => !a.read).length ? ' baru' : ''}</p><p class="stat__sub">${latestAnn ? esc(latestAnn.title) : 'Belum ada pengumuman'}</p></a>
+        <a class="panel stat ${late ? 'stat--red stat--alert' : unpaid[0] ? 'stat--amber' : 'stat--green'} stat--link" href="#tagihan"><p class="stat__label">Tagihan berikutnya</p><span class="stat__ico">${D.ico(unpaid[0] ? 'wallet' : 'check')}</span><p class="stat__value">${unpaid[0] ? rp(unpaid[0].amount) : 'Lunas'}</p><p class="stat__sub">${unpaid[0] ? `${esc(unpaid[0].periodLabel)}, jatuh tempo ${tgl(unpaid[0].dueDate)}` : 'Tidak ada yang perlu dibayar'}</p></a>
+        <a class="panel stat stat--blue stat--link" href="#kontrak"><p class="stat__label">Kontrak</p><span class="stat__ico">${D.ico('calendar')}</span><p class="stat__value">${current ? (current.phase === 'menunggu' ? 'Perlu disetujui' : current.daysLeft !== null && current.daysLeft >= 0 ? `${current.daysLeft} hari` : PHASE[current.phase]) : '-'}</p><p class="stat__sub">${current ? (current.phase === 'menunggu' ? esc(current.number) : `Berakhir ${tgl(current.endDate)}`) : 'Belum ada kontrak'}</p></a>
+        <a class="panel stat stat--green stat--link" href="#piket"><p class="stat__label">Piket Anda berikutnya</p><span class="stat__ico">${D.ico('tool')}</span><p class="stat__value">${nextChore ? (nextChore.date === today ? 'Hari ini' : hari(nextChore.date)) : '-'}</p><p class="stat__sub">${nextChore ? `${esc(nextChore.name)}, ${tgl(nextChore.date)}` : 'Belum ada jadwal'}</p></a>
+        <a class="panel stat stat--amber stat--link" href="#pengumuman"><p class="stat__label">Pengumuman</p><span class="stat__ico">${D.ico('bell')}</span><p class="stat__value">${unread ? `${unread} baru` : 'Tidak ada'}</p><p class="stat__sub">${latestAnn ? esc(latestAnn.title) : 'Belum ada pengumuman'}</p></a>
       </div>
       ${(property?.rules || []).length ? `<section class="panel mt"><h2>Aturan ${esc(property.name)}</h2><ul class="rules">${property.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></section>` : ''}`;
+    D.sideWidget(unpaid[0] ? `<small>Tagihan berikutnya</small><strong style="font-size:1.4rem">${rp(unpaid[0].amount)}</strong><small>${late ? 'Sudah lewat jatuh tempo' : `Jatuh tempo ${tgl(unpaid[0].dueDate)}`}</small>` : '<small>Status bayar</small><strong style="font-size:1.4rem">Lunas</strong><small>Terima kasih sudah tepat waktu</small>');
   }
 
   // ========== TAGIHAN ==========
@@ -275,7 +284,7 @@
     try { full = await BonaLoader.during('Membuka kontrak…', () => api('GET', `/contracts/${c.id}`)); } catch (ex) { return toast(ex.message, true); }
     openDialog({
       wide: true, title: toSign ? 'Baca & setujui kontrak' : `Kontrak ${full.number}`, ok: 'Setujui kontrak', okClass: 'btn--red',
-      body: `<p class="muted">${esc(full.number)} · ${tgl(full.startDate)} s.d. ${tgl(full.endDate)}</p>
+      body: `<p class="muted">${esc(full.number)}, ${tgl(full.startDate)} s.d. ${tgl(full.endDate)}</p>
         <div class="doc-text mt" tabindex="0">${esc(full.body).replace(/^## (.*)$/gm, '<strong class="doc-h">$1</strong>')}</div>
         ${toSign ? `<div class="fields mt">
           <label><input type="checkbox" name="agree" id="agree">Saya sudah membaca seluruh isi kontrak dan menyetujuinya.</label>
@@ -375,7 +384,7 @@
     const list = data.announcements;
     const unread = list.filter((a) => !a.read);
     main.innerHTML = head('Pengumuman', 'Informasi dari pengelola kos.') + (list.length ? list.map((a) => `<article class="ann ${a.priority === 'penting' ? 'ann--penting' : ''}">
-        <div class="ann__head"><div><h3>${esc(a.title)}</h3><p class="ann__meta">${waktu(a.createdAt)}${a.expiresOn ? ` · berlaku sampai ${tgl(a.expiresOn)}` : ''}</p></div>
+        <div class="ann__head"><div><h3>${esc(a.title)}</h3><p class="ann__meta">${waktu(a.createdAt)}${a.expiresOn ? `, berlaku sampai ${tgl(a.expiresOn)}` : ''}</p></div>
           <div class="btn-row">${!a.read ? '<span class="pill pill--menunggu">Baru</span>' : ''}${a.priority === 'penting' ? '<span class="pill pill--penting">Penting</span>' : ''}</div></div>
         ${a.body ? `<p class="ann__body">${esc(a.body)}</p>` : ''}</article>`).join('') : '<section class="panel empty">Belum ada pengumuman.</section>');
     // Dibuka = dibaca. Tanda "Baru" tetap tampil sampai menu ini ditinggalkan.
