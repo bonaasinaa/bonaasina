@@ -5,7 +5,7 @@ export const files = new Map<string, Uint8Array>();
 let seq = 1000;
 const uid = () => crypto.randomUUID().replace(/-/g, '');
 const PREFIX: Record<string, string> = { rooms: 'rm_', tenants: 'tn_', invoices: 'inv_', surveys: 'srv_', owners: 'own_', leads: 'ld_', contracts: 'ctr_', waitlist: 'wl_', announcements: 'ann_', issues: 'iss_', expenses: 'exp_' };
-const IDENTITY = new Set(['messages', 'notifications', 'activity_log']);
+const IDENTITY = new Set(['messages', 'notifications', 'activity_log', 'email_log']);
 const DEFAULTS: Record<string, Row> = {
   properties: { kind: 'sendiri', status: 'aktif', periods: ['bulanan', 'tahunan'], city: '', whatsapp: '', bank_info: '', chat_enabled: true, wa_enabled: true, min_booking: 0, booking_policy: '', visit_hours: '', fee_type: null, fee_value: null, review_note: '', facilities: [], rules: [], nearby: [], photos: [], sort: 0, owner_id: null },
   rooms: { status: 'kosong', hidden: false, price_daily: 0, price_monthly: 0, price_semester: 0, price_yearly: 0, capacity: 1, extra_person_fee: 0, extra_person_period: 'bulanan', facilities: [], photos: [], note: '', type: '', size_m2: '', floor: '' },
@@ -19,7 +19,7 @@ const DEFAULTS: Record<string, Row> = {
   listings: { status: 'baru', description: '', price: null, price_note: '', photos: [], seller_info: '', area: '', admin_note: '', featured: false, expires_on: null, approved_at: null, ip: '' },
   places: { status: 'aktif', description: '', address: '', maps_query: '', whatsapp: '', open_hours: '', price_note: '', distance_note: '', photo: '', suggested_by: '', admin_note: '', sort: 50, ip: '' },
 };
-const UNIQUE: Record<string, string[]> = { leads: ['code', 'username'], owners: ['username'], properties: ['slug'] };
+const UNIQUE: Record<string, string[]> = { leads: ['code', 'username'], owners: ['username'], properties: ['slug'], email_log: ['dedupe_key'] };
 function fill(table: string, r: Row) {
   const now = new Date().toISOString();
   const out: Row = { ...(DEFAULTS[table] || {}), created_at: now, updated_at: now, ...r };

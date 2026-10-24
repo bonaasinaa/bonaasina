@@ -205,7 +205,7 @@
             <li><div><strong>Pemilik konfirmasi</strong><span>Pemilik memastikan kamarnya ada, lalu mengabari jumlah DP lewat WhatsApp dan halaman ini.</span></div></li>
             <li><div><strong>Transfer DP &amp; unggah bukti</strong><span>Uang DP langsung ke rekening pemilik. Unggah buktinya di sini.</span></div></li>
             <li><div><strong>Bukti booking resmi</strong><span>Setelah pemilik menerima DP dan admin Bonaasina memeriksa, bukti booking terbit.</span></div></li></ol></div>
-          <div class="panel"><h2>Akun</h2><p class="muted">Username <strong>${esc(l.username)}</strong>. Simpan untuk melihat status kapan saja di ${esc(location.host)}/akun.</p><div class="btn-row mt"><button class="btn btn--ghost btn--sm" data-pw>Ganti kata sandi</button></div></div>
+          <div class="panel"><h2>Akun</h2><p class="muted">Username <strong>${esc(l.username)}</strong>. Simpan untuk melihat status kapan saja di ${esc(location.host)}/akun.</p><p class="muted">Email notifikasi: <strong>${esc(l.email || 'belum diisi')}</strong></p><div class="btn-row mt"><button class="btn btn--ghost btn--sm" data-email>${l.email ? 'Ubah email' : 'Tambah email'}</button><button class="btn btn--ghost btn--sm" data-pw>Ganti kata sandi</button></div></div>
         </div>
         <div class="cust__col cust__col--chat"><div id="chatBox"></div>
           ${wa ? `<p class="hint">Lebih suka WhatsApp? <a href="${esc(wa)}" target="_blank" rel="noopener">Chat pemilik lewat WhatsApp</a>.</p>` : ''}</div>
@@ -254,6 +254,11 @@
       if (e.target.closest('[data-refund-acc]')) openDialog({ title: 'Rekening tujuan refund', ok: 'Simpan', body: `<label>Bank, nomor rekening, atas nama<input name="account" value="${esc(l.refundAccount)}" required></label>`, onOk: async (d) => { await api('POST', '/refund', d); toast('Rekening tujuan dikirim ke pemilik.'); refresh(); } });
       if (e.target.closest('[data-refund-ok]')) { if (await askConfirm('Refund sudah diterima?', `Pastikan ${rp(l.refundAmount)} sudah masuk ke rekening Anda.`, 'Ya, sudah diterima')) { try { await api('POST', '/refund/confirm', { received: true }); toast('Terima kasih. Refund selesai.'); refresh(); } catch (ex) { toast(ex.message, true); } } }
       if (e.target.closest('[data-refund-report]')) openDialog({ title: 'Laporkan ke admin Bonaasina', ok: 'Kirim laporan', body: '<p class="muted">Admin akan menengahi antara Anda dan pemilik kos.</p><label class="mt">Ceritakan masalahnya<textarea name="note" rows="4" required></textarea></label>', onOk: async (d) => { await api('POST', '/refund/confirm', { received: false, note: d.note }); toast('Laporan terkirim ke admin.'); refresh(); } });
+      if (e.target.closest('[data-email]')) openDialog({
+        title: 'Email notifikasi', ok: 'Simpan',
+        body: `<p class="muted">Kabar status reservasi, DP, bukti booking, dan refund juga dikirim ke email ini. Kosongkan untuk berhenti menerima email.</p><label class="mt">Email<input type="email" name="email" inputmode="email" autocomplete="email" value="${esc(l.email || '')}" placeholder="nama@gmail.com"></label>`,
+        onOk: async (d) => { await api('PUT', '/email', d); toast(d.email ? 'Email tersimpan. Cek kotak masuk Anda.' : 'Email dihapus.'); refresh(); },
+      });
       if (e.target.closest('[data-pw]')) openDialog({
         title: 'Ganti kata sandi', ok: 'Simpan',
         body: `<div class="fields"><input type="text" name="username" value="${esc(l.username)}" autocomplete="username" hidden><label>Kata sandi sekarang<input type="password" name="oldPassword" autocomplete="current-password" required></label><label>Kata sandi baru<input type="password" name="newPassword" autocomplete="new-password" minlength="8" required></label></div>`,
