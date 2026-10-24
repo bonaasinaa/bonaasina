@@ -421,3 +421,50 @@ a.stat--link:hover { border-color: var(--ink); transform: translateY(-1px); }
   td.actions.act-wrap > * { margin: 3px 0 3px 6px; }
 }
 .doc-text .doc-h { display: block; margin-top: 10px; font-weight: 700; }
+
+/* live chat: kotak masuk (daftar + percakapan), kamus bot */
+.lc-admin { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 14px; align-items: start; }
+.lc-admin__list { display: grid; gap: 10px; padding: 12px; }
+.lc-admin__list .seg { width: 100%; }
+.lc-admin__list .seg button { padding: 0 10px; }
+.lc-admin__list .search { max-width: none; }
+.lc-threads { display: grid; gap: 4px; max-height: 64vh; overflow-y: auto; }
+.lc-thread { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px; border-radius: var(--r-md); color: inherit; text-decoration: none; }
+.lc-thread:hover { background: var(--soft, rgba(36, 22, 15, .04)); }
+.lc-thread.is-active { background: var(--cream); }
+.lc-thread > div:nth-child(2) { min-width: 0; display: grid; }
+.lc-thread strong { font-size: 14.5px; }
+.lc-thread > div:nth-child(2) span { font-size: 13px; color: var(--ijuk); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-thread.is-unread strong, .lc-thread.is-unread > div:nth-child(2) span { color: var(--ink); font-weight: 700; }
+.lc-thread__meta { display: grid; justify-items: end; gap: 4px; }
+.lc-thread__meta time { font-size: 12px; color: var(--ijuk); }
+.lc-thread .badge { position: static; }
+.lc-admin__conv { display: flex; flex-direction: column; gap: 10px; min-height: 420px; padding: 14px; }
+.lc-conv__head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.lc-conv__head .who-cell { min-width: 0; flex: 1 1 260px; display: flex; gap: 10px; align-items: center; }
+.lc-conv__head .who-cell > div { display: grid; min-width: 0; }
+.lc-conv__head .who-cell .sub { font-size: 12.5px; color: var(--ijuk); }
+.lc-conv__back { display: none; flex-basis: 100%; }
+.lc-conv__list { flex: 1; min-height: 300px; max-height: 58vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 6px 2px; overscroll-behavior: contain; }
+.lc-conv__form { border: 1px solid var(--line); border-radius: var(--r-md); }
+.msg--bot { background: var(--cream); }
+.msg__opts { display: block; margin-top: 6px; font-size: 12px; color: var(--ijuk); }
+.msg a { color: inherit; font-weight: 600; }
+.lc-preview { max-width: 640px; margin-top: 8px; }
+@media (max-width: 860px) {
+  .lc-admin { grid-template-columns: 1fr; }
+  .lc-admin.has-open .lc-admin__list { display: none; }
+  .lc-admin:not(.has-open) .lc-admin__conv { display: none; }
+  .lc-conv__back { display: inline-flex; }
+  .lc-conv__list { max-height: 60vh; }
+}
+.kamus { padding: 0; }
+.kamus > summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 14px 16px; cursor: pointer; list-style: none; }
+.kamus > summary::-webkit-details-marker { display: none; }
+.kamus > summary::before { content: "▸"; color: var(--ijuk); }
+.kamus[open] > summary::before { content: "▾"; }
+.kamus > :not(summary) { margin-left: 16px; margin-right: 16px; }
+.kamus[open] { padding-bottom: 14px; }
+.kamus + .kamus { margin-top: 8px; }
+.kamus-tags { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; font-size: 13px; color: var(--ijuk); }
+.kamus-tags code { color: var(--red); font-weight: 700; }
