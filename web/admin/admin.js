@@ -428,11 +428,12 @@
         try {
           const out = await api('GET', `/invoices/${r.dataset.remind}/reminder?site=${encodeURIComponent(location.origin)}`);
           openDialog({
-            title: 'Pengingat WhatsApp',
-            body: `<p class="muted">Periksa pesannya, lalu tekan Buka WhatsApp dan kirim dari sana.</p>
+            title: out.url ? 'Pengingat WhatsApp' : 'Pengingat email',
+            body: `${out.emailedTo ? `<p class="muted">Pengingat email juga dikirim otomatis ke ${esc(out.emailedTo)} (sekali per hari).</p>` : ''}
+              ${out.url ? '<p class="muted">Periksa pesannya, lalu tekan Buka WhatsApp dan kirim dari sana.</p>' : ''}
               <div class="preview" id="remText">${esc(out.text)}</div>
               <div class="btn-row mt">
-                <a class="btn btn--green" href="${esc(out.url)}" target="_blank" rel="noopener">Buka WhatsApp</a>
+                ${out.url ? `<a class="btn btn--green" href="${esc(out.url)}" target="_blank" rel="noopener">Buka WhatsApp</a>` : ''}
                 <button type="button" class="btn btn--ghost" id="remCopy">Salin pesan</button></div>`,
             onOpen: (b) => { $('#remCopy', b).onclick = () => copyText($('#remText', b)); },
           });
@@ -556,6 +557,7 @@
           <p class="fieldset-title span-all">Data penghuni</p>
           <label>Nama lengkap<input name="name" value="${v('name')}" required></label>
           <label>Nomor WhatsApp<input name="phone" inputmode="tel" value="${v('phone')}" placeholder="0812…"></label>
+          <label>Email <span class="hint">opsional, untuk kabar tagihan & kontrak</span><input name="email" type="email" inputmode="email" value="${v('email')}" placeholder="nama@gmail.com"></label>
           <label>Pekerjaan / kampus<input name="occupation" value="${v('occupation')}"></label>
           <label>Asal daerah<input name="origin" value="${v('origin')}"></label>
           <p class="fieldset-title span-all">Sewa</p>
@@ -1422,6 +1424,7 @@
           <p class="fieldset-title span-all">Kontak & pembayaran</p>
           <label>Nama pemilik / pengelola<input name="ownerName" value="${esc(s.ownerName)}"></label>
           <label>Nomor WhatsApp untuk website<input name="whatsapp" inputmode="tel" value="${esc(s.whatsapp)}"><span class="hint">Calon penyewa akan menghubungi nomor ini.</span></label>
+          <label class="span-all">Email notifikasi admin <span class="hint">kosong = email login admin; pisahkan dengan koma</span><input name="notifyEmail" inputmode="email" value="${esc(s.notifyEmail || '')}" placeholder="bonaasinaa@gmail.com"><span class="hint">Survei, reservasi, bukti bayar, laporan kerusakan, kontrak, dan pendaftaran mitra dikirim ke sini.</span></label>
           <label class="span-all">Info rekening / cara bayar <span class="hint">dimasukkan ke pesan pengingat</span><textarea name="paymentInfo" rows="2">${esc(s.paymentInfo)}</textarea></label>
           <label class="span-all">Metode pembayaran (tampil di website)<input name="paymentMethods" value="${esc(s.paymentMethods)}"></label>
           <label class="span-all">Aturan deposit (tampil di website)<input name="depositInfo" value="${esc(s.depositInfo)}"></label>
@@ -1550,7 +1553,7 @@
     MK.bindLead($('#leadPanel'), l, ctx);
     $('[data-make-tenant]')?.addEventListener('click', async () => {
       const rooms = await get('/rooms');
-      tenantDialog(null, rooms, { leadId: l.id, name: l.name, phone: l.phone, occupation: l.occupation, roomId: l.roomId, rentCycle: l.period, startDate: l.moveDate, endDate: l.period === 'harian' ? l.endDate : '' });
+      tenantDialog(null, rooms, { leadId: l.id, name: l.name, phone: l.phone, email: l.email || '', occupation: l.occupation, roomId: l.roomId, rentCycle: l.period, startDate: l.moveDate, endDate: l.period === 'harian' ? l.endDate : '' });
       setTimeout(() => { const sel = $('#tRoom'); if (sel && l.roomId) { sel.value = l.roomId; sel.dispatchEvent(new Event('change')); } }, 50);
     });
     adminChat = MK.chat($('#chatBox'), {

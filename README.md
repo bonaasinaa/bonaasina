@@ -60,12 +60,25 @@ Kode: `supabase/functions/api/market.ts`, migrasi `20261018000001_kos_sekitar.sq
 cd tests && deno run -A --config deno.json kos-sekitar.flow.ts
 ```
 
+## Notifikasi email (Resend)
+Kode: `supabase/functions/api/mailer.ts`, migrasi `20261024000002_notifikasi_email.sql`, uji `tests/email.flow.ts`.
+
+- Kolom **email opsional** di reservasi, daftar tunggu, pendaftaran mitra, data penghuni (admin), serta pengaturan akun di dashboard penghuni, pemilik, dan halaman reservasi. Admin menerima email di *Pengaturan → Email notifikasi admin* (kosong = email login admin).
+- Yang dikirim: semua notifikasi dashboard Kos Sekitar (reservasi baru, kamar tersedia/ditolak, DP, fee, booking berhasil, refund, kunjungan, chat), tagihan baru, pengingat tagihan, bukti bayar masuk/ditolak, pembayaran lunas + nomor kuitansi, laporan kerusakan & statusnya, kontrak baru/disetujui/keputusan perpanjang, pengumuman, kamar kosong untuk daftar tunggu, survei, pendaftaran mitra, dan pemberitahuan keamanan (kata sandi diganti).
+- **Kata sandi tidak pernah dikirim lewat email**; tetap lewat WhatsApp.
+- Email dikirim di latar belakang, jadi gagal kirim tidak menggagalkan aksi pengguna. Setiap kiriman dicatat di tabel `email_log` dengan kunci unik (juga dipakai sebagai `Idempotency-Key` Resend) supaya tidak terkirim dua kali.
+- Secret fungsi `api`: `RESEND_API_KEY` (wajib; tanpa ini email dilewati), `EMAIL_FROM` (bawaan `Bonaasina <notifikasi@kabar.bonaasina.my.id>`, domainnya harus terverifikasi di Resend), `EMAIL_REPLY_TO` (opsional). Pakai API key **Sending access** yang dibatasi ke domain itu, bukan Full access.
+
+```bash
+cd tests && deno run -A --config deno.json email.flow.ts
+```
+
 ## Deploy
 
 ### 1. Supabase
 1. Buat proyek **bonaasina** (region Singapore `ap-southeast-1`).
 2. Jalankan semua file di `supabase/migrations/` berurutan, lalu `supabase/seed.sql`.
-3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts` + `market.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR.
+3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts` + `market.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR, serta secret email (lihat *Notifikasi email*).
 4. Buat kode penyiapan admin sekali pakai (berlaku 24 jam), lalu buka `/admin/` → *Pertama kali masuk* untuk membuat kata sandi:
    ```sql
    insert into public.setup_codes (email, code_hash, expires_at)

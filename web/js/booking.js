@@ -36,6 +36,7 @@ window.BonaBooking = (() => {
         <label>Nama<input name="name" autocomplete="name" required maxlength="80"></label>
         <label>Nomor WhatsApp<input name="phone" inputmode="tel" autocomplete="tel" placeholder="0812 3456 7890" required maxlength="20"></label>
       </div>
+      <label>Email <span class="opt">(opsional, untuk kabar status reservasi & bukti booking)</span><input name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" placeholder="nama@gmail.com"></label>
       <label>Pekerjaan / kampus <span class="opt">(opsional)</span><input name="occupation" maxlength="80"></label>
       <label class="check-row"><input type="checkbox" name="visit" data-visit> Saya ingin melihat kos dulu (jadwalkan kunjungan)</label>
       <div class="form__row" data-visit-fields hidden>
