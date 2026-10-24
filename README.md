@@ -12,6 +12,7 @@ Website untuk calon penyewa, admin untuk pemilik, dan dashboard untuk penghuni.
 | Admin | `/admin/` | Pemilik Bonaasina: menu Kos Sekitar (reservasi, persetujuan & refund, mitra kos, pemilik kos, fee & aturan, notifikasi), kamar, penghuni & akun login, kontrak, kondisi kamar, tagihan & kuitansi, pengumuman, piket, kerusakan, survei, daftar tunggu, laporan, log |
 | Dashboard penghuni | `/penghuni/` | Penghuni: tagihan & kuitansi PDF, kontrak digital, kondisi kamar, piket, pengumuman, lapor kerusakan, kartu penghuni |
 | Cek keaslian | `/cek/?k=…` | Siapa saja: memindai QR kartu penghuni/kuitansi |
+| Live chat | tombol chat di `/`, `/kos-sekitar/`, `/titip/`, `/sekitar/`, `/mitra/`; admin menu *Live chat* | Calon penyewa: tanya lewat website (bot menjawab dulu, lalu admin) sebagai alternatif WhatsApp |
 
 `/portal/` lama hanya mengalihkan ke `/penghuni/` (link portal lama sudah tidak berlaku).
 
@@ -59,6 +60,17 @@ Kode: `supabase/functions/api/market.ts`, migrasi `20261018000001_kos_sekitar.sq
 ```bash
 cd tests && deno run -A --config deno.json kos-sekitar.flow.ts
 ```
+
+## Live chat & bot (alternatif WhatsApp)
+Kode: `supabase/functions/api/chat.ts` (API), `chatbot.ts` (bot & kamus), migrasi `20261024000002_live_chat.sql`, widget `web/js/livechat.js` + `web/css/livechat.css`, admin menu *Live chat* di `web/admin/admin.js`.
+
+- **Pengunjung** membuka tombol chat di pojok kanan bawah (menggantikan tombol WhatsApp melayang; tautan WhatsApp tetap ada di dalam panel). **Bot sambutan** menyapa dan menawarkan pilihan topik (harga, kamar kosong, fasilitas, lokasi, aturan, survei, booking, pembayaran, bicara dengan admin). Pertanyaan yang ditulis bebas dipahami lewat kata kunci, termasuk singkatan (`brp hrg kmr`) dan salah ketik ringan. Jawaban diisi dari data website (`{harga}`, `{kamar_kosong}`, …), jadi selalu sama dengan halaman. Tanya jawab (FAQ) di Pengaturan ikut dikenali. Selama belum terhubung ke admin, tidak ada yang disimpan.
+- **Bicara dengan admin** (atau bot tidak paham): pengunjung menulis nama panggilan (WhatsApp opsional). Server membuat percakapan dan token acak; browser menyimpannya di `localStorage`, server hanya menyimpan hash SHA-256 (header `X-Chat-Session`). Pertanyaan ke bot sebelumnya ikut tercatat (jawabannya dibuat ulang di server, bukan dari browser).
+- Setelah terhubung, bot hanya ikut menjawab bila cukup yakin, dan diam selama 30 menit setelah admin membalas. Pembaruan memakai polling ringan (4 detik saat panel terbuka, 25 detik saat tertutup, berhenti saat tab disembunyikan), jadi tidak perlu akses langsung browser ke database dan tetap sesuai CSP.
+- **Admin** → *Live chat*: kotak masuk (belum dibaca/terbuka/selesai), balas, tandai selesai, hapus (spam), tombol WhatsApp bila nomor diisi. Lencana menu + judul tab menghitung pesan belum dibaca (diperbarui tiap 20 detik di semua menu) dan muncul pemberitahuan kecil saat ada pesan baru; Ringkasan punya widget *Live chat*. Tab *Pengaturan*: tampilkan tombol, terima pesan, bot aktif, hari & jam layanan (WIB), sapaan, pesan di luar jam layanan. Tab *Kamus bot*: ubah/tambah topik, kata kunci, jawaban, tombol pilihan; *Coba bot* untuk menguji.
+- Batas: 5 percakapan baru per IP per jam, 12 pesan pengunjung per menit per percakapan, 60 pertanyaan bot per IP per 10 menit (per instance).
+
+**Uji alur:** `cd tests && deno run -A --config deno.json chat.flow.ts`
 
 ## Deploy
 

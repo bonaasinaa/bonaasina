@@ -9,6 +9,7 @@ import bcrypt from 'npm:bcryptjs@2.4.3';
 import { contractPdf, receiptPdf, cardPdf, qrSvg, terbilang, DEFAULT_CONTRACT_TEMPLATE } from './docs.ts';
 import { createMarket } from './market.ts';
 import { createCommunity } from './community.ts';
+import { createChat } from './chat.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const secretKeys = safeJson(Deno.env.get('SUPABASE_SECRET_KEYS'));
@@ -444,6 +445,7 @@ on('GET', '/admin/summary', async () => {
     waitlistToNotify: (waitlist || []).filter((w) => w.status === 'perlu_dikabari').length,
     market: await market.adminCounts(),
     community: await community.counts(),
+    chat: await chat.counts(),
   };
 });
 
@@ -1630,11 +1632,16 @@ const community = createCommunity({
   normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL,
 });
 
+// ================================================================ LIVE CHAT & BOT (chat.ts, chatbot.ts)
+const chat = createChat({
+  sb, q, str, toCamel, pick, bad, notFound, HttpError, on, created, sha256, randomToken, clientInfo, getSettings, normalizePhone, SITE_URL,
+});
+
 // ---------------------------------------------------------------- server
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-session, x-owner-session, x-lead-session',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-session, x-owner-session, x-lead-session, x-chat-session',
   'Access-Control-Expose-Headers': 'x-sb-edge-region',
   'Access-Control-Max-Age': '86400',
 };
