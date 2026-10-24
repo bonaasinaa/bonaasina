@@ -47,6 +47,8 @@
     });
     const totalFree = rooms.filter((r) => r.status === 'kosong').length;
     $('#availabilityText').textContent = !parts.length ? '' : totalFree ? `Saat ini ada ${parts.join(', ')}.` : 'Saat ini semua kamar terisi. Tanyakan lewat WhatsApp untuk masuk daftar tunggu.';
+    // Versi pendek untuk layar sempit, supaya bar tidak memakan tiga baris.
+    $('#availabilityShort').textContent = !parts.length ? '' : totalFree ? `${totalFree} kamar kosong saat ini` : 'Semua kamar terisi';
 
     if (site.tagline) $('#heroLead').textContent = site.tagline;
     const hello = `Horas, saya tertarik dengan kamar di ${site.siteName || 'Bonaasina'}. Apakah masih ada yang kosong?`;
@@ -55,15 +57,22 @@
 
     // Fakta hero — diambil dari data, bukan angka hiasan
     const facts = [];
-    const firstPer = state.periods.find((k) => k !== 'harian') || state.periods[0];
-    const cheap = rooms.map((r) => priceOf(r, firstPer)).filter(Boolean);
-    if (cheap.length) facts.push(['Mulai dari', `${rpShort(Math.min(...cheap))}/${PERIODS[firstPer][1]}`]);
+    // Harga termurah dihitung per bulan dari semua periode yang dibuka (mis. kos yang hanya sewa tahunan).
+    const MONTHS = { bulanan: 1, semesteran: 6, tahunan: 12 };
+    const cheap = rooms.flatMap((r) => Object.keys(MONTHS).map((k) => ({ k, v: priceOf(r, k) / MONTHS[k] }))).filter((x) => x.v);
+    if (cheap.length) {
+      const min = cheap.reduce((a, b) => (b.v < a.v ? b : a));
+      facts.push([min.k === 'bulanan' ? 'Mulai dari' : `Mulai dari (sewa ${PERIODS[min.k][0].toLowerCase()})`, `${rpShort(Math.round(min.v / 1000) * 1000)}/bulan`]);
+    } else if (state.periods.includes('harian')) {
+      const daily = rooms.map((r) => priceOf(r, 'harian')).filter(Boolean);
+      if (daily.length) facts.push(['Mulai dari', `${rpShort(Math.min(...daily))}/malam`]);
+    }
     facts.push(['Jumlah kamar', `${rooms.length} di ${properties.length} lokasi`]);
     if (site.surveyHours) facts.push(['Jam survei', site.surveyHours.split(',')[0]]);
     $('#heroFacts').innerHTML = facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
 
     // Pita ulos: fasilitas gabungan, diulang dua kali untuk marquee tanpa jeda
-    const fac = [...new Set(properties.flatMap((p) => p.facilities || []))];
+    const fac = [...new Map(properties.flatMap((p) => p.facilities || []).map((f) => [f.trim().toLowerCase(), f.trim()])).values()];
     const words = (fac.length ? fac : ['Kos Asina', 'Kos Bona']).map((f) => `<span>${esc(f)}</span>`).join('');
     $('#ulosTrack').innerHTML = words + words;
 
@@ -82,7 +91,9 @@
       $('#surveyHours').textContent = `Jadwal survei: ${site.surveyHours}`;
       $('#stepSurvey').textContent = `Pemilik memastikan kamar tersedia, lalu mengabari lewat WhatsApp. Boleh survei dulu (${site.surveyHours}).`;
     }
-    const pay = [site.depositInfo, site.paymentMethods].filter(Boolean).join(' ');
+    // Gabungkan dua kalimat dari pengaturan dengan tanda titik yang benar; "Rp. 1.000" → "Rp1.000".
+    const sentence = (s) => { s = String(s || '').trim().replace(/Rp\.?\s*(?=\d)/g, 'Rp'); return s && !/[.!?]$/.test(s) ? s + '.' : s; };
+    const pay = [site.depositInfo, site.paymentMethods].map(sentence).filter(Boolean).join(' ');
     if (pay) $('#stepPay').textContent = `Transfer DP, unggah buktinya di dashboard, dan terima bukti booking resmi. ${pay}`;
   }
 
@@ -98,7 +109,7 @@
       const holders = ['Foto tampak depan menyusul', 'Foto kamar menyusul', 'Foto area bersama menyusul'];
       const gallery = photos.map((u, j) => `<button type="button" class="gallery__item" data-lightbox="${p.id}" data-index="${j}" aria-label="Perbesar foto ${esc(p.name)} ${j + 1}"><img src="${esc(u)}" alt="Foto ${esc(p.name)} ${j + 1}" loading="lazy"></button>`).join('')
         + holders.slice(photos.length).map((t) => `<div class="ph"><img class="ph__mark" src="/assets/img/mark.webp" alt="">${esc(t)}</div>`).join('');
-      return `<article class="prop" role="tabpanel" id="panel-${p.id}" aria-labelledby="tab-${p.id}" ${i ? 'hidden' : ''}>
+      return `<div class="prop" role="tabpanel" id="panel-${p.id}" aria-labelledby="tab-${p.id}" ${i ? 'hidden' : ''}>
         <div>
           <img class="prop__logo" src="${esc(p.logo)}" alt="Logo ${esc(p.name)}" width="240" height="270" loading="lazy">
           ${p.gender ? `<span class="prop__gender">Kos ${esc(p.gender.toLowerCase())}</span>` : ''}
@@ -111,7 +122,7 @@
           </div>
         </div>
         <div class="gallery">${gallery}</div>
-      </article>`;
+      </div>`;
     }).join('');
 
     const select = (id, focus) => {
@@ -201,6 +212,13 @@
     return Number(r[PERIODS[cycle][2]]) || 0;
   }
 
+  // Kamar yang tidak membuka periode terpilih: tampilkan harga periode lain yang tersedia, bukan "tidak tersedia".
+  function altPrice(r) {
+    const k = ORDER.find((x) => x !== state.cycle && priceOf(r, x));
+    return k ? `<span class="room__amount">${rp(priceOf(r, k))}</span><span class="room__per">per ${PERIODS[k][1]} (hanya sewa ${PERIODS[k][0].toLowerCase()})</span>`
+      : `<span class="room__per">Harga ditanyakan ke pemilik</span>`;
+  }
+
   function renderRooms() {
     if (!state.data) return;
     let rooms = state.data.rooms;
@@ -219,7 +237,7 @@
       const avail = r.status === 'kosong';
       const ask = `Horas, saya mau tanya kamar ${r.code} di ${kos}. Apakah masih kosong untuk sewa ${PERIODS[state.cycle][0].toLowerCase()}?`;
       const price = priceOf(r);
-      const two = Number(r.capacity) === 2 ? `Bisa untuk 2 orang${r.extraPersonFee ? ` (+${rp(r.extraPersonFee)}/bln)` : ''}` : '';
+      const two = Number(r.capacity) === 2 ? `Bisa untuk 2 orang${r.extraPersonFee ? ` (+${rp(r.extraPersonFee)}/${r.extraPersonPeriod === 'tahunan' ? 'tahun' : 'bln'})` : ''}` : '';
       return `<li class="room ${avail ? '' : 'is-unavailable'}">
         <div class="room__code">${esc(r.code)}<span class="room__kos">${esc(kos)}</span>${(r.photos || []).length ? `<button type="button" class="room__thumb" data-lightbox="room:${r.id}" data-index="0" aria-label="Lihat ${r.photos.length} foto kamar ${esc(r.code)}"><img src="${esc(r.photos[0])}" alt="" loading="lazy"><span>${r.photos.length} foto</span></button>` : ''}</div>
         <div class="room__info">
@@ -229,7 +247,7 @@
           <span class="status status--${r.status}">${STATUS[r.status] || esc(r.status)}</span>
         </div>
         <div class="room__fac">${(r.facilities || []).map(esc).join(', ')}${r.note ? `<span class="room__note">${esc(r.note)}</span>` : ''}</div>
-        <div class="room__price">${price ? `<span class="room__amount" data-id="${r.id}">${rp(price)}</span><span class="room__per">per ${PERIODS[state.cycle][1]}</span>` : `<span class="room__per">Tidak tersedia untuk sewa ${PERIODS[state.cycle][0].toLowerCase()}</span>`}</div>
+        <div class="room__price">${price ? `<span class="room__amount" data-id="${r.id}">${rp(price)}</span><span class="room__per">per ${PERIODS[state.cycle][1]}</span>` : altPrice(r)}</div>
         <div class="room__actions">
           ${avail
             ? `<a class="btn btn--red btn--sm" href="#survei" data-survey="${r.propertyId}" data-room="${r.id}">Pesan kamar ini</a>
@@ -263,7 +281,15 @@
 
   // ---------- lokasi (aturan kos hanya tampil di dashboard penghuni) ----------
   function renderLokasi() {
-    $('#lokasiGrid').innerHTML = state.data.properties.map((p) => `
+    // Kos yang berada di titik peta yang sama digabung dalam satu kartu, supaya tidak ada dua peta yang identik.
+    const groups = [];
+    for (const p of state.data.properties) {
+      const g = p.mapsQuery && groups.find((x) => x.mapsQuery === p.mapsQuery && x.address === p.address);
+      if (g) { g.name += ` & ${p.name}`; g.nearby = [...new Set([...g.nearby, ...(p.nearby || [])])]; }
+      else groups.push({ ...p, nearby: [...(p.nearby || [])] });
+    }
+    $('#lokasiGrid').classList.toggle('is-single', groups.length === 1);
+    $('#lokasiGrid').innerHTML = groups.map((p) => `
       <article class="place">
         <div class="place__map">${p.mapsQuery && !window.BONA_PREVIEW
           ? `<iframe title="Peta lokasi ${esc(p.name)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps?q=${encodeURIComponent(p.mapsQuery)}&output=embed"></iframe>`
@@ -272,7 +298,7 @@
             : `<div class="place__nomap">Titik peta ${esc(p.name)} belum diatur.<br>Minta lokasi lewat WhatsApp.</div>`}</div>
         <div class="place__body">
           <div><p class="place__name">${esc(p.name)}</p><p class="place__addr">${esc(p.address)}</p>
-            ${p.mapsQuery ? `<p style="margin-top:10px"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.mapsQuery)}" target="_blank" rel="noopener">Buka di Google Maps</a></p>` : ''}</div>
+            ${p.mapsQuery ? `<p class="place__link"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.mapsQuery)}" target="_blank" rel="noopener">Buka di Google Maps</a></p>` : ''}</div>
           ${(p.nearby || []).length ? `<div><h3>Dekat dengan</h3><ul>${p.nearby.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>` : ''}
         </div>
       </article>`).join('');
@@ -358,10 +384,15 @@
     try {
       const [pl, tj] = await Promise.all([fetch(API + '/sekitar').then((r) => r.json()), fetch(API + '/titip').then((r) => r.json())]);
       const places = (pl.places || []).slice(0, 6);
+      // Bagian yang belum ada isinya disembunyikan dari beranda (halamannya tetap bisa dibuka dari menu).
+      box.closest('.near__card').hidden = !places.length;
       box.innerHTML = places.length ? places.map((p) => `<li><span class="near__ico" aria-hidden="true">${PLACE_ICON[p.category] || '📍'}</span><div><strong>${esc(p.name)}</strong><span>${esc([pl.categories?.[p.category], p.distanceNote].filter(Boolean).join(', '))}</span></div></li>`).join('')
         : '<li class="near__empty">Daftar warung, laundry, dan toko terdekat sedang kami lengkapi.</li>';
       const n = (tj.listings || []).length;
       $('#titipCount').textContent = n ? `${n} barang & jasa sedang ditawarkan` : 'Jadi yang pertama memasang iklan';
+      $('.near__card--titip').hidden = !n;
+      $('.near').hidden = !places.length && !n;
+      $('.near').classList.toggle('is-single', !places.length !== !n);
     } catch { box.innerHTML = '<li class="near__empty">Info sekitar belum bisa dimuat.</li>'; }
   }
 

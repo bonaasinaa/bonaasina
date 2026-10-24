@@ -4,6 +4,8 @@
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const rp = (n) => 'Rp' + Number(n || 0).toLocaleString('id-ID');
+  // Tambahan bila berdua untuk sejumlah bulan (extraPersonFee dicatat per bulan atau per tahun).
+  const extraFee = (r, months) => { const f = Number(r.extraPersonFee) || 0; return r.extraPersonPeriod === 'tahunan' ? Math.round((f * months) / 12) : f * months; };
   const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   const tgl = (s) => { if (!s) return '-'; const [y, m, d] = String(s).slice(0, 10).split('-').map(Number); return `${d} ${BULAN[m - 1]} ${y}`; };
   const FMT = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -187,7 +189,7 @@
     const rooms = (ctx.rooms || []).filter((r) => r.propertyId === l.propertyId);
     const priceOf = (r) => Number({ harian: r.priceDaily, bulanan: r.priceMonthly, semesteran: r.priceSemester, tahunan: r.priceYearly }[l.period]) || 0;
     const months = { harian: 0, bulanan: 1, semesteran: 6, tahunan: 12 }[l.period] * l.duration;
-    const quote = (r) => (r ? priceOf(r) * l.duration + (l.people === 2 ? (r.extraPersonFee || 0) * months : 0) : 0);
+    const quote = (r) => (r ? priceOf(r) * l.duration + (l.people === 2 ? extraFee(r, months) : 0) : 0);
     const upload = (path, label, extra = '') => new Promise((resolve) => {
       const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
       inp.onchange = async () => {

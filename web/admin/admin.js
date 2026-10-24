@@ -715,7 +715,8 @@
         <label>Harga 6 bulanan<input type="number" name="priceSemester" value="${r?.priceSemester || ''}" min="0" step="1000"></label>
         <label>Harga tahunan<input type="number" name="priceYearly" value="${r?.priceYearly ?? ''}" min="0" step="1000"></label>
         <label>Kapasitas<select name="capacity"><option value="1">1 orang</option><option value="2" ${Number(r?.capacity) === 2 ? 'selected' : ''}>Bisa 2 orang</option></select></label>
-        <label>Tambahan bila berdua <span class="hint">per bulan, opsional</span><input type="number" name="extraPersonFee" value="${r?.extraPersonFee || ''}" min="0" step="1000"></label>
+        <label>Tambahan bila berdua <span class="hint">opsional</span><input type="number" name="extraPersonFee" value="${r?.extraPersonFee || ''}" min="0" step="1000"></label>
+        <label>Tambahan berdua dihitung<select name="extraPersonPeriod"><option value="bulanan">per bulan</option><option value="tahunan" ${r?.extraPersonPeriod === 'tahunan' ? 'selected' : ''}>per tahun</option></select></label>
         <p class="hint span-all">Harga hanya tampil di website untuk periode yang dibuka di Info kos.</p>
         <label class="span-all">Fasilitas kamar <span class="hint">satu per baris</span><textarea name="facilities" rows="3">${lines(r?.facilities)}</textarea></label>
         <label class="span-all">Keterangan singkat<input name="note" value="${esc(r?.note || '')}" placeholder="Listrik sudah termasuk"></label>

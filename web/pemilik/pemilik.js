@@ -295,7 +295,7 @@
       `<p class="hint">Status yang tampil di website: Kosong (bisa dipesan), Dipesan (sudah ada DP), Terisi, Perbaikan. Terakhir dipastikan: ${p.checkedAt ? relTime(p.checkedAt) : 'belum pernah'}.</p>
       <div class="table-wrap mt">${rooms.length ? `<table><thead><tr><th>Kamar</th><th>Kapasitas</th>${per.map(([, t]) => `<th class="num">${t}</th>`).join('')}<th>Status</th><th></th></tr></thead><tbody>${rooms.map((r) => `<tr>
         <td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${r.hidden ? ', disembunyikan' : ''}${(r.photos || []).length ? `, ${r.photos.length} foto` : ', belum ada foto'}</span></td>
-        <td data-label="Kapasitas">${Number(r.capacity) === 2 ? `2 orang${r.extraPersonFee ? `<span class="sub">+${rp(r.extraPersonFee)}/bln bila berdua</span>` : ''}` : '1 orang'}</td>
+        <td data-label="Kapasitas">${Number(r.capacity) === 2 ? `2 orang${r.extraPersonFee ? `<span class="sub">+${rp(r.extraPersonFee)}/${r.extraPersonPeriod === 'tahunan' ? 'tahun' : 'bln'} bila berdua</span>` : ''}` : '1 orang'}</td>
         ${per.map(([, t, key]) => `<td class="num" data-label="${t}">${r[key] ? rp(r[key]) : '<span class="muted">-</span>'}</td>`).join('')}
         <td data-label="Status"><select class="inline" data-status="${r.id}" aria-label="Status ${esc(r.code)}">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
         <td class="actions"><button class="btn btn--ghost btn--sm" data-edit="${r.id}">Ubah</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada kamar. Tambahkan kamar beserta harga dan fotonya.</div>'}</div>`;
@@ -343,7 +343,8 @@
         <label>Ukuran<input name="sizeM2" value="${esc(r?.sizeM2 || '')}" placeholder="3 × 4 m"></label>
         <label>Lantai<input name="floor" value="${esc(r?.floor || '')}"></label>
         <label>Kapasitas<select name="capacity" id="rCap"><option value="1">1 orang</option><option value="2" ${Number(r?.capacity) === 2 ? 'selected' : ''}>Bisa 2 orang</option></select></label>
-        <label id="rExtra">Tambahan bila berdua <span class="hint">per bulan, opsional</span><input type="number" name="extraPersonFee" min="0" step="1000" value="${r?.extraPersonFee || ''}"></label>
+        <label id="rExtra">Tambahan bila berdua <span class="hint">opsional</span><input type="number" name="extraPersonFee" min="0" step="1000" value="${r?.extraPersonFee || ''}"></label>
+        <label id="rExtraPer">Tambahan berdua dihitung<select name="extraPersonPeriod"><option value="bulanan">per bulan</option><option value="tahunan" ${r?.extraPersonPeriod === 'tahunan' ? 'selected' : ''}>per tahun</option></select></label>
         <p class="fieldset-title span-all">Harga per periode <span class="hint">isi yang dibuka (${p.periods.map((k) => PERIODS.find((x) => x[0] === k)[1]).join(', ')})</span></p>
         ${PERIODS.map(([k, t, key, unit]) => `<label ${p.periods.includes(k) ? '' : 'hidden'}>${t} <span class="hint">${unit}</span><input type="number" name="${key}" min="0" step="1000" value="${r?.[key] ?? ''}"></label>`).join('')}
         <label>Status<select name="status">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${(r?.status || 'kosong') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
@@ -355,7 +356,7 @@
       </div>`,
       onOpen: (b) => {
         bindPhotos(b, 'photos');
-        const sync = () => { $('#rExtra', b).hidden = $('#rCap', b).value !== '2'; }; $('#rCap', b).onchange = sync; sync();
+        const sync = () => { $('#rExtra', b).hidden = $('#rExtraPer', b).hidden = $('#rCap', b).value !== '2'; }; $('#rCap', b).onchange = sync; sync();
         $('#rDel', b)?.addEventListener('click', async () => {
           dlg.close();
           if (!(await askConfirm('Hapus kamar', `Kamar ${r.code} akan dihapus dari website.`, 'Hapus'))) return;

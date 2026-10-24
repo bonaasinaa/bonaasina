@@ -21,7 +21,7 @@ export function createMarket(H: Record<string, any>) {
     sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
     readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
     background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
-    PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort, createProperty,
+    PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, extraFee, waLink, byCode, bySort, createProperty,
   } = H;
 
   // ------------------------------------------------------------ konstanta & teks
@@ -69,7 +69,7 @@ export function createMarket(H: Record<string, any>) {
   function quote(room: Row | null, period: string, duration: number, people: number) {
     if (!room) return 0;
     const base = roomPrice(room, period) * duration;
-    return base ? base + (people >= 2 ? (room.extraPersonFee || 0) * monthsOf(period, duration) : 0) : 0;
+    return base ? base + (people >= 2 ? extraFee(room, monthsOf(period, duration)) : 0) : 0;
   }
   // Awalan username dari nama kos: "Kos Bona" → bona.
   function prefixOf(p: Row) {
@@ -77,10 +77,9 @@ export function createMarket(H: Record<string, any>) {
     return raw.replace(/[^a-z]/g, '').slice(0, 12) || 'kos';
   }
   const digits5 = () => String(10000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90000));
-  function defaultPassword(prefix: string, avoid: string) {
-    let d = digits5(); while (d === avoid) d = digits5();
-    return prefix + d;
-  }
+  // Kata sandi sementara acak (10 huruf/angka tanpa yang mirip, mis. "k7mpq-x4rtw"), tidak bisa ditebak dari username.
+  const ownerPassword = () => { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; const s = [...crypto.getRandomValues(new Uint8Array(10))].map((x) => a[x % a.length]).join(''); return `${s.slice(0, 5)}-${s.slice(5)}`; };
+  const defaultPassword = () => ownerPassword();
   const isMitra = (p: Row | null) => p?.kind === 'mitra';
   function feeOf(p: Row, s: Row, dp: number) {
     const type = p.feeType || s.feeDefaultType || 'persen';
@@ -164,8 +163,13 @@ export function createMarket(H: Record<string, any>) {
     }
     const who = owner || lead;
     const type = owner ? 'pemilik' : 'customer';
+    const actor = owner ? owner.name : `${lead.name} (${lead.username})`;
+    // Batas per akun juga (bukan hanya per IP), supaya tebakan dari banyak alamat IP tetap tertahan.
+    const { count: perAccount } = await sb.from('activity_log').select('id', { count: 'exact', head: true })
+      .eq('action', `${owner ? 'owner' : 'customer'}.login.failed`).eq('actor', actor).gte('created_at', since);
+    if ((perAccount ?? 0) >= 10) throw new HttpError(429, 'Terlalu banyak percobaan masuk ke akun ini. Coba lagi 15 menit lagi.');
     const fail = (why: string) => {
-      writeLog(req, type, owner ? owner.name : `${lead.name} (${lead.username})`, { action: `${owner ? 'owner' : 'customer'}.login.failed`, summary: `Gagal masuk: ${why}`, ok: false });
+      writeLog(req, type, actor, { action: `${owner ? 'owner' : 'customer'}.login.failed`, summary: `Gagal masuk: ${why}`, ok: false });
       return new HttpError(401, 'Username atau kata sandi salah.');
     };
     if (!password || !(await bcrypt.compare(password, who.passwordHash || ''))) throw fail('kata sandi salah');
@@ -303,7 +307,7 @@ export function createMarket(H: Record<string, any>) {
     const prefix = prefixOf(p);
     let rec: Row | null = null; let password = '';
     for (let i = 0; i < 8 && !rec; i++) {
-      const code = digits5(); password = defaultPassword(prefix, code);
+      const code = digits5(); password = defaultPassword();
       const { data, error } = await sb.from('leads').insert({
         code, property_id: p.id, room_id: room?.id ?? null, name, phone, occupation: str(b.occupation, 80), people, period, duration,
         move_date: b.moveDate, note: str(b.note, 600), status: 'baru', username: prefix + code, password_hash: await bcrypt.hash(password, 10), default_password: password,
@@ -584,7 +588,7 @@ export function createMarket(H: Record<string, any>) {
     let password = l.defaultPassword || '';
     if (l.mustChange && !password) {
       // Kata sandi bawaan hilang (data lama) → buat yang baru.
-      password = defaultPassword(prefixOf(p), l.code);
+      password = defaultPassword();
       await save(l, { passwordHash: await bcrypt.hash(password, 10), defaultPassword: password });
     }
     const pwText = l.mustChange ? password : '(kata sandi yang sudah Anda buat)';
@@ -1008,7 +1012,6 @@ export function createMarket(H: Record<string, any>) {
   // ================================================================ ADMIN — Kos Sekitar
   const USER_RE = /^[a-z0-9._-]{3,32}$/;
   function ownerOut(o: Row) { return pick(o, ['id', 'name', 'phone', 'email', 'username', 'mustChange', 'status', 'note', 'lastLoginAt', 'passwordSetAt', 'createdAt']); }
-  const ownerPassword = () => { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; const s = [...crypto.getRandomValues(new Uint8Array(10))].map((x) => a[x % a.length]).join(''); return `${s.slice(0, 5)}-${s.slice(5)}`; };
   async function usernameTaken(u: string, exceptOwner?: string) {
     const [o, l, t] = await Promise.all([
       q(sb.from('owners').select('id').ilike('username', u).maybeSingle()), q(sb.from('leads').select('id').ilike('username', u).maybeSingle()), q(sb.from('tenants').select('id').eq('username', u).maybeSingle()),

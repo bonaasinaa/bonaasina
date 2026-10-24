@@ -80,7 +80,7 @@
       return `<li class="room ${avail ? '' : 'is-unavailable'}">
         <div class="room__code">${esc(r.code)}${(r.photos || []).length ? `<button type="button" class="room__thumb" data-rphoto="${r.id}" aria-label="Lihat foto kamar ${esc(r.code)}"><img src="${esc(r.photos[0])}" alt="" loading="lazy"><span>${r.photos.length} foto</span></button>` : ''}</div>
         <div class="room__info"><div class="room__type">${esc(r.type || 'Kamar')}</div><div class="room__meta">${[r.sizeM2, r.floor].filter(Boolean).map(esc).join(', ')}</div>
-          ${Number(r.capacity) === 2 ? `<div class="room__cap">Bisa untuk 2 orang${r.extraPersonFee ? ` (+${rp(r.extraPersonFee)}/bln)` : ''}</div>` : ''}
+          ${Number(r.capacity) === 2 ? `<div class="room__cap">Bisa untuk 2 orang${r.extraPersonFee ? ` (+${rp(r.extraPersonFee)}/${r.extraPersonPeriod === 'tahunan' ? 'tahun' : 'bln'})` : ''}</div>` : ''}
           <span class="status status--${r.status}">${STATUS[r.status] || esc(r.status)}</span></div>
         <div class="room__fac">${(r.facilities || []).map(esc).join(', ')}${r.note ? `<span class="room__note">${esc(r.note)}</span>` : ''}</div>
         <div class="room__price">${price ? `<span class="room__amount">${rp(price)}</span><span class="room__per">per ${k[1]}</span>` : `<span class="room__per">Harga ${k[0].toLowerCase()} belum ada</span>`}</div>

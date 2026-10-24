@@ -8,7 +8,7 @@ const PREFIX: Record<string, string> = { rooms: 'rm_', tenants: 'tn_', invoices:
 const IDENTITY = new Set(['messages', 'notifications', 'activity_log']);
 const DEFAULTS: Record<string, Row> = {
   properties: { kind: 'sendiri', status: 'aktif', periods: ['bulanan', 'tahunan'], city: '', whatsapp: '', bank_info: '', chat_enabled: true, wa_enabled: true, min_booking: 0, booking_policy: '', visit_hours: '', fee_type: null, fee_value: null, review_note: '', facilities: [], rules: [], nearby: [], photos: [], sort: 0, owner_id: null },
-  rooms: { status: 'kosong', hidden: false, price_daily: 0, price_monthly: 0, price_semester: 0, price_yearly: 0, capacity: 1, extra_person_fee: 0, facilities: [], photos: [], note: '', type: '', size_m2: '', floor: '' },
+  rooms: { status: 'kosong', hidden: false, price_daily: 0, price_monthly: 0, price_semester: 0, price_yearly: 0, capacity: 1, extra_person_fee: 0, extra_person_period: 'bulanan', facilities: [], photos: [], note: '', type: '', size_m2: '', floor: '' },
   owners: { must_change: true, status: 'aktif', note: '', phone: '', email: '' },
   leads: { must_change: true, login_enabled: true, owner_read_msg: 0, customer_read_msg: 0, fee_amount: 0, reject_reason: '', cancel_reason: '', owner_message: '', dp_reject_note: '', fee_note: '', refund_reason: '', refund_account: '', refund_note: '', visit_time: '', visit_note: '', occupation: '', note: '', people: 1, duration: 1 },
   tenants: { status: 'aktif', login_enabled: false, co_name: '', co_phone: '', co_relation: '', co_occupation: '', deposit: 0, rent_cycle: 'bulanan' },

@@ -42,7 +42,7 @@ Supabase Auth: login admin
 Kode: `supabase/functions/api/market.ts`, migrasi `20261018000001_kos_sekitar.sql`, halaman `web/kos-sekitar`, `web/kos`, `web/akun`, `web/pemilik`, komponen bersama `web/js/market-ui.js` & `web/js/booking.js`.
 
 **Alur (sama untuk kos mitra dan Kos Asina/Bona):**
-1. Customer mengirim reservasi (kamar opsional, periode, lama, tanggal masuk, 1–2 orang, boleh minta kunjungan). **Belum bayar apa pun.** Akun customer langsung dibuat: username `<namakos><5 angka>` (mis. `bona13323`), kata sandi bawaan format sama dengan angka lain; wajib diganti saat pertama masuk (formulir ganti sandi punya kolom username untuk pengelola kata sandi).
+1. Customer mengirim reservasi (kamar opsional, periode, lama, tanggal masuk, 1–2 orang, boleh minta kunjungan). **Belum bayar apa pun.** Akun customer langsung dibuat: username `<namakos><5 angka>` (mis. `bona13323`), kata sandi bawaan acak 10 karakter (mis. `k7mpq-x4rtw`), tidak bisa ditebak dari username; wajib diganti saat pertama masuk (formulir ganti sandi punya kolom username untuk pengelola kata sandi).
 2. Pemilik menekan *Kamar tersedia, minta DP*: memilih kamar, total sewa (otomatis harga × lama), DP (≥ minimum booking kos), dan batas bayar. Lalu *Kirim ke WhatsApp*: pesan berisi tautan `/akun/?u=…`, username, dan kata sandi bawaan (kata sandi bawaan disimpan hanya sampai customer menggantinya). Bisa juga *Tidak tersedia*.
 3. Customer transfer DP **langsung ke rekening pemilik** dan mengunggah bukti. Lewat batas → otomatis *kedaluwarsa*.
 4. Pemilik memastikan DP masuk → kamar jadi *Dipesan*; fee dihitung (persen dari DP atau nominal; per kos atau bawaan). Pemilik transfer fee ke rekening Bonaasina & unggah bukti.
@@ -51,7 +51,8 @@ Kode: `supabase/functions/api/market.ts`, migrasi `20261018000001_kos_sekitar.sq
 - **Chat** per reservasi (diperbarui tiap 5 detik), bisa dimatikan per kos; tombol WhatsApp juga bisa dinyalakan/dimatikan. **Notifikasi** dashboard untuk admin, pemilik, dan customer.
 - **Pendaftaran mitra**: pemilik kos mengisi formulir singkat di `/mitra/` (nama, WhatsApp, nama kos, kota, jumlah kamar, dll.) → masuk ke admin *Pendaftaran mitra* → *Setujui & buat akun* membuat akun pemilik + kos (draf) dan menyiapkan pesan WhatsApp berisi username & kata sandi sementara.
 - Info kos & kamar (foto, harga, rekening, aturan) diisi **pemilik sendiri**; dashboard pemilik menampilkan daftar periksa. Setelah lengkap pemilik menekan *Minta ditampilkan di website* → admin menekan *Tampilkan di website*. Admin hanya mengatur status tampil, pemilik, dan fee.
-- Semua username (penghuni, pemilik, customer) bisa masuk dari halaman login mana pun lewat `POST /masuk`; diarahkan ke dashboard masing-masing. Dibatasi 10 percobaan gagal per 15 menit per IP.
+- Semua username (penghuni, pemilik, customer) bisa masuk dari halaman login mana pun lewat `POST /masuk`; diarahkan ke dashboard masing-masing. Dibatasi 10 percobaan gagal per 15 menit per IP **dan** per akun.
+- **Tambahan bila berdua** dicatat per bulan atau per tahun (kolom `extra_person_period`); perkiraan harga menghitungnya sesuai lama sewa.
 - Pengaturan di admin → *Fee & aturan*: fee bawaan, rekening Bonaasina, batas bayar fee/DP, batas “belum direspons”, templat pesan WhatsApp.
 
 **Uji alur API** (tanpa database sungguhan, klien Supabase palsu di memori):
@@ -82,7 +83,7 @@ Workers & Pages → Create → Pages → *Connect to Git* → pilih repo **bonaa
 - Build command: *(kosong)*
 - Build output directory: **web**
 
-Setiap `git push` ke `main` otomatis tayang. Setelah mengubah file JS/CSS, naikkan nilai `?v=` di tag `<script>`/`<link>` HTML supaya browser tidak memakai versi lama (zona Cloudflare menyimpan cache browser 4 jam). `web/_headers` mengatur header keamanan dan cache; `web/404.html` dipakai untuk halaman tidak ditemukan.
+Setiap `git push` ke `main` otomatis tayang. Setelah mengubah file JS/CSS, naikkan nilai `?v=` di tag `<script>`/`<link>` HTML supaya browser tidak memakai versi lama (zona Cloudflare menyimpan cache browser 4 jam). `web/_headers` mengatur header keamanan (termasuk HSTS dan Content-Security-Policy) dan cache. **Bila menambah layanan luar** (skrip, gambar, peta, atau API dari domain lain), tambahkan domainnya ke CSP di `_headers`, dan jangan menulis `<script>` inline karena akan diblokir; `web/404.html` dipakai untuk halaman tidak ditemukan.
 
 ### 4. Cek
 ```bash
