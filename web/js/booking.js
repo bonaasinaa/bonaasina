@@ -7,6 +7,8 @@ window.BonaBooking = (() => {
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
   const PERIOD = { harian: ['Harian', 'malam', 'priceDaily', 60], bulanan: ['Bulanan', 'bulan', 'priceMonthly', 24], semesteran: ['6 bulanan', '× 6 bulan', 'priceSemester', 4], tahunan: ['Tahunan', 'tahun', 'priceYearly', 3] };
   const MONTHS = { harian: 0, bulanan: 1, semesteran: 6, tahunan: 12 };
+  // Tambahan bila berdua untuk sejumlah bulan (extraPersonFee dicatat per bulan atau per tahun).
+  const extraFee = (r, months) => { const f = Number(r.extraPersonFee) || 0; return r.extraPersonPeriod === 'tahunan' ? Math.round((f * months) / 12) : f * months; };
   const today = () => { const d = new Date(Date.now() + 7 * 3600e3); return d.toISOString().slice(0, 10); };
   const plusDays = (s, n) => new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 
@@ -72,7 +74,7 @@ window.BonaBooking = (() => {
       const est = $('[data-estimate]', el);
       if (r && r[key]) {
         const people = Number(f.people.value) || 1;
-        const total = r[key] * dur + (people === 2 ? (r.extraPersonFee || 0) * MONTHS[k] * dur : 0);
+        const total = r[key] * dur + (people === 2 ? extraFee(r, MONTHS[k] * dur) : 0);
         est.innerHTML = `Perkiraan total sewa: <strong>${rp(total)}</strong> (${rp(r[key])} × ${dur}${people === 2 && r.extraPersonFee && MONTHS[k] ? ` + tambahan berdua` : ''}). ${prop()?.minBooking ? `Booking/DP minimal ${rp(prop().minBooking)} setelah dikonfirmasi pemilik.` : 'Nominal DP dikonfirmasi pemilik.'}`;
       } else if (r) est.textContent = `Kamar ${r.code} belum punya harga ${PERIOD[k][0].toLowerCase()}. Pemilik akan mengonfirmasi harganya.`;
       else est.textContent = prop()?.minBooking ? `Booking/DP minimal ${rp(prop().minBooking)}, dibayar setelah pemilik mengonfirmasi kamar.` : '';

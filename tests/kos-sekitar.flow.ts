@@ -98,7 +98,7 @@ assert((await ok('GET', '/public')).properties.length === 1, 'main page only own
 await fail(400, 'POST', '/leads', { propertyId: mitra.id, period: 'harian', duration: 1, moveDate: plus(3), name: 'Rina', phone: '081234567890' });
 await fail(400, 'POST', '/leads', { propertyId: mitra.id, roomId: m1.id, people: 2, period: 'bulanan', duration: 1, moveDate: plus(3), name: 'Rina', phone: '081234567890' });
 const lead = await ok('POST', '/leads', { propertyId: mitra.id, roomId: m1.id, period: 'bulanan', duration: 3, moveDate: plus(5), name: 'Rina', phone: '081234567890', visit: true, visitDate: plus(1), visitTime: '10.00' });
-assert(/^melati\d{5}$/.test(lead.username) && /^melati\d{5}$/.test(lead.password) && lead.username !== lead.password, 'username format ' + lead.username + ' ' + lead.password);
+assert(/^melati\d{5}$/.test(lead.username) && /^[a-z2-9]{5}-[a-z2-9]{5}$/.test(lead.password), 'username/random password format ' + lead.username + ' ' + lead.password);
 await fail(400, 'POST', '/leads', { propertyId: mitra.id, period: 'bulanan', duration: 1, moveDate: plus(5), name: 'Rina', phone: '081234567890' });
 let cs = await ok('POST', '/masuk', { username: lead.username, password: lead.password });
 assert(cs.kind === 'customer' && cs.mustChange, 'customer must change');
@@ -240,4 +240,18 @@ assert(np.kind === 'mitra' && np.status === 'draf' && np.owner_id === appr.owner
 await fail(400, 'POST', `/admin/applications/${apps[0].id}/approve`, {}, A);
 const s2 = await ok('POST', '/masuk', { username: 'anggrek', password: appr.password });
 assert(s2.kind === 'pemilik' && s2.mustChange, 'new owner login');
+// ---------- tambahan berdua per tahun (Kos Bona: Rp3.500.000/tahun)
+const b09 = await ok('POST', '/admin/rooms', { propertyId: bona.id, code: 'B-09', priceMonthly: 300000, priceYearly: 3000000, capacity: 2, extraPersonFee: 3500000, extraPersonPeriod: 'tahunan' }, A);
+assert(b09.extraPersonPeriod === 'tahunan', 'extra period saved');
+const yl = await ok('POST', '/leads', { propertyId: bona.id, roomId: b09.id, people: 2, period: 'tahunan', duration: 1, moveDate: plus(4), name: 'Sari', phone: '081277766655' });
+const YL = db.leads.find((l) => l.username === yl.username).id;
+const yq = await ok('POST', `/admin/leads/${YL}/confirm`, { roomId: b09.id, dpAmount: 500000 }, A);
+assert(yq.priceTotal === 6500000, 'yearly quote 3jt + 3,5jt extra = ' + yq.priceTotal);
+const ml = await ok('POST', '/leads', { propertyId: bona.id, roomId: b09.id, people: 2, period: 'bulanan', duration: 3, moveDate: plus(4), name: 'Lina', phone: '081277766600' });
+const MLID = db.leads.find((l) => l.username === ml.username).id;
+const mq = await ok('POST', `/admin/leads/${MLID}/confirm`, { roomId: b09.id, dpAmount: 500000 }, A);
+assert(mq.priceTotal === 1775000, '3 months: 900k + 3/12 of 3,5jt = ' + mq.priceTotal);
+const pubB09 = (await ok('GET', '/public')).rooms.find((r) => r.id === b09.id);
+assert(pubB09 && pubB09.extraPersonPeriod === 'tahunan', 'public room exposes extra period');
+
 console.log('ALL FLOW TESTS PASSED');

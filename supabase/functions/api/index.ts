@@ -95,6 +95,11 @@ const CYCLE_WORD: Record<string, string> = { harian: 'hari', bulanan: 'bulan', s
 export function roomPrice(r: Row, cycle: string) {
   return Number(({ harian: r.priceDaily, bulanan: r.priceMonthly, semesteran: r.priceSemester, tahunan: r.priceYearly } as Row)[cycle]) || 0;
 }
+// Tambahan bila berdua untuk sejumlah bulan; extraPersonFee dicatat per bulan atau per tahun (extraPersonPeriod).
+export function extraFee(r: Row, months: number) {
+  const fee = Number(r.extraPersonFee) || 0;
+  return r.extraPersonPeriod === 'tahunan' ? Math.round((fee * months) / 12) : fee * months;
+}
 function periodLabel(t: Row, start: string) {
   const s = parse(start);
   const range = (e: Date) => `${s.getUTCDate()} ${BULAN[s.getUTCMonth()]} ${s.getUTCFullYear()} – ${e.getUTCDate()} ${BULAN[e.getUTCMonth()]} ${e.getUTCFullYear()}`;
@@ -268,7 +273,7 @@ const created = (body: unknown) => ({ __status: 201, body });
 
 // ================================================================ PUBLIK
 export const PUBLIC_PROPERTY_FIELDS = ['id', 'slug', 'name', 'shortName', 'logo', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'facilities', 'nearby', 'photos', 'kind', 'city', 'periods', 'minBooking', 'bookingPolicy', 'visitHours', 'chatEnabled', 'checkedAt'];
-export const PUBLIC_ROOM_FIELDS = ['id', 'propertyId', 'code', 'type', 'sizeM2', 'floor', 'priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'capacity', 'extraPersonFee', 'facilities', 'photos', 'note'];
+export const PUBLIC_ROOM_FIELDS = ['id', 'propertyId', 'code', 'type', 'sizeM2', 'floor', 'priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'capacity', 'extraPersonFee', 'extraPersonPeriod', 'facilities', 'photos', 'note'];
 on('GET', '/public', async () => {
   const [s, allProps, rooms, active, partners] = await Promise.all([
     getSettings(), all('properties'), all('rooms'),
@@ -385,6 +390,10 @@ on('POST', '/admin/refresh', async ({ body: b }) => {
 on('POST', '/admin/setup', async ({ req, body: b }, log) => {
   const email = str(b.email, 200).toLowerCase(); const code = str(b.code, 64); const password = String(b.password || '');
   if (password.length < 10) throw bad('Kata sandi minimal 10 karakter.');
+  const { ip } = clientInfo(req);
+  const since = new Date(Date.now() - 15 * 60e3).toISOString();
+  const { count } = await sb.from('activity_log').select('id', { count: 'exact', head: true }).eq('action', 'setup.failed').eq('ip', ip).gte('created_at', since);
+  if ((count ?? 0) >= 5) throw new HttpError(429, 'Terlalu banyak percobaan. Coba lagi 15 menit lagi.');
   const row = toCamel(await q(sb.from('setup_codes').select('*').eq('email', email).maybeSingle()));
   if (!row || row.expiresAt < new Date().toISOString() || row.codeHash !== (await sha256(code))) {
     writeLog(req, 'admin', email || '(tanpa email)', { action: 'setup.failed', summary: 'Gagal mengatur kata sandi: kode penyiapan salah atau kedaluwarsa', ok: false });
@@ -508,6 +517,7 @@ export function roomFromBody(b: Row) {
   for (const [k, m] of [['propertyId', 40], ['code', 20], ['type', 60], ['floor', 20], ['sizeM2', 20], ['note', 300]] as const) if (b[k] !== undefined) r[k] = str(b[k], m);
   for (const k of ['priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'extraPersonFee']) if (b[k] !== undefined) r[k] = num(b[k]);
   if (b.capacity !== undefined) r.capacity = Number(b.capacity) === 2 ? 2 : 1;
+  if (b.extraPersonPeriod !== undefined) r.extraPersonPeriod = b.extraPersonPeriod === 'tahunan' ? 'tahunan' : 'bulanan';
   if (b.facilities !== undefined) r.facilities = strList(b.facilities);
   if (b.photos !== undefined) r.photos = strList(b.photos, 12).filter(okPhoto);
   if (b.hidden !== undefined) r.hidden = !!b.hidden;
@@ -907,6 +917,9 @@ on('POST', '/penghuni/login', async ({ req, body: b }, log) => {
   if ((count ?? 0) >= 10) throw new HttpError(429, 'Terlalu banyak percobaan masuk. Coba lagi 15 menit lagi.');
   const fail = (why: string) => { writeLog(req, 'penghuni', username || '(tanpa username)', { action: 'tenant.login.failed', summary: `Gagal masuk ke dashboard penghuni: ${why}`, ok: false }); return new HttpError(401, 'Username atau kata sandi salah.'); };
   if (!USERNAME_RE.test(username) || !password) throw fail('username/kata sandi kosong atau tidak valid');
+  // Batas per username juga, supaya tebakan dari banyak alamat IP tetap tertahan.
+  const { count: perAccount } = await sb.from('activity_log').select('id', { count: 'exact', head: true }).eq('action', 'tenant.login.failed').eq('actor', username).gte('created_at', since);
+  if ((perAccount ?? 0) >= 10) throw new HttpError(429, 'Terlalu banyak percobaan masuk ke akun ini. Coba lagi 15 menit lagi.');
   const t = toCamel(await q(sb.from('tenants').select('*').eq('username', username).maybeSingle()));
   if (!t?.passwordHash || !(await bcrypt.compare(password, t.passwordHash))) throw fail(t ? 'kata sandi salah' : 'username tidak terdaftar');
   if (t.status !== 'aktif') { writeLog(req, 'penghuni', t.name, { action: 'tenant.login.failed', summary: 'Gagal masuk: penghuni sudah tercatat keluar', ok: false }); throw new HttpError(403, 'Akun ini tidak aktif karena masa sewa sudah selesai. Hubungi pengelola bila perlu dokumen Anda.'); }
@@ -1469,6 +1482,10 @@ on('GET', '/admin/invoices/:id/receipt.pdf', async ({ params }, log) => {
   log({ action: 'receipt.download', summary: `Mengunduh kuitansi ${d.text}`, target: d.target, dedupeMinutes: 10 });
   return pdfOut(bytes, `kuitansi-${fileSafe(d.text)}.pdf`);
 });
+function priceText(r: Row) {
+  const parts = CYCLES.filter((c) => roomPrice(r, c)).map((c) => `${rupiah(roomPrice(r, c))} per ${CYCLE_WORD[c]}`);
+  return parts.length ? `Harga ${parts.join(' atau ')}.` : '';
+}
 on('GET', '/admin/waitlist', async () => {
   const [list, props, rooms] = await Promise.all([all('waitlist'), all('properties'), all('rooms')]);
   const pm = new Map(props.map((p) => [p.id, p.name])); const rm = new Map(rooms.map((r) => [r.id, r]));
@@ -1476,7 +1493,7 @@ on('GET', '/admin/waitlist', async () => {
   return list.map((w) => {
     const r = w.matchedRoomId ? rm.get(w.matchedRoomId) : null;
     const msg = r
-      ? `Horas ${w.name}, kabar baik dari ${pm.get(r.propertyId) || 'Bonaasina'}: kamar ${r.code}${r.type ? ` (${r.type})` : ''} sekarang kosong. Harga ${rupiah(r.priceMonthly)} per bulan atau ${rupiah(r.priceYearly)} per tahun. Masih berminat? Balas pesan ini untuk atur jadwal survei.`
+      ? `Horas ${w.name}, kabar baik dari ${pm.get(r.propertyId) || 'Bonaasina'}: kamar ${r.code}${r.type ? ` (${r.type})` : ''} sekarang kosong. ${priceText(r)} Masih berminat? Balas pesan ini untuk atur jadwal survei.`
       : `Horas ${w.name}, terima kasih sudah mendaftar di daftar tunggu ${w.propertyId ? pm.get(w.propertyId) : 'Bonaasina'}. `;
     return { ...w, propertyName: w.propertyId ? pm.get(w.propertyId) || '-' : 'Kos mana saja', matchedRoom: r ? { code: r.code, propertyName: pm.get(r.propertyId), status: r.status } : null, waUrl: waLink(w.phone, msg), ownerName: s.ownerName };
   }).sort((a, b) => (a.status === 'perlu_dikabari') === (b.status === 'perlu_dikabari') ? a.createdAt.localeCompare(b.createdAt) : a.status === 'perlu_dikabari' ? -1 : 1);
@@ -1604,7 +1621,7 @@ const market = createMarket({
   sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
   readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
   background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
-  PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, waLink, byCode, bySort, createProperty,
+  PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, extraFee, waLink, byCode, bySort, createProperty,
 });
 
 // ================================================================ TITIP JUALAN & TEMPAT SEKITAR (community.ts)

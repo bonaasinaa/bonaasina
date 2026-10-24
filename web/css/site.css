@@ -64,7 +64,13 @@ p { margin: 0; }
   display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 9px var(--gutter); background: var(--ink); color: var(--cream); font-size: 14px; text-align: center;
 }
-.availability a { color: var(--cream); font-weight: 600; text-underline-offset: 3px; }
+.availability a { color: var(--cream); font-weight: 600; text-underline-offset: 3px; padding: 6px 2px; }
+.availability__short { display: none; }
+@media (max-width: 520px) {
+  .availability { flex-wrap: nowrap; padding: 4px var(--gutter); font-size: 13px; }
+  .availability__short:not(:empty) { display: inline; }
+  .availability:has(.availability__short:not(:empty)) .availability__long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 .availability__dot { width: 8px; height: 8px; border-radius: 50%; background: #6FCF7F; box-shadow: 0 0 0 0 rgba(111, 207, 127, .6); animation: ping 2.4s infinite; }
 @keyframes ping { 70% { box-shadow: 0 0 0 8px rgba(111, 207, 127, 0); } 100% { box-shadow: 0 0 0 0 rgba(111, 207, 127, 0); } }
 
@@ -116,6 +122,10 @@ p { margin: 0; }
 @media (max-width: 860px) {
   .hero { grid-template-columns: 1fr; }
   .hero__art { order: -1; max-width: 320px; margin: 0 auto 12px; width: 66%; }
+}
+@media (max-width: 520px) {
+  /* Di ponsel logo diperkecil supaya judul dan tombol utama terlihat di layar pertama. */
+  .hero__art { max-width: 190px; width: 50%; margin-bottom: 4px; }
   .hero__facts { gap: 20px; }
 }
 @media (max-width: 520px) { .hero__facts { display: grid; grid-template-columns: 1fr 1fr; } .hero__facts dd { font-size: 1.35rem; } }
@@ -143,6 +153,7 @@ p { margin: 0; }
 .section__head { max-width: 640px; margin-bottom: clamp(28px, 4vw, 44px); }
 .section__head p { margin-top: 14px; color: var(--ijuk); font-size: 1.08rem; }
 .section__head--split { max-width: none; display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; }
+.section__head--split > div:first-child { flex: 1 1 420px; max-width: 640px; }
 
 /* ---------- tab dua rumah ---------- */
 .tabs { position: relative; display: inline-flex; gap: 4px; padding: 5px; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; }
@@ -210,7 +221,8 @@ p { margin: 0; }
 .chip { border: 1px solid var(--line-strong); background: transparent; border-radius: 999px; padding: 8px 16px; font: 500 14px var(--sans); color: var(--ink); cursor: pointer; transition: background-color .2s, color .2s, border-color .2s; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .check { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; cursor: pointer; }
-.check input { width: 18px; height: 18px; accent-color: var(--red); }
+.check { min-height: 44px; }
+.check input { width: 22px; height: 22px; accent-color: var(--red); }
 
 .rooms { list-style: none; margin: 0; padding: 0; }
 .room {
@@ -269,6 +281,12 @@ p { margin: 0; }
 
 /* ---------- lokasi ---------- */
 .lokasi__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.lokasi__grid.is-single { grid-template-columns: minmax(0, 1fr); }
+.lokasi__grid.is-single .place { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.lokasi__grid.is-single .place__map { aspect-ratio: auto; min-height: 320px; border-bottom: 0; border-right: 1px solid var(--line); }
+@media (max-width: 860px) { .lokasi__grid.is-single .place { grid-template-columns: 1fr; } .lokasi__grid.is-single .place__map { min-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); } }
+.place__link { margin-top: 10px; }
+.place__link a { display: inline-block; padding: 10px 0; }
 .place { background: var(--paper); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; }
 .place__map { aspect-ratio: 16 / 10; background: var(--cream); border-bottom: 1px solid var(--line); }
 .place__map iframe { width: 100%; height: 100%; border: 0; display: block; filter: sepia(.25) saturate(.9); }
@@ -382,6 +400,7 @@ p { margin: 0; }
 
 /* beranda: lokasi & sekitar */
 .near { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; margin-top: 22px; }
+.near.is-single { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 860px) { .near { grid-template-columns: minmax(0, 1fr); } }
 .near__card { background: var(--paper); border: 1px solid var(--line); border-radius: 26px; padding: clamp(20px, 3vw, 30px); display: grid; gap: 12px; align-content: start; text-decoration: none; }
 .near__card h3 { font-family: var(--serif); font-weight: 400; font-size: clamp(1.5rem, 2.6vw, 2rem); line-height: 1.1; margin-top: 6px; }

@@ -5,3 +5,5 @@ Disallow: /penghuni/
 Disallow: /pemilik/
 Disallow: /akun/
 Disallow: /cek/
+
+Sitemap: https://bonaasina.my.id/sitemap.xml
