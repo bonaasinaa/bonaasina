@@ -47,7 +47,17 @@ export function chatHoursText(c: Row) {
 }
 
 export function createChat(H: Record<string, any>) {
-  const { sb, q, str, toCamel, pick, bad, notFound, HttpError, on, created, sha256, randomToken, clientInfo, getSettings, normalizePhone, SITE_URL } = H;
+  const { sb, q, str, toCamel, pick, bad, notFound, HttpError, on, created, sha256, randomToken, clientInfo, getSettings, normalizePhone, SITE_URL, mail } = H;
+  // Email ke admin (mailer.ts): percakapan baru, dan pesan pengunjung pertama setelah semua pesan dibaca
+  // (bukan setiap pesan, supaya kotak masuk email tidak banjir).
+  const mailAdmin = (t: Row, kind: 'chat.new' | 'chat.message', text: string, key: string) => mail?.sendAdmin({
+    kind, dedupeKey: key,
+    subject: kind === 'chat.new' ? `Live chat baru dari ${t.name}` : `Pesan live chat dari ${t.name}`,
+    title: kind === 'chat.new' ? `${t.name} memulai live chat` : `${t.name} mengirim pesan`,
+    rows: [['Pesan', text.slice(0, 500)], ['Kontak', t.contact || ''], ['Halaman', t.page || '']],
+    note: 'Balas dari dashboard admin supaya muncul di jendela chat pengunjung.',
+    cta: { label: 'Balas di dashboard', url: `${SITE_URL}/admin/#chat?id=${t.id}` },
+  });
 
   async function chatSettings(): Promise<Row> {
     const s = await getSettings();
@@ -116,6 +126,7 @@ export function createChat(H: Record<string, any>) {
       sender !== 'pengunjung' && !opt.seen ? sb.from('chat_messages').select('id', { count: 'exact', head: true }).eq('thread_id', t.id).neq('sender', 'pengunjung').gt('id', visitorRead) : null,
     ]);
     if (ua) patch.unread_admin = ua.count ?? 0;
+    if (sender === 'pengunjung' && !t.isNew && !(t.unreadAdmin > 0)) mailAdmin(t, 'chat.message', text, `chat:${t.id}:${m.id}`);
     if (uv) patch.unread_visitor = uv.count ?? 0;
     await q(sb.from('chat_threads').update(patch).eq('id', t.id));
     Object.assign(t, toCamel(patch));
@@ -201,6 +212,7 @@ export function createChat(H: Record<string, any>) {
     const t = toCamel(await q(sb.from('chat_threads').insert({
       visitor_hash: await sha256(token), name, contact, page: str(b.page, 120), ip, user_agent: ua, last_preview: (message || '').slice(0, 140),
     }).select().single()));
+    t.isNew = true; // email "percakapan baru" dikirim sekali di bawah, bukan per pesan
     const out: Row[] = [];
     if (c.botEnabled && history.length) {
       const kamus = kamusOf(c), d = await botData(c);
@@ -216,6 +228,8 @@ export function createChat(H: Record<string, any>) {
     out.push(await addMessage(t, 'sistem', chatOnline(c)
       ? `${name}, pesan Anda sudah diteruskan ke admin. Balasan akan muncul di sini. Jam layanan: ${chatHoursText(c)}.`
       : `${c.offlineText} Jam layanan: ${chatHoursText(c)}.`, { seen: true }));
+    const asked = out.filter((m) => m.sender === 'pengunjung').map((m) => `• ${m.body}`).join('\n');
+    mailAdmin(t, 'chat.new', asked, `chat-new:${t.id}`);
     log({ action: 'chat.start', summary: `Memulai live chat${message ? `: ${message.slice(0, 80)}` : ''}`, target: name });
     return created({ token, thread: pick(t, THREAD_PUBLIC), messages: out });
   });

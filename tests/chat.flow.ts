@@ -5,6 +5,14 @@ import { chatOnline, chatHoursText } from '../supabase/functions/api/chat.ts';
 Deno.env.set('SUPABASE_URL', 'https://test.supabase.co');
 Deno.env.set('SUPABASE_SERVICE_ROLE_KEY', 'secret'); Deno.env.set('SUPABASE_ANON_KEY', 'anon');
 Deno.env.set('SITE_URL', 'https://bonaasina.my.id');
+Deno.env.set('RESEND_API_KEY', 're_test_key');
+const sent: any[] = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  if (String(input).includes('api.resend.com')) { sent.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ id: 'em_' + sent.length }), { status: 200 }); }
+  return realFetch(input, init);
+}) as typeof fetch;
+const settle = () => new Promise((r) => setTimeout(r, 30));
 let handler: (r: Request) => Promise<Response>;
 (Deno as any).serve = (h: any) => { handler = h; return {}; };
 await import('../supabase/functions/api/index.ts');
@@ -28,7 +36,7 @@ const A = { authorization: 'Bearer admin-token' };
 db.admins = [{ email: 'bonaasinaa@gmail.com' }];
 db.settings = [{ id: 1, data: { whatsapp: '082245276374', siteName: 'Bonaasina', depositInfo: 'Deposit minimal Rp1.000.000', paymentMethods: 'Transfer bank atau tunai.', surveyHours: 'Setiap hari, 09.00–18.00 WIB',
   faq: [{ q: 'Apakah ada deposit?', a: 'Ada, minimal Rp1.000.000.' }] } }];
-for (const t of ['properties', 'rooms', 'tenants', 'invoices', 'leads', 'owners', 'messages', 'notifications', 'activity_log', 'listings', 'places', 'surveys', 'expenses', 'issues', 'contracts', 'waitlist', 'chat_threads', 'chat_messages']) db[t] = [];
+for (const t of ['email_log', 'properties', 'rooms', 'tenants', 'invoices', 'leads', 'owners', 'messages', 'notifications', 'activity_log', 'listings', 'places', 'surveys', 'expenses', 'issues', 'contracts', 'waitlist', 'chat_threads', 'chat_messages']) db[t] = [];
 db.properties.push(
   { id: 'p_asina', slug: 'asina', name: 'Kos Asina', kind: 'sendiri', status: 'aktif', gender: 'Campur', address: 'Jl. Raya Tarutung Km. 11', maps_query: '2.104938, 98.956720', facilities: ['WiFi', 'Parkir motor'], rules: ['Tamu ditemui di teras.'], visit_hours: '09.00-16.00 WIB', nearby: ['IAKN'], sort: 1 },
   { id: 'p_bona', slug: 'bona', name: 'Kos Bona', kind: 'sendiri', status: 'aktif', gender: 'Putri', address: 'Jl. Raya Tarutung Km. 11', maps_query: '2.104938, 98.956720', facilities: ['WiFi', 'Dapur bersama'], rules: [], visit_hours: '09.00-16.00 WIB', nearby: ['IAKN'], sort: 2 },
@@ -96,6 +104,8 @@ const senders = st.messages.map((m: any) => m.sender).join(',');
 assert(senders === 'pengunjung,bot,pengunjung,bot,pengunjung,sistem', 'urutan pesan awal: ' + senders);
 assert(st.messages[1].body.includes('Rp550.000') && st.messages[1].options?.length, 'jawaban bot dibuat ulang di server dengan opsi');
 const th = db.chat_threads[0];
+await settle();
+assert(sent.length === 1 && sent[0].subject === 'Live chat baru dari Rina' && sent[0].to.includes('bonaasinaa@gmail.com') && sent[0].html.includes('Bisa nego harga tahunan?'), 'email admin: chat baru ' + JSON.stringify(sent.map((x) => x.subject)));
 assert(th.visitor_hash !== st.token && th.visitor_hash.length === 64, 'hanya hash token disimpan');
 assert(th.unread_admin === 3 && th.unread_visitor === 0, `belum dibaca admin 3 / pengunjung 0 (${th.unread_admin}/${th.unread_visitor})`);
 
@@ -115,12 +125,16 @@ assert(list.threads.length === 1 && list.threads[0].contact === '0812' && !('vis
 const full = await ok('GET', `/admin/chats/${th.id}`, undefined, A);
 assert(full.messages.length === 11 && full.thread.name === 'Rina', 'riwayat lengkap ' + full.messages.length);
 assert((await ok('GET', '/admin/chats/unread', undefined, A)).unread === 0, 'dibaca admin');
+await settle();
+assert(sent.length === 1, 'pesan lanjutan saat admin belum membaca tidak mengirim email lagi: ' + sent.length);
 await ok('POST', `/admin/chats/${th.id}/messages`, { body: 'Horas Rina, untuk nego silakan survei dulu ya.' }, A);
 assert(db.chat_threads[0].unread_visitor === 1, 'pengunjung punya 1 belum dibaca');
 let g = await ok('GET', `/chat?after=${full.messages.at(-1).id}&read=1`, undefined, V);
 assert(g.messages.length === 1 && g.messages[0].sender === 'admin' && db.chat_threads[0].unread_visitor === 0, 'pengunjung menerima balasan & ditandai dibaca');
 // Admin baru membalas → bot diam untuk teks bebas.
 r = await ok('POST', '/chat/messages', { body: 'harga bulanan berapa?' }, V);
+await settle();
+assert(sent.length === 2 && sent[1].subject === 'Pesan live chat dari Rina', 'email saat pesan baru setelah admin membaca');
 assert(r.messages.length === 1, 'bot diam saat admin aktif');
 // Admin selesai → pesan pengunjung membuka lagi.
 await ok('PUT', `/admin/chats/${th.id}`, { status: 'selesai' }, A);

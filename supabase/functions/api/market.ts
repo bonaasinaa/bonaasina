@@ -22,6 +22,7 @@ export function createMarket(H: Record<string, any>) {
     readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
     background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
     PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, extraFee, waLink, byCode, bySort, createProperty,
+    mail, emailField,
   } = H;
 
   // ------------------------------------------------------------ konstanta & teks
@@ -90,9 +91,25 @@ export function createMarket(H: Record<string, any>) {
   const feeText = (type: string, value: number) => (type === 'nominal' ? rupiah(value) : `${Number(value).toLocaleString('id-ID')}% dari DP`);
 
   // ------------------------------------------------------------ notifikasi & pesan sistem
+  // Setiap notifikasi dashboard juga dikirim ke email penerimanya (bila ada), di latar belakang.
   async function notify(type: 'admin' | 'pemilik' | 'customer', id: string | null, leadId: string | null, kind: string, title: string, body = '') {
     if (type !== 'admin' && !id) return;
-    await q(sb.from('notifications').insert({ recipient_type: type, recipient_id: type === 'admin' ? null : id, lead_id: leadId, kind, title: str(title, 160), body: str(body, 600) }));
+    const n = await q(sb.from('notifications').insert({ recipient_type: type, recipient_id: type === 'admin' ? null : id, lead_id: leadId, kind, title: str(title, 160), body: str(body, 600) }).select('id').single()) as Row;
+    background(emailNotification(type, id, leadId, kind, title, body, n?.id));
+  }
+  async function emailNotification(type: string, id: string | null, leadId: string | null, kind: string, title: string, body: string, nid: number) {
+    const lead = leadId ? await one('leads', leadId) : null;
+    const p = lead ? await one('properties', lead.propertyId) : null;
+    const rows: [string, string][] = lead ? [['Reservasi', `#${lead.code}, ${lead.name}`], ['Kos', p?.name || '-'], ['Status', LEAD_STATUS[lead.status] || lead.status]] : [];
+    const m = { kind: `notif.${kind}`, dedupeKey: `notif:${nid}`, subject: str(title, 160), title: str(title, 160), intro: body, rows };
+    if (type === 'admin') return mail.sendAdmin({ ...m, cta: { label: 'Buka admin', url: `${site()}/admin/` } });
+    if (type === 'pemilik') {
+      const o = await one('owners', id!);
+      if (o?.email && o.status === 'aktif') mail.send({ ...m, to: o.email, cta: { label: 'Buka dashboard pemilik', url: `${site()}/pemilik/` } });
+      return;
+    }
+    const l = lead?.id === id ? lead : await one('leads', id!);
+    if (l?.email) mail.send({ ...m, to: l.email, intro: `Horas ${l.name}, ${body ? body.charAt(0).toLowerCase() + body.slice(1) : 'ada kabar baru soal reservasi Anda.'}`, cta: { label: 'Buka halaman reservasi', url: `${site()}/akun/?u=${l.username}` } });
   }
   // Pemilik kos sendiri = admin; notifikasi pemilik untuk kos sendiri cukup ke admin.
   async function notifyOwner(p: Row, l: Row | null, kind: string, title: string, body = '') {
@@ -194,7 +211,24 @@ export function createMarket(H: Record<string, any>) {
     const token = req.headers.get(kind === 'owner' ? 'x-owner-session' : 'x-lead-session') || '';
     await q(sb.from(kind === 'owner' ? 'owner_sessions' : 'lead_sessions').delete().eq(kind === 'owner' ? 'owner_id' : 'lead_id', who.id).neq('token_hash', await sha256(token)));
     clearCaches();
+    if (who.email && !who.mustChange) mail.send({
+      to: who.email, kind: 'security.password', dedupeKey: null, subject: 'Kata sandi akun Bonaasina diganti', title: 'Kata sandi Anda baru saja diganti',
+      intro: `Horas ${who.name}, kata sandi akun ${who.username} baru saja diganti dan perangkat lain sudah dikeluarkan.`,
+      note: kind === 'owner' ? 'Bila bukan Anda, segera hubungi admin Bonaasina.' : 'Bila bukan Anda, segera hubungi pemilik kos lewat WhatsApp.',
+    });
     return { ok: true };
+  }
+  // Pemilik & customer bisa mengatur sendiri email untuk notifikasi.
+  async function setEmail(kind: 'owner' | 'lead', who: Row, b: Row) {
+    const email = emailField(b.email);
+    await q(sb.from(kind === 'owner' ? 'owners' : 'leads').update({ email }).eq('id', who.id));
+    clearCaches();
+    if (email && email !== who.email) mail.send({
+      to: email, kind: 'email.set', dedupeKey: null, subject: 'Email notifikasi Bonaasina aktif', title: 'Email notifikasi aktif',
+      intro: `Horas ${who.name}, mulai sekarang kabar ${kind === 'owner' ? 'reservasi, DP, fee, dan refund kos Anda' : 'status reservasi, DP, bukti booking, dan refund'} dikirim ke alamat ini.`,
+      cta: kind === 'owner' ? { label: 'Buka dashboard pemilik', url: `${site()}/pemilik/` } : { label: 'Buka halaman reservasi', url: `${site()}/akun/?u=${who.username}` },
+    });
+    return { email };
   }
   async function logout(kind: 'owner' | 'lead', req: Request) {
     const token = req.headers.get(kind === 'owner' ? 'x-owner-session' : 'x-lead-session') || '';
@@ -272,7 +306,7 @@ export function createMarket(H: Record<string, any>) {
   // ================================================================ PUBLIK: kirim reservasi
   on('POST', '/leads', async ({ req, body: b }: Row, log: (e: Row) => void) => {
     if (b.website) return { ok: true }; // honeypot
-    const name = str(b.name, 80), phone = str(b.phone, 20);
+    const name = str(b.name, 80), phone = str(b.phone, 20), email = emailField(b.email);
     if (!name) throw bad('Isi nama Anda.');
     if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890.');
     const p = await one('properties', str(b.propertyId, 60));
@@ -309,7 +343,7 @@ export function createMarket(H: Record<string, any>) {
     for (let i = 0; i < 8 && !rec; i++) {
       const code = digits5(); password = defaultPassword();
       const { data, error } = await sb.from('leads').insert({
-        code, property_id: p.id, room_id: room?.id ?? null, name, phone, occupation: str(b.occupation, 80), people, period, duration,
+        code, property_id: p.id, room_id: room?.id ?? null, name, phone, email, occupation: str(b.occupation, 80), people, period, duration,
         move_date: b.moveDate, note: str(b.note, 600), status: 'baru', username: prefix + code, password_hash: await bcrypt.hash(password, 10), default_password: password,
         visit_status: wantVisit ? 'diminta' : null, visit_date: wantVisit ? b.visitDate : null, visit_time: wantVisit ? str(b.visitTime, 20) : '', ip,
       }).select().single();
@@ -339,7 +373,7 @@ export function createMarket(H: Record<string, any>) {
   }
   function leadBase(l: Row, p: Row | null, room: Row | null) {
     return {
-      ...pick(l, ['id', 'code', 'propertyId', 'roomId', 'name', 'phone', 'occupation', 'people', 'period', 'duration', 'moveDate', 'note', 'status',
+      ...pick(l, ['id', 'code', 'propertyId', 'roomId', 'name', 'phone', 'email', 'occupation', 'people', 'period', 'duration', 'moveDate', 'note', 'status',
         'rejectReason', 'cancelReason', 'cancelledBy', 'visitStatus', 'visitDate', 'visitTime', 'visitNote', 'priceTotal', 'dpAmount', 'dpDeadline', 'ownerMessage',
         'confirmedAt', 'dpUploadedAt', 'dpRejectNote', 'dpConfirmedAt', 'approvedAt', 'invoiceNo', 'refundStatus', 'refundReason', 'refundAccount', 'refundAmount',
         'refundNote', 'refundRequestedAt', 'refundSentAt', 'refundDoneAt', 'username', 'createdAt', 'updatedAt', 'respondedAt', 'tenantId']),
@@ -720,6 +754,11 @@ export function createMarket(H: Record<string, any>) {
     log({ action: 'customer.password', summary: l.mustChange ? 'Mengganti kata sandi bawaan' : 'Mengganti kata sandi' });
     return out;
   });
+  on('PUT', '/akun/email', async ({ body: b, lead: l }: Row, log: (e: Row) => void) => {
+    const out = await setEmail('lead', l, b);
+    log({ action: 'customer.email', summary: out.email ? 'Mengatur email notifikasi' : 'Menghapus email notifikasi' });
+    return out;
+  });
   on('GET', '/akun/me', async ({ lead: l }: Row) => {
     await expireLeads();
     const cur = await one('leads', l.id);
@@ -876,6 +915,11 @@ export function createMarket(H: Record<string, any>) {
     log({ action: 'owner.password', summary: o.mustChange ? 'Mengganti kata sandi bawaan' : 'Mengganti kata sandi' });
     return out;
   });
+  on('PUT', '/pemilik/email', async ({ body: b, owner: o }: Row, log: (e: Row) => void) => {
+    const out = await setEmail('owner', o, b);
+    log({ action: 'owner.email', summary: out.email ? 'Mengatur email notifikasi' : 'Menghapus email notifikasi' });
+    return out;
+  });
   on('GET', '/pemilik/me', async ({ owner: o }: Row) => {
     const s = await setting();
     const base = { owner: pick(o, ['id', 'name', 'phone', 'email', 'username', 'mustChange', 'lastLoginAt']), bonaBankInfo: s.bonaBankInfo || '', feeDueDays: s.feeDueDays, dpHours: s.dpHours, leadResponseHours: s.leadResponseHours };
@@ -1029,14 +1073,15 @@ export function createMarket(H: Record<string, any>) {
     if (await usernameTaken(username)) throw bad(`Username "${username}" sudah dipakai.`);
     const password = String(b.password || '') || ownerPassword();
     if (password.length < 8) throw bad('Kata sandi minimal 8 karakter.');
-    const rec = await insert('owners', { name, phone: str(b.phone, 20), email: str(b.email, 120).toLowerCase(), note: str(b.note, 600), username, passwordHash: await bcrypt.hash(password, 10), mustChange: true });
+    const rec = await insert('owners', { name, phone: str(b.phone, 20), email: emailField(b.email), note: str(b.note, 600), username, passwordHash: await bcrypt.hash(password, 10), mustChange: true });
     log({ action: 'owner.create', summary: `Membuat akun pemilik kos ${name} (${username})` });
     return created({ ...ownerOut(rec), password });
   });
   on('PUT', '/admin/owners/:id', async ({ params, body: b }: Row, log: (e: Row) => void) => {
     const cur = await one('owners', str(params.id, 40)); if (!cur) throw notFound('Pemilik tidak ditemukan.');
     const patch: Row = {};
-    for (const [k, m] of [['name', 100], ['phone', 20], ['email', 120], ['note', 600]] as const) if (b[k] !== undefined) patch[k] = str(b[k], m);
+    for (const [k, m] of [['name', 100], ['phone', 20], ['note', 600]] as const) if (b[k] !== undefined) patch[k] = str(b[k], m);
+    if (b.email !== undefined) patch.email = emailField(b.email);
     if (patch.name === '') throw bad('Isi nama pemilik kos.');
     if (b.status !== undefined) patch.status = b.status === 'nonaktif' ? 'nonaktif' : 'aktif';
     if (b.username !== undefined) {
@@ -1138,7 +1183,7 @@ export function createMarket(H: Record<string, any>) {
   const GENDERS = ['Putra', 'Putri', 'Campur', 'Pasutri'];
   on('POST', '/mitra/daftar', async ({ req, body: b }: Row, log: (e: Row) => void) => {
     if (b.website) return { ok: true }; // honeypot
-    const name = str(b.name, 80), phone = str(b.phone, 20), kosName = str(b.kosName, 80).replace(/^kos\s+/i, '');
+    const name = str(b.name, 80), phone = str(b.phone, 20), kosName = str(b.kosName, 80).replace(/^kos\s+/i, ''), email = emailField(b.email);
     if (!name) throw bad('Isi nama Anda.');
     if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890.');
     if (!kosName) throw bad('Isi nama kos Anda.');
@@ -1154,11 +1199,16 @@ export function createMarket(H: Record<string, any>) {
     if ((byPhone.count ?? 0) >= 2 || (ip && (byIp.count ?? 0) >= 5)) throw new HttpError(429, 'Pendaftaran dari nomor ini sudah kami terima. Admin akan menghubungi Anda lewat WhatsApp.');
     const rooms = Math.round(Number(b.roomCount) || 0);
     const rec = toCamel(await q(sb.from('partner_applications').insert({
-      name, phone, kos_name: `Kos ${kosName}`, city, address: str(b.address, 300), gender: GENDERS.includes(b.gender) ? b.gender : 'Campur',
+      name, phone, email, kos_name: `Kos ${kosName}`, city, address: str(b.address, 300), gender: GENDERS.includes(b.gender) ? b.gender : 'Campur',
       room_count: rooms >= 1 && rooms <= 500 ? rooms : null, periods: periods.length ? CYCLES.filter((c: string) => periods.includes(c)) : ['bulanan'],
       price_from: num(b.priceFrom) || null, note: str(b.note, 600), ip,
     }).select().single()));
     await notifyAdmin(null, 'mitra', `Pendaftaran mitra baru: ${rec.kosName}`, `${name} (${phone}), ${city}${rooms ? `, ${rooms} kamar` : ''}. Periksa di menu Pendaftaran mitra.`);
+    mail.send({
+      to: email, kind: 'partner.received', dedupeKey: `partner.received:${rec.id}`, subject: `Pendaftaran mitra ${rec.kosName} kami terima`,
+      title: 'Pendaftaran mitra sudah kami terima', intro: `Horas ${name}, terima kasih sudah mendaftarkan ${rec.kosName} di Kos Sekitar Bonaasina. Admin akan meninjau dan menghubungi Anda lewat WhatsApp.`,
+      rows: [['Kos', rec.kosName], ['Kota', city], ['Jumlah kamar', rooms ? String(rooms) : '']],
+    });
     log({ action: 'partner.apply', summary: `Mendaftar sebagai mitra: ${rec.kosName}, ${city}`, meta: { name } });
     return created({ ok: true });
   });
@@ -1179,7 +1229,7 @@ export function createMarket(H: Record<string, any>) {
     if (!b.username) { const base = username; for (let i = 2; await usernameTaken(username); i++) username = `${base}${i}`; }
     else if (await usernameTaken(username)) throw bad(`Username "${username}" sudah dipakai.`);
     const password = ownerPassword();
-    const owner = await insert('owners', { name: a.name, phone: a.phone, username, passwordHash: await bcrypt.hash(password, 10), mustChange: true, note: `Dari pendaftaran ${a.kosName}` });
+    const owner = await insert('owners', { name: a.name, phone: a.phone, email: a.email || '', username, passwordHash: await bcrypt.hash(password, 10), mustChange: true, note: `Dari pendaftaran ${a.kosName}` });
     const feeType = ['persen', 'nominal'].includes(b.feeType) ? b.feeType : null;
     const prop = await createProperty('mitra', {
       name: a.kosName, ownerId: owner.id, city: a.city, address: a.address, gender: a.gender, periods: a.periods?.length ? a.periods : ['bulanan'], whatsapp: a.phone,
@@ -1187,6 +1237,14 @@ export function createMarket(H: Record<string, any>) {
     });
     await q(sb.from('partner_applications').update({ status: 'disetujui', owner_id: owner.id, property_id: prop.id, decided_at: nowIso(), admin_note: str(b.note, 300) }).eq('id', a.id));
     const text = accountMessage(owner, a.kosName, password);
+    // Kata sandi sementara tidak dikirim lewat email; tetap lewat WhatsApp dari admin.
+    mail.send({
+      to: a.email, kind: 'partner.approved', dedupeKey: `partner.approved:${a.id}`, subject: `Selamat, ${a.kosName} diterima sebagai mitra Bonaasina`,
+      title: 'Pendaftaran mitra disetujui', intro: `Horas ${a.name}, akun pemilik untuk ${a.kosName} sudah siap.`,
+      rows: [['Username', username], ['Kata sandi sementara', 'dikirim admin lewat WhatsApp']],
+      note: 'Langkah berikutnya: masuk, buat kata sandi sendiri, lengkapi info kos, foto, kamar & harga, rekening, lalu tekan "Minta ditampilkan di website".',
+      cta: { label: 'Masuk ke dashboard pemilik', url: `${site()}/pemilik/` },
+    });
     log({ action: 'partner.approve', summary: `Menyetujui mitra ${a.kosName} dan membuat akun ${username}` });
     return { owner: ownerOut(owner), password, property: pick(prop, ['id', 'name', 'slug']), text, url: waLink(a.phone, text) };
   });
@@ -1197,6 +1255,7 @@ export function createMarket(H: Record<string, any>) {
     const note = str(b.note, 300);
     await q(sb.from('partner_applications').update({ status: 'ditolak', admin_note: note, decided_at: nowIso() }).eq('id', a.id));
     const text = `Horas ${a.name}, terima kasih sudah mendaftarkan ${a.kosName} sebagai mitra Bonaasina.\n\nMohon maaf, untuk saat ini kami belum bisa menerimanya${note ? `: ${note}` : '.'}\n\nSilakan hubungi kami bila ada pertanyaan.`;
+    mail.send({ to: a.email, kind: 'partner.rejected', dedupeKey: `partner.rejected:${a.id}`, subject: `Pendaftaran mitra ${a.kosName}`, title: 'Pendaftaran mitra belum bisa diterima', intro: text.replace(/^Horas [^,]+, /, `Horas ${a.name}, `) });
     log({ action: 'partner.reject', summary: `Menolak pendaftaran mitra ${a.kosName}` });
     return { text, url: waLink(a.phone, text) };
   });

@@ -441,6 +441,10 @@
         <section class="panel"><h2>Data Anda</h2>
           <dl class="kv"><dt>Nama</dt><dd>${esc(t.name)}</dd><dt>Username</dt><dd>${esc(t.username)}</dd><dt>Kamar</dt><dd>${esc(room?.code || '-')}, ${esc(property?.name || '')}</dd><dt>Sewa</dt><dd>${rp(t.rentAmount)} per ${CW(t.rentCycle)}</dd><dt>Mulai</dt><dd>${tgl(t.startDate)}</dd><dt>Deposit</dt><dd>${rp(t.deposit)}</dd><dt>WhatsApp</dt><dd>${esc(t.phone || '-')}</dd><dt>Kontak darurat</dt><dd>${esc([t.emergencyName, t.emergencyPhone].filter(Boolean).join(', ') || '-')}</dd></dl>
           <p class="hint mt">Ada data yang salah? Hubungi pengelola untuk memperbaikinya.</p>
+          <form class="fields mt" id="emailForm" novalidate>
+            <label>Email notifikasi <span class="hint">tagihan, pembayaran, kontrak, pengumuman, laporan kerusakan</span><input type="email" name="email" inputmode="email" autocomplete="email" value="${esc(t.email || '')}" placeholder="nama@gmail.com"></label>
+            <div><button class="btn btn--ghost btn--sm" type="submit">Simpan email</button></div>
+          </form>
         </section>
         <section class="panel"><h2>Ganti kata sandi</h2>
           <form class="fields" id="pwForm" novalidate>
@@ -455,6 +459,11 @@
     $('#photoIn').addEventListener('change', async (e) => {
       const f = e.target.files[0]; e.target.value = ''; if (!f) return;
       try { await BonaLoader.during('Mengunggah foto…', async () => api('POST', '/photo', undefined, await shrink(f, 900, true))); toast('Foto kartu diperbarui.'); await refresh(); }
+      catch (ex) { toast(ex.message, true); }
+    });
+    $('#emailForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { const out = await BonaLoader.during('Menyimpan…', () => api('PUT', '/email', Object.fromEntries(new FormData(e.target)))); t.email = out.email; toast(out.email ? 'Email tersimpan. Cek kotak masuk Anda.' : 'Email dihapus.'); }
       catch (ex) { toast(ex.message, true); }
     });
     $('#pwForm').addEventListener('submit', async (e) => {

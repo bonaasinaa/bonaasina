@@ -62,22 +62,36 @@ cd tests && deno run -A --config deno.json kos-sekitar.flow.ts
 ```
 
 ## Live chat & bot (alternatif WhatsApp)
-Kode: `supabase/functions/api/chat.ts` (API), `chatbot.ts` (bot & kamus), migrasi `20261024000002_live_chat.sql`, widget `web/js/livechat.js` + `web/css/livechat.css`, admin menu *Live chat* di `web/admin/admin.js`.
+Kode: `supabase/functions/api/chat.ts` (API), `chatbot.ts` (bot & kamus), migrasi `20261024000003_live_chat.sql`, widget `web/js/livechat.js` + `web/css/livechat.css`, admin menu *Live chat* di `web/admin/admin.js`.
 
 - **Pengunjung** membuka tombol chat di pojok kanan bawah (menggantikan tombol WhatsApp melayang; tautan WhatsApp tetap ada di dalam panel). **Bot sambutan** menyapa dan menawarkan pilihan topik (harga, kamar kosong, fasilitas, lokasi, aturan, survei, booking, pembayaran, bicara dengan admin). Pertanyaan yang ditulis bebas dipahami lewat kata kunci, termasuk singkatan (`brp hrg kmr`) dan salah ketik ringan. Jawaban diisi dari data website (`{harga}`, `{kamar_kosong}`, …), jadi selalu sama dengan halaman. Tanya jawab (FAQ) di Pengaturan ikut dikenali. Selama belum terhubung ke admin, tidak ada yang disimpan.
 - **Bicara dengan admin** (atau bot tidak paham): pengunjung menulis nama panggilan (WhatsApp opsional). Server membuat percakapan dan token acak; browser menyimpannya di `localStorage`, server hanya menyimpan hash SHA-256 (header `X-Chat-Session`). Pertanyaan ke bot sebelumnya ikut tercatat (jawabannya dibuat ulang di server, bukan dari browser).
 - Setelah terhubung, bot hanya ikut menjawab bila cukup yakin, dan diam selama 30 menit setelah admin membalas. Pembaruan memakai polling ringan (4 detik saat panel terbuka, 25 detik saat tertutup, berhenti saat tab disembunyikan), jadi tidak perlu akses langsung browser ke database dan tetap sesuai CSP.
 - **Admin** → *Live chat*: kotak masuk (belum dibaca/terbuka/selesai), balas, tandai selesai, hapus (spam), tombol WhatsApp bila nomor diisi. Lencana menu + judul tab menghitung pesan belum dibaca (diperbarui tiap 20 detik di semua menu) dan muncul pemberitahuan kecil saat ada pesan baru; Ringkasan punya widget *Live chat*. Tab *Pengaturan*: tampilkan tombol, terima pesan, bot aktif, hari & jam layanan (WIB), sapaan, pesan di luar jam layanan. Tab *Kamus bot*: ubah/tambah topik, kata kunci, jawaban, tombol pilihan; *Coba bot* untuk menguji.
+- Email ke admin (bila Resend aktif): saat percakapan baru dimulai, dan saat pengunjung menulis lagi setelah semua pesan dibaca (bukan setiap pesan).
 - Batas: 5 percakapan baru per IP per jam, 12 pesan pengunjung per menit per percakapan, 60 pertanyaan bot per IP per 10 menit (per instance).
 
 **Uji alur:** `cd tests && deno run -A --config deno.json chat.flow.ts`
+
+## Notifikasi email (Resend)
+Kode: `supabase/functions/api/mailer.ts`, migrasi `20261024000002_notifikasi_email.sql`, uji `tests/email.flow.ts`.
+
+- Kolom **email opsional** di reservasi, daftar tunggu, pendaftaran mitra, data penghuni (admin), serta pengaturan akun di dashboard penghuni, pemilik, dan halaman reservasi. Admin menerima email di *Pengaturan → Email notifikasi admin* (kosong = email login admin).
+- Yang dikirim: semua notifikasi dashboard Kos Sekitar (reservasi baru, kamar tersedia/ditolak, DP, fee, booking berhasil, refund, kunjungan, chat), tagihan baru, pengingat tagihan, bukti bayar masuk/ditolak, pembayaran lunas + nomor kuitansi, laporan kerusakan & statusnya, kontrak baru/disetujui/keputusan perpanjang, pengumuman, kamar kosong untuk daftar tunggu, survei, pendaftaran mitra, dan pemberitahuan keamanan (kata sandi diganti).
+- **Kata sandi tidak pernah dikirim lewat email**; tetap lewat WhatsApp.
+- Email dikirim di latar belakang, jadi gagal kirim tidak menggagalkan aksi pengguna. Setiap kiriman dicatat di tabel `email_log` dengan kunci unik (juga dipakai sebagai `Idempotency-Key` Resend) supaya tidak terkirim dua kali.
+- Secret fungsi `api`: `RESEND_API_KEY` (wajib; tanpa ini email dilewati), `EMAIL_FROM` (bawaan `Bonaasina <notifikasi@kabar.bonaasina.my.id>`, domainnya harus terverifikasi di Resend), `EMAIL_REPLY_TO` (opsional). Pakai API key **Sending access** yang dibatasi ke domain itu, bukan Full access.
+
+```bash
+cd tests && deno run -A --config deno.json email.flow.ts
+```
 
 ## Deploy
 
 ### 1. Supabase
 1. Buat proyek **bonaasina** (region Singapore `ap-southeast-1`).
 2. Jalankan semua file di `supabase/migrations/` berurutan, lalu `supabase/seed.sql`.
-3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts` + `market.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR.
+3. Deploy fungsi `supabase/functions/api` (`index.ts` + `docs.ts` + `market.ts`) dengan **verify JWT dimatikan** (fungsi memeriksa login sendiri). Opsional: secret `SITE_URL` (bawaan `https://bonaasina.my.id`) untuk logo PDF & alamat QR, serta secret email (lihat *Notifikasi email*).
 4. Buat kode penyiapan admin sekali pakai (berlaku 24 jam), lalu buka `/admin/` → *Pertama kali masuk* untuk membuat kata sandi:
    ```sql
    insert into public.setup_codes (email, code_hash, expires_at)

@@ -464,12 +464,19 @@
     const o = data.owner;
     main.innerHTML = head('Akun & panduan', '') + `<div class="grid grid--2">
       <div class="panel"><h2>Akun</h2><dl class="kv"><dt>Nama</dt><dd>${esc(o.name)}</dd><dt>Username</dt><dd>${esc(o.username)}</dd><dt>WhatsApp</dt><dd>${esc(o.phone || '-')}</dd></dl>
+        <form class="fields mt" id="emailForm" novalidate>
+          <label>Email notifikasi <span class="hint">reservasi masuk, bukti DP, fee, dan refund</span><input type="email" name="email" inputmode="email" autocomplete="email" value="${esc(o.email || '')}" placeholder="nama@gmail.com"></label>
+          <div><button class="btn btn--ghost" type="submit">Simpan email</button></div></form>
         <form class="fields mt" id="pwChange"><input type="text" name="username" value="${esc(o.username)}" autocomplete="username" hidden>
           <label>Kata sandi sekarang<input type="password" name="oldPassword" autocomplete="current-password" required></label>
           <label>Kata sandi baru<input type="password" name="newPassword" autocomplete="new-password" minlength="8" required></label>
           <div><button class="btn btn--ghost" type="submit">Ganti kata sandi</button></div></form></div>
       <div class="panel"><h2>Cara kerja</h2>${guide()}
         <p class="hint mt">Batas konfirmasi: usahakan menjawab reservasi baru dalam ${data.leadResponseHours} jam. Batas bayar DP bawaan ${data.dpHours} jam; fee dibayar paling lambat ${data.feeDueDays} hari setelah DP diterima.</p></div></div>`;
+    $('#emailForm').onsubmit = async (e) => {
+      e.preventDefault();
+      try { const out = await api('PUT', '/email', Object.fromEntries(new FormData(e.target))); o.email = out.email; toast(out.email ? 'Email tersimpan. Cek kotak masuk Anda.' : 'Email dihapus.'); } catch (ex) { toast(ex.message, true); }
+    };
     $('#pwChange').onsubmit = async (e) => {
       e.preventDefault();
       try { await api('POST', '/password', Object.fromEntries(new FormData(e.target))); e.target.reset(); toast('Kata sandi diganti.'); } catch (ex) { toast(ex.message, true); }
