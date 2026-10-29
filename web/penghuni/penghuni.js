@@ -421,15 +421,19 @@
             <span class="sub">${esc(i.category)}, dilaporkan ${tgl(i.createdAt)}${i.hasPhoto ? ', dengan foto' : ''}</span>${i.ownerNote ? `<span class="sub">Pengelola: ${esc(i.ownerNote)}</span>` : ''}</div></div>`).join('')}</div>` : '<p class="muted">Belum ada laporan.</p>'}</section>
       </div>`;
     $('#issueFile').addEventListener('change', (e) => { photo = e.target.files[0] || null; $('#issueFileName').textContent = photo ? photo.name : ''; });
+    // Menyimpan sementara id laporan yang sudah dibuat tetapi fotonya belum berhasil terkirim, supaya
+    // menekan "Kirim" lagi hanya mengulang unggahan foto (dulu membuat laporan kedua).
+    let createdId = null;
     $('#issueForm').addEventListener('submit', async (e) => {
       e.preventDefault(); const f = e.target; const err = $('#issueErr'); const body = Object.fromEntries(new FormData(f));
       if (!String(body.title || '').trim()) { err.textContent = 'Tulis singkat apa yang rusak.'; err.hidden = false; return; }
       err.hidden = true;
       try {
         await BonaLoader.during('Mengirim laporan…', async () => {
-          const rec = await api('POST', '/issues', body);
-          if (photo) await api('POST', `/issues/${rec.id}/photo`, undefined, await shrink(photo));
+          createdId ||= (await api('POST', '/issues', body)).id;
+          if (photo) await api('POST', `/issues/${createdId}/photo`, undefined, await shrink(photo));
         });
+        createdId = null;
         toast('Laporan terkirim. Pengelola akan menindaklanjuti.'); await refresh();
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });

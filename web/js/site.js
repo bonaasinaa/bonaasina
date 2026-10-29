@@ -22,7 +22,10 @@
   }
 
   // ---------- muat data ----------
-  fetch(API + '/public').then((r) => r.json()).then((data) => {
+  // Jawaban error (5xx/4xx) berisi JSON juga; tanpa cek r.ok daftar kamar tampak kosong.
+  const getJson = (url) => fetch(url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); });
+
+  getJson(API + '/public').then((data) => {
     state.data = data;
     state.activeTab = data.properties[0]?.id;
     // Periode yang dibuka oleh minimal satu kos; bulanan diutamakan bila ada.
@@ -33,6 +36,11 @@
     initMotion();
   }).catch(() => {
     $('#availabilityText').textContent = 'Data kamar belum bisa dimuat. Hubungi kami lewat WhatsApp.';
+    // Tanpa ini daftar kamar tetap kosong dan formulir pesan menggantung di "Memuat formulir…".
+    const roomList = $('#roomList');
+    if (roomList) roomList.innerHTML = '<li class="room-empty">Data kamar belum bisa dimuat. Muat ulang halaman ini atau hubungi kami lewat WhatsApp.</li>';
+    const booking = $('#bookingBox');
+    if (booking) booking.innerHTML = '<p class="muted">Formulir pemesanan belum bisa dimuat karena data kamar gagal diambil. Muat ulang halaman ini.</p>';
     initMotion();
   });
 
@@ -382,7 +390,7 @@
   async function renderSekitar() {
     const box = $('#sekitarList'); if (!box) return;
     try {
-      const [pl, tj] = await Promise.all([fetch(API + '/sekitar').then((r) => r.json()), fetch(API + '/titip').then((r) => r.json())]);
+      const [pl, tj] = await Promise.all([getJson(API + '/sekitar'), getJson(API + '/titip')]);
       const places = (pl.places || []).slice(0, 6);
       // Bagian yang belum ada isinya disembunyikan dari beranda (halamannya tetap bisa dibuka dari menu).
       box.closest('.near__card').hidden = !places.length;
@@ -393,7 +401,12 @@
       $('.near__card--titip').hidden = !n;
       $('.near').hidden = !places.length && !n;
       $('.near').classList.toggle('is-single', !places.length !== !n);
-    } catch { box.innerHTML = '<li class="near__empty">Info sekitar belum bisa dimuat.</li>'; }
+    } catch {
+      // Tampilkan pesan gagal, bukan teks "sedang kami lengkapi" yang membuat kesan datanya kosong.
+      box.closest('.near__card').hidden = false;
+      $('.near').hidden = false;
+      box.innerHTML = '<li class="near__empty">Info sekitar belum bisa dimuat. Muat ulang halaman ini.</li>';
+    }
   }
 
   // ---------- gerak ----------

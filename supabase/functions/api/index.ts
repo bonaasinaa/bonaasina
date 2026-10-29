@@ -549,13 +549,19 @@ on('POST', '/admin/setup', async ({ req, body: b }, log) => {
     writeLog(req, 'admin', email || '(tanpa email)', { action: 'setup.failed', summary: 'Gagal mengatur kata sandi: kode penyiapan salah atau kedaluwarsa', ok: false });
     throw new HttpError(401, 'Kode penyiapan salah atau sudah kedaluwarsa.');
   }
+  // Kode diklaim lebih dulu dengan hapus bersyarat: dua permintaan yang datang bersamaan tidak bisa
+  // sama-sama memakainya (dulu keduanya lolos dan kata sandi terakhir yang menang).
+  const claimed = await q(sb.from('setup_codes').delete().eq('email', email).eq('code_hash', row.codeHash).select('email').maybeSingle()).catch(() => null);
+  if (!claimed) throw new HttpError(401, 'Kode penyiapan ini sudah dipakai. Minta kode baru dari pemilik proyek.');
   const { data: list } = await sb.auth.admin.listUsers({ page: 1, perPage: 200 });
   const user = list?.users.find((u) => (u.email || '').toLowerCase() === email);
   const res = user
     ? await sb.auth.admin.updateUserById(user.id, { password })
     : await sb.auth.admin.createUser({ email, password, email_confirm: true });
-  if (res.error) { console.error(res.error); throw bad('Gagal menyimpan kata sandi. Coba kata sandi lain.'); }
-  await q(sb.from('setup_codes').delete().eq('email', email));
+  if (res.error) {
+    await Promise.allSettled([sb.from('setup_codes').insert({ email, code_hash: row.codeHash, expires_at: row.expiresAt })]);
+    console.error(res.error); throw bad('Gagal menyimpan kata sandi. Coba kata sandi lain.');
+  }
   mail.send({
     to: email, kind: 'security.admin_setup', dedupeKey: null, subject: 'Kata sandi admin Bonaasina diatur',
     title: 'Kata sandi admin baru saja diatur', intro: `Kata sandi admin untuk ${email} baru saja diatur memakai kode penyiapan dari ${clientInfo(req).ua || 'perangkat tidak dikenal'}.`,
@@ -1422,7 +1428,6 @@ on('POST', '/penghuni/photo', async ({ req, tenant: t }, log) => {
   if (ext === 'webp') throw bad('Unggah foto JPG atau PNG.');
   const path = `faces/${t!.id}/${Date.now()}.${ext}`;
   await putFile('private', path, buf, type);
-  if (t!.photoPath) background(Promise.resolve(sb.storage.from('private').remove([t!.photoPath])));
   await q(sb.from('tenants').update({ photo_path: path }).eq('id', t!.id));
   tenantCache.clear();
   log({ action: 'tenant.photo', summary: 'Mengganti foto profil untuk kartu penghuni' });
@@ -1699,7 +1704,6 @@ on('POST', '/admin/tenants/:id/photo', async ({ req, params }, log) => {
   if (ext === 'webp') throw bad('Unggah foto JPG atau PNG.');
   const path = `faces/${t.id}/${Date.now()}.${ext}`;
   await putFile('private', path, buf, type);
-  if (t.photoPath) background(Promise.resolve(sb.storage.from('private').remove([t.photoPath])));
   await q(sb.from('tenants').update({ photo_path: path }).eq('id', t.id));
   log({ action: 'tenant.photo', summary: `Mengganti foto kartu penghuni ${t.name}` });
   return { url: await signedUrl(path) };
