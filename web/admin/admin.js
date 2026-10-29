@@ -811,8 +811,11 @@
   }
 
   // ========== SURVEI ==========
+  let surveiLimit = 50;
   async function survei() {
-    const list = await get('/surveys');
+    // Daftar survei dimuat 50 baris; tombol "Muat lebih banyak" menaikkan batas (maks 500 di server).
+    const page = await get(`/surveys?limit=${surveiLimit}`);
+    const list = page.items || [];
     main.innerHTML = head('Survei', 'Permintaan survei dari website. Hubungi lewat WhatsApp, lalu ubah statusnya.') +
       `<div class="table-wrap">${list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Jadwal</th><th>Catatan</th><th>Status</th><th></th></tr></thead><tbody>${list.map((s) => `<tr>
         <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(s.name)}<div><strong>${esc(s.name)}</strong><span class="sub">${esc(s.phone)}${s.occupation ? `, ${esc(s.occupation)}` : ''}</span></div></div></td>
@@ -821,7 +824,8 @@
         <td data-label="Catatan" class="wrap">${esc(s.note) || '<span class="muted">-</span>'}</td>
         <td data-label="Status"><select class="inline" data-sv="${s.id}" aria-label="Status survei ${esc(s.name)}">${Object.entries(STATUS_SURVEI).map(([k, l]) => `<option value="${k}" ${s.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td class="actions"><a class="btn btn--green btn--sm" href="${esc(s.waUrl)}" target="_blank" rel="noopener">Balas di WA</a><button class="btn btn--ghost btn--sm" data-del-sv="${s.id}" aria-label="Hapus">Hapus</button></td></tr>`).join('')}</tbody></table>`
-        : '<div class="empty">Belum ada permintaan survei. Permintaan dari formulir di website akan muncul di sini.</div>'}</div>`;
+        : '<div class="empty">Belum ada permintaan survei. Permintaan dari formulir di website akan muncul di sini.</div>'}</div>` +
+      (page.hasMore ? '<div class="more mt"><button class="btn btn--ghost" id="svMore">Muat lebih banyak</button></div>' : '');
     main.onchange = async (e) => {
       const s = e.target.closest('[data-sv]'); if (!s) return;
       await api('PUT', `/surveys/${s.dataset.sv}`, { status: s.value }); toast('Status survei diperbarui.'); refreshBadges();
@@ -831,6 +835,7 @@
       if (!(await askConfirm('Hapus survei', 'Data permintaan survei ini akan dihapus.', 'Hapus'))) return;
       await api('DELETE', `/surveys/${d.dataset.delSv}`); toast('Data survei dihapus.'); route();
     };
+    $('#svMore')?.addEventListener('click', (e) => { e.currentTarget.disabled = true; surveiLimit += 50; route(); });
   }
 
   // ========== KERUSAKAN (Fase 2) ==========
@@ -1455,12 +1460,13 @@
   const WL = { perlu_dikabari: 'Perlu dikabari', menunggu: 'Menunggu kamar', dikabari: 'Sudah dikabari', selesai: 'Selesai', batal: 'Batal' };
   let wlFilter = savedFilter('waitlist', 'perlu_dikabari');
   async function tunggu() {
-    const list = await get('/waitlist');
-    const counts = Object.fromEntries(['perlu_dikabari', 'menunggu', 'dikabari'].map((k) => [k, list.filter((w) => w.status === k).length]));
-    counts.semua = list.length;
-    if (wlFilter === 'perlu_dikabari' && !counts.perlu_dikabari && !tunggu.visited) wlFilter = counts.menunggu ? 'menunggu' : 'semua';
+    // Hanya status yang dipilih yang diunduh; hitungan segmen datang dari server.
+    const page = await get(`/waitlist?status=${wlFilter}`);
+    const list = page.items || [];
+    const counts = page.counts || { perlu_dikabari: 0, menunggu: 0, dikabari: 0, semua: 0 };
+    if (wlFilter === 'perlu_dikabari' && !counts.perlu_dikabari && !tunggu.visited) { wlFilter = counts.menunggu ? 'menunggu' : 'semua'; return tunggu(); }
     tunggu.visited = true;
-    const rows = list.filter((w) => wlFilter === 'semua' || w.status === wlFilter);
+    const rows = list;
     main.innerHTML = head('Daftar tunggu', 'Calon penyewa yang mendaftar saat kos penuh. Begitu ada kamar kosong, mereka otomatis ditandai "Perlu dikabari".') + `
       <div class="toolbar"><div class="seg" id="wlSeg">${[['perlu_dikabari', 'Perlu dikabari'], ['menunggu', 'Menunggu kamar'], ['dikabari', 'Sudah dikabari'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${wlFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
       <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Calon penyewa</th><th>Minat</th><th>Didaftar</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((w) => `<tr>
@@ -1469,7 +1475,8 @@
         <td data-label="Didaftar">${tgl(w.createdAt)}</td>
         <td data-label="Status"><select class="inline" data-wl-status="${w.id}" aria-label="Status ${esc(w.name)}">${Object.entries(WL).map(([k, l]) => `<option value="${k}" ${w.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${w.matchedRoom ? `<span class="sub">Kamar ${esc(w.matchedRoom.code)} ${esc(w.matchedRoom.propertyName || '')} ${w.matchedRoom.status === 'kosong' ? 'kosong' : `(${STATUS_KAMAR[w.matchedRoom.status] || w.matchedRoom.status})`}</span>` : ''}${w.notifiedAt ? `<span class="sub">Dikabari ${tgl(w.notifiedAt)}</span>` : ''}</td>
         <td class="actions"><a class="btn btn--green btn--sm" href="${esc(w.waUrl)}" target="_blank" rel="noopener" data-wl-wa="${w.id}">${w.status === 'perlu_dikabari' ? 'Kabari via WA' : 'Hubungi'}</a>${w.status === 'perlu_dikabari' ? `<button class="btn btn--ghost btn--sm" data-wl-done="${w.id}">Tandai dikabari</button>` : ''}<button class="btn btn--ghost btn--sm" data-wl-del="${w.id}">Hapus</button></td></tr>`).join('')}</tbody></table>`
-        : `<div class="empty">${wlFilter === 'perlu_dikabari' ? 'Tidak ada calon penyewa yang perlu dikabari sekarang.' : 'Belum ada yang mendaftar. Formulir daftar tunggu ada di website.'}</div>`}</div>`;
+        : `<div class="empty">${wlFilter === 'perlu_dikabari' ? 'Tidak ada calon penyewa yang perlu dikabari sekarang.' : 'Belum ada yang mendaftar. Formulir daftar tunggu ada di website.'}</div>`}</div>` +
+      (page.hasMore ? '<p class="small muted mt">Menampilkan 100 pendaftar terbaru pada status ini. Pilih status lain untuk melihat sisanya.</p>' : '');
     $('#wlSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; wlFilter = b.dataset.k; rememberFilter('waitlist', wlFilter); route(); };
     main.onchange = async (e) => { const s = e.target.closest('[data-wl-status]'); if (!s) return; try { await api('PUT', `/waitlist/${s.dataset.wlStatus}`, { status: s.value }); toast('Status diperbarui.'); route(); } catch (ex) { toast(ex.message, true); } };
     main.onclick = async (e) => {
