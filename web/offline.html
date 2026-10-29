@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#F7EDE3">
+  <title>Tidak ada koneksi | Bonaasina</title>
+  <!-- Gaya ditulis di dalam halaman supaya tetap tampil saat jaringan mati. -->
+  <style>
+    :root {
+      --cream: #F7EDE3; --paper: #FFFBF6; --red: #8E1B1B; --ink: #24160F; --ijuk: #6B4B3A;
+      --serif: "Libre Caslon Display", "Libre Caslon Text", Georgia, serif;
+      --sans: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100dvh; display: grid; place-items: center;
+      padding: max(24px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px))
+               max(24px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+      background: var(--cream); color: var(--ink); font: 400 17px/1.6 var(--sans);
+    }
+    main { width: 100%; max-width: 460px; text-align: center; }
+    img { width: 120px; height: auto; margin: 0 auto 32px; }
+    h1 { margin: 0 0 10px; font: 400 clamp(1.8rem, 6vw, 2.4rem)/1.1 var(--serif); letter-spacing: -.01em; }
+    p { margin: 0 0 22px; color: var(--ijuk); }
+    a {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 48px;
+      padding: 0 22px; border-radius: 999px; border: 1.5px solid var(--ink);
+      background: var(--ink); color: var(--paper); font: 600 15px/1 var(--sans); text-decoration: none;
+    }
+    a:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="120" height="106">
+    <h1>Tidak ada koneksi</h1>
+    <p>Halaman ini butuh internet. Periksa sinyal atau Wi-Fi, lalu tekan Coba lagi. Kamar dan harga tetap bisa dilihat begitu koneksi kembali.</p>
+    <a href="/">Coba lagi</a>
+  </main>
+</body>
+</html>
