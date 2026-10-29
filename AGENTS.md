@@ -5,6 +5,7 @@ Repo ini: **Bonaasina**, situs kos (Kos Asina & Kos Bona) di Sipoholon. HTML/CSS
 ## Sebelum mengubah apa pun
 
 - Baca `README.md` untuk peta halaman, alur reservasi, dan perintah uji.
+- Sebelum mengubah tampilan, baca `DESIGN.md` untuk arah visual (palet, tipografi, motif, dial).
 - Semua teks untuk pengguna memakai Bahasa Indonesia. Jangan menambah teks Inggris kecuali istilah teknis.
 - Jangan mengubah skema database atau menjalankan migrasi tanpa persetujuan pemilik.
 
