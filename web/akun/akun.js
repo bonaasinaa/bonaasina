@@ -11,6 +11,12 @@
   const setSession = (s) => { try { s ? localStorage.setItem(KEY, JSON.stringify(s)) : localStorage.removeItem(KEY); } catch { /* abaikan */ } };
   let data = null; let chatBox = null; let tab = 'status'; let lastJson = '';
 
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     const opt = { method, headers: {} };
     const s = getSession(); if (s?.token) opt.headers['X-Lead-Session'] = s.token;
@@ -67,9 +73,15 @@
   });
   function askConfirm(title, text, ok = 'Ya, lanjutkan') {
     return new Promise((resolve) => {
-      let done = false;
-      openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { done = true; resolve(true); } });
-      dlg.addEventListener('close', () => { if (!done) resolve(false); }, { once: true });
+      let settled = false;
+      const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const show = () => {
+        openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { finish(true); } });
+        dlg.addEventListener('close', () => finish(false), { once: true });
+      };
+      // Event 'close' dari dialog yang baru ditutup dikirim tertunda; pendengar baru dipasang setelah
+      // event itu lewat, supaya konfirmasi tidak langsung dibatalkan sendiri.
+      if (dlg.open) { dlg.close(); setTimeout(show, 0); } else show();
     });
   }
 

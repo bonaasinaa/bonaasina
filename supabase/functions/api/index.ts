@@ -36,8 +36,21 @@ const toSnake = (r: Row) => Object.fromEntries(Object.entries(r).map(([k, v]) =>
 
 const str = (v: unknown, max = 500) => String(v ?? '').trim().slice(0, max);
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0; };
+// Potongan deposit boleh 0, tetapi negatif atau bukan angka ditolak dengan pesan (dulu menjadi 0 diam-diam).
+function depositDeduction(v: unknown) {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) throw bad('Potongan deposit tidak boleh negatif atau bukan angka.');
+  return Math.round(n);
+}
 const strList = (v: unknown, max = 40) =>
   (Array.isArray(v) ? v : typeof v === 'string' ? v.split('\n') : []).map((x) => str(x, 200)).filter(Boolean).slice(0, max);
+// Daftar foto dengan batas eksplisit: kelebihan ditolak dengan pesan, bukan dipotong tanpa kabar.
+function photoList(v: unknown, max: number, label = 'foto') {
+  const list = strList(v, 200).filter(okPhoto);
+  if (list.length > max) throw bad(`Maksimal ${max} ${label}. Hapus sebagian dulu sebelum menyimpan.`);
+  return list;
+}
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const pick = (o: Row, f: string[]) => { const out: Row = {}; for (const k of f) if (o[k] !== undefined) out[k] = o[k]; return out; };
 const byCode = (a: Row, b: Row) => a.code.localeCompare(b.code, 'id', { numeric: true });
@@ -63,7 +76,58 @@ async function q<T = Row>(p: PromiseLike<{ data: any; error: any }>): Promise<T>
   }
   return data as T;
 }
-const all = async (table: string, order = 'created_at') => ((await q<Row[]>(sb.from(table).select('*').order(order))) || []).map((r) => toCamel(r)!);
+// PostgREST membatasi jumlah baris yang dikembalikan satu permintaan (max_rows, bawaan 1000) tanpa
+// memberi tahu pemanggil. Setiap daftar yang dibaca penuh diambil per halaman supaya tidak ada data
+// yang diam-diam hilang ketika tabel bertambah besar.
+const PAGE_SIZE = 500;
+const ALL_MAX = 20000;
+const IN_CHUNK = 100;
+async function pages<T = Row>(make: (from: number, to: number) => any, max = ALL_MAX): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; from < max; from += PAGE_SIZE) {
+    const part = (await q<T[]>(make(from, from + PAGE_SIZE - 1))) || [];
+    out.push(...part);
+    if (part.length < PAGE_SIZE) break;
+  }
+  return out;
+}
+// Daftar penuh sebuah tabel, urut kolom yang diminta + id sebagai pemecah seri supaya halaman stabil.
+// Username dipakai bersama oleh penghuni, pemilik kos, dan customer reservasi; /masuk mencoba
+// ketiganya, jadi keunikan harus dicek di ketiga tabel juga — bukan hanya di tenants.
+async function usernameTakenAnywhere(username: string, except?: { table: string; id: string }) {
+  const tables: [string, string][] = [['owners', 'pemilik kos'], ['leads', 'customer reservasi'], ['tenants', 'penghuni']];
+  const rows = await Promise.all(tables.map(([t]) => q<Row | null>(sb.from(t).select('id').eq('username', username).maybeSingle())));
+  for (let i = 0; i < tables.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    if (except && except.table === tables[i][0] && row.id === except.id) continue;
+    return tables[i][1];
+  }
+  return null;
+}
+
+const all = async (table: string, order = 'created_at', opts: { ascending?: boolean; max?: number } = {}) => {
+  const ascending = opts.ascending ?? true;
+  const rows = await pages<Row>(
+    (from, to) => sb.from(table).select('*').order(order, { ascending }).order('id', { ascending }).range(from, to),
+    opts.max ?? ALL_MAX,
+  );
+  return rows.map((r) => toCamel(r)!);
+};
+// Baris untuk daftar id yang panjang: dipotong per 100 id (batas panjang URL) dan tetap per halaman.
+async function rowsIn(table: string, column: string, ids: string[], select = '*', extra?: (b: any) => any) {
+  const out: Row[] = [];
+  const list = [...new Set(ids.filter(Boolean))];
+  for (let i = 0; i < list.length; i += IN_CHUNK) {
+    const part = list.slice(i, i + IN_CHUNK);
+    out.push(...await pages<Row>((from, to) => {
+      let b = sb.from(table).select(select).in(column, part);
+      if (extra) b = extra(b);
+      return b.order('id').range(from, to);
+    }));
+  }
+  return out;
+}
 const one = async (table: string, id: string) => toCamel(await q(sb.from(table).select('*').eq('id', id).maybeSingle()));
 const insert = async (table: string, row: Row) => toCamel(await q(sb.from(table).insert(toSnake(row)).select().single()))!;
 const update = async (table: string, id: string, patch: Row) => {
@@ -136,6 +200,18 @@ async function generateInvoicesThrottled() {
   return n;
 }
 
+// Penanda tagihan yang sengaja dihapus admin (migrasi: invoice_skips). Bila migrasinya belum
+// diterapkan, pembuatan tagihan tetap berjalan seperti biasa alih-alih gagal total.
+async function invoiceSkips(tenantIds: string[]): Promise<Row[]> {
+  if (!tenantIds.length) return [];
+  try {
+    return await rowsIn('invoice_skips', 'tenant_id', tenantIds, 'tenant_id, period_start');
+  } catch (e) {
+    console.error('invoice_skips belum tersedia', e);
+    return [];
+  }
+}
+
 // Buat tagihan yang sudah waktunya (idempoten: unik per penghuni + awal periode).
 async function generateInvoices(tenantId?: string) {
   const settings = await getSettings();
@@ -145,9 +221,13 @@ async function generateInvoices(tenantId?: string) {
   if (tenantId) tq = tq.eq('id', tenantId);
   const tenants = ((await q<Row[]>(tq)) || []).map((r) => toCamel(r)!);
   if (!tenants.length) return 0;
-  const existing = ((await q<Row[]>(sb.from('invoices').select('tenant_id, period_start').in('tenant_id', tenants.map((t) => t.id)))) || [])
-    .map((r) => `${r.tenant_id}|${r.period_start}`);
-  const seen = new Set(existing);
+  const tenantIds = tenants.map((t) => t.id);
+  const [billed, skipped] = await Promise.all([
+    rowsIn('invoices', 'tenant_id', tenantIds, 'tenant_id, period_start'),
+    invoiceSkips(tenantIds),
+  ]);
+  // Tagihan yang sengaja dihapus admin tidak dibuat ulang (dicatat di tabel invoice_skips).
+  const seen = new Set([...billed, ...skipped].map((r) => `${r.tenant_id}|${r.period_start}`));
   const rooms = new Map(((await q<Row[]>(sb.from('rooms').select('id, property_id'))) || []).map((r) => [r.id, r.property_id]));
   const rows: Row[] = [];
   for (const t of tenants) {
@@ -339,7 +419,7 @@ on('GET', '/brand', async () => {
 
 on('POST', '/surveys', async ({ body: b }, log) => {
   if (b.website) return { ok: true }; // honeypot
-  const name = str(b.name, 80), phone = str(b.phone, 20), propertyId = str(b.propertyId, 40), email = emailField(b.email);
+  const name = str(b.name, 80), phone = str(b.phone, 20), propertyId = str(b.propertyId, 60), email = emailField(b.email);
   if (!name) throw bad('Isi nama Anda.');
   if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890.');
   if (!(await one('properties', propertyId))) throw bad('Pilih kos yang ingin disurvei.');
@@ -512,12 +592,13 @@ on('GET', '/admin/properties', async () => (await all('properties')).sort(bySort
 // Kolom kos yang boleh diubah pemilik (admin bisa semuanya, lihat propertyAdminPatch).
 export function propertyPatch(b: Row) {
   const patch: Row = pick(b, ['name', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'city', 'whatsapp', 'bankInfo', 'bookingPolicy', 'visitHours', 'logo']);
-  for (const k of Object.keys(patch)) patch[k] = str(patch[k], ['description', 'bookingPolicy'].includes(k) ? 1500 : 300);
+  const LONG_TEXT: Record<string, number> = { description: 6000, bookingPolicy: 4000, address: 500, bankInfo: 500, tagline: 400, note: 600 };
+  for (const k of Object.keys(patch)) patch[k] = str(patch[k], LONG_TEXT[k] ?? 300);
   if (patch.name !== undefined && !patch.name) throw bad('Isi nama kos.');
   if (patch.gender !== undefined && !['Putra', 'Putri', 'Campur', 'Pasutri'].includes(patch.gender)) patch.gender = 'Campur';
   if (patch.logo !== undefined && patch.logo && !okPhoto(patch.logo)) delete patch.logo;
   for (const k of ['facilities', 'rules', 'nearby']) if (b[k] !== undefined) patch[k] = strList(b[k]);
-  if (b.photos !== undefined) patch.photos = strList(b.photos, 12).filter(okPhoto);
+  if (b.photos !== undefined) patch.photos = photoList(b.photos, 12, 'foto kos');
   if (b.periods !== undefined) {
     const list = (Array.isArray(b.periods) ? b.periods : String(b.periods).split(',')).filter((x: string) => CYCLES.includes(x));
     if (!list.length) throw bad('Pilih minimal satu periode sewa yang dibuka.');
@@ -574,12 +655,12 @@ on('PUT', '/admin/properties/:id', async ({ params, body: b }, log) => {
 const STATUS_KAMAR = ['kosong', 'terisi', 'dipesan', 'perbaikan'];
 export function roomFromBody(b: Row) {
   const r: Row = {};
-  for (const [k, m] of [['propertyId', 40], ['code', 20], ['type', 60], ['floor', 20], ['sizeM2', 20], ['note', 300]] as const) if (b[k] !== undefined) r[k] = str(b[k], m);
+  for (const [k, m] of [['propertyId', 60], ['code', 20], ['type', 60], ['floor', 20], ['sizeM2', 20], ['note', 300]] as const) if (b[k] !== undefined) r[k] = str(b[k], m);
   for (const k of ['priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'extraPersonFee']) if (b[k] !== undefined) r[k] = num(b[k]);
   if (b.capacity !== undefined) r.capacity = Number(b.capacity) === 2 ? 2 : 1;
   if (b.extraPersonPeriod !== undefined) r.extraPersonPeriod = b.extraPersonPeriod === 'tahunan' ? 'tahunan' : 'bulanan';
   if (b.facilities !== undefined) r.facilities = strList(b.facilities);
-  if (b.photos !== undefined) r.photos = strList(b.photos, 12).filter(okPhoto);
+  if (b.photos !== undefined) r.photos = photoList(b.photos, 12, 'foto kamar');
   if (b.hidden !== undefined) r.hidden = !!b.hidden;
   if (b.status !== undefined) { if (!STATUS_KAMAR.includes(b.status)) throw bad('Status kamar tidak dikenal.'); r.status = b.status; }
   return r;
@@ -662,7 +743,8 @@ on('POST', '/admin/tenants', async ({ body }, log) => {
   if (wantsAccount) {
     const u = str(body.username, 60).toLowerCase();
     if (!USERNAME_RE.test(u)) throw bad('Username 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda minus. Tanpa spasi.');
-    if (await q<Row | null>(sb.from('tenants').select('id').eq('username', u).maybeSingle())) throw bad(`Username "${u}" sudah dipakai penghuni lain.`);
+    const takenBy = await usernameTakenAnywhere(u);
+    if (takenBy) throw bad(`Username "${u}" sudah dipakai akun ${takenBy} lain. Pilih username lain.`);
     if (String(body.password || '').length < 8) throw bad('Kata sandi minimal 8 karakter.');
   }
   const rec = await insert('tenants', { status: 'aktif', ...t });
@@ -697,12 +779,16 @@ on('PUT', '/admin/tenants/:id', async ({ params, body }, log) => {
 });
 on('POST', '/admin/tenants/:id/checkout', async ({ params, body }, log) => {
   const cur = await one('tenants', params.id); if (!cur) throw notFound('Penghuni tidak ditemukan.');
+  // Sekali saja: mencatat keluar untuk penghuni yang sudah keluar akan menimpa tanggal dan menghapus tagihan.
+  if (cur.status !== 'aktif') throw bad(`${cur.name} sudah tercatat keluar${cur.endDate ? ` per ${tanggal(cur.endDate)}` : ''}.`);
   const endDate = isDate(body.endDate) ? body.endDate : todayStr();
   await update('tenants', cur.id, { status: 'keluar', endDate, portalTokenHash: null });
   await q(sb.from('tenant_sessions').delete().eq('tenant_id', cur.id)); tenantCache.clear();
-  await update('rooms', cur.roomId, { status: 'kosong' });
+  // Kamar hanya dikosongkan bila tidak ada penghuni pengganti di kamar yang sama.
+  if (!(await activeInRoom(cur.roomId))) await update('rooms', cur.roomId, { status: 'kosong' });
   const waiting = await matchWaitlist(cur.roomId);
-  await q(sb.from('invoices').delete().eq('tenant_id', cur.id).eq('status', 'belum').gte('period_start', endDate));
+  // Tagihan yang sudah dibayar / sedang diperiksa buktinya tidak dihapus.
+  await q(sb.from('invoices').delete().eq('tenant_id', cur.id).eq('status', 'belum').is('proof_path', null).gte('period_start', endDate));
   const room = await one('rooms', cur.roomId);
   log({ action: 'tenant.checkout', summary: `Mencatat ${cur.name} keluar per ${tanggal(endDate)}${waiting ? `; ${waiting} orang di daftar tunggu perlu dikabari` : ''}`, target: room?.code });
   return { ok: true, waitlistMatched: waiting };
@@ -779,6 +865,13 @@ on('PUT', '/admin/invoices/:id', async ({ params, body: b }, log) => {
 });
 on('DELETE', '/admin/invoices/:id', async ({ params }, log) => {
   const d = await invoiceDesc(params.id);
+  const inv = await one('invoices', params.id);
+  // Tagihan periode tetap (sewa) yang dihapus dicatat supaya tidak dibuat ulang oleh pembuatan otomatis.
+  if (inv?.tenantId && inv?.periodStart) {
+    try {
+      await q(sb.from('invoice_skips').upsert({ tenant_id: inv.tenantId, period_start: inv.periodStart, reason: 'dihapus admin' }, { onConflict: 'tenant_id,period_start', ignoreDuplicates: true }));
+    } catch (e) { console.error('invoice_skips belum tersedia', e); }
+  }
   const out = await remove('invoices', params.id);
   log({ action: 'invoice.delete', summary: `Menghapus tagihan ${d.text}`, target: d.target });
   return out;
@@ -831,7 +924,7 @@ on('GET', '/admin/surveys', async () => {
 on('PUT', '/admin/surveys/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.status !== undefined) { if (!['baru', 'dikonfirmasi', 'selesai', 'batal'].includes(b.status)) throw bad('Status tidak dikenal.'); patch.status = b.status; }
-  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 600);
+  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 2000);
   const before = await one('surveys', params.id);
   const rec = await update('surveys', params.id, patch);
   if (rec.email && patch.status && patch.status !== before?.status && ['dikonfirmasi', 'batal'].includes(patch.status)) {
@@ -867,7 +960,7 @@ on('GET', '/admin/issues', async () => {
 on('PUT', '/admin/issues/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.status !== undefined) { if (!['baru', 'dikerjakan', 'selesai'].includes(b.status)) throw bad('Status tidak dikenal.'); patch.status = b.status; }
-  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 600);
+  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 2000);
   const before = await one('issues', params.id);
   const rec = await update('issues', params.id, patch);
   if (patch.status && patch.status !== before?.status) {
@@ -887,7 +980,7 @@ on('PUT', '/admin/issues/:id', async ({ params, body: b }, log) => {
 on('GET', '/admin/expenses', async () => (await all('expenses')).sort((a, b) => b.date.localeCompare(a.date)));
 on('POST', '/admin/expenses', async ({ body: b }, log) => {
   if (!isDate(b.date)) throw bad('Isi tanggal pengeluaran.'); if (!num(b.amount)) throw bad('Isi jumlah pengeluaran.');
-  const propertyId = b.propertyId && (await one('properties', str(b.propertyId, 40))) ? str(b.propertyId, 40) : null;
+  const propertyId = b.propertyId && (await one('properties', str(b.propertyId, 60))) ? str(b.propertyId, 60) : null;
   const rec = await insert('expenses', { date: b.date, amount: num(b.amount), category: str(b.category, 60) || 'Lainnya', propertyId, note: str(b.note, 300) });
   log({ action: 'expense.create', summary: `Mencatat pengeluaran ${rec.category} ${rupiah(rec.amount)} (${tanggal(rec.date)})` });
   return created(rec);
@@ -956,7 +1049,12 @@ on('PUT', '/admin/settings', async ({ body: b }, log) => {
   if (b.isSample !== undefined) patch.isSample = !!b.isSample;
   if (b.faq !== undefined) {
     if (!Array.isArray(b.faq)) throw bad('Format tanya jawab tidak benar.');
-    patch.faq = b.faq.map((f: Row) => ({ q: str(f.q, 200), a: str(f.a, 1200) })).filter((f: Row) => f.q && f.a).slice(0, 20);
+    const faq = b.faq.map((f: Row) => ({ q: str(f.q, 200), a: str(f.a, 1200) }));
+    if (faq.length > 20) throw bad('Maksimal 20 tanya jawab.');
+    // Pertanyaan tanpa jawaban (dan sebaliknya) ditolak dengan pesan, bukan dibuang diam-diam.
+    const half = faq.find((f: Row) => !!f.q !== !!f.a);
+    if (half) throw bad(`Tanya jawab "${str(half.q || '(tanpa pertanyaan)', 60)}" harus diisi pertanyaan dan jawaban sekaligus.`);
+    patch.faq = faq.filter((f: Row) => f.q && f.a);
   }
   const data = { ...cur, ...patch };
   await q(sb.from('settings').upsert({ id: 1, data }));
@@ -1105,6 +1203,7 @@ const CONTRACT_FIELDS = ['id', 'number', 'tenantId', 'roomId', 'propertyId', 'st
 const contractOut = (c: Row): Row => ({ ...pick(c, CONTRACT_FIELDS), hasPdf: !!c.pdfPath, ...contractPhase(c) });
 
 // ---------------------------------------------------------------- piket: jadwal bergilir
+const MAX_CHORE_PHOTOS = 24;
 function choreDates(task: Row, from: string, to: string) {
   const out: { date: string; k: number }[] = [];
   const start = task.startDate as string; if (start > to) return out;
@@ -1129,9 +1228,14 @@ async function choreSchedule(propertyId: string | null, from: string, to: string
   let tq = sb.from('chore_tasks').select('*').eq('active', true); if (propertyId) tq = tq.eq('property_id', propertyId);
   const tasks = ((await q<Row[]>(tq)) || []).map((r) => toCamel(r)!);
   if (!tasks.length) return { tasks: [], items: [] as Row[] };
-  const [tenants, rooms, reports] = await Promise.all([
-    q<Row[]>(sb.from('tenants').select('id, name, room_id').eq('status', 'aktif')),
-    all('rooms'),
+  // Kamar & penghuni hanya dibaca untuk kos yang diminta (dashboard penghuni tidak perlu seluruh marketplace).
+  const rooms = propertyId
+    ? (await rowsIn('rooms', 'property_id', [propertyId], '*')).map((r) => toCamel(r)!)
+    : await all('rooms');
+  const [tenants, reports] = await Promise.all([
+    propertyId && rooms.length
+      ? rowsIn('tenants', 'room_id', rooms.map((r) => r.id as string), 'id, name, room_id', (b: any) => b.eq('status', 'aktif'))
+      : pages<Row>((from, to) => sb.from('tenants').select('id, name, room_id').eq('status', 'aktif').range(from, to)),
     q<Row[]>(sb.from('chore_reports').select('*').in('task_id', tasks.map((t) => t.id)).gte('due_date', from).lte('due_date', to)),
   ]);
   const rm = new Map(rooms.map((r) => [r.id, r]));
@@ -1183,7 +1287,12 @@ on('GET', '/penghuni/me', async ({ tenant: t }, log) => {
     q<Row[]>(sb.from('issues').select('*').eq('tenant_id', t!.id).order('created_at', { ascending: false })),
     q<Row[]>(sb.from('contracts').select('*').eq('tenant_id', t!.id).neq('status', 'dibatalkan').order('start_date', { ascending: false })),
     q<Row[]>(sb.from('room_inspections').select('*').eq('tenant_id', t!.id).order('date')),
-    q<Row[]>(sb.from('announcements').select('*').or(`property_id.is.null${room ? `,property_id.eq.${room.propertyId}` : ''}`).order('created_at', { ascending: false }).limit(50)),
+    // Hanya pengumuman yang masih berlaku, disematkan lebih dulu; tanpa potongan 50 terbaru supaya
+    // pengumuman lama yang masih aktif (atau disematkan) tidak hilang.
+    q<Row[]>(sb.from('announcements').select('*')
+      .or(`property_id.is.null${room ? `,property_id.eq.${room.propertyId}` : ''}`)
+      .or(`expires_on.is.null,expires_on.gte.${today}`)
+      .order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(200)),
     q<Row[]>(sb.from('announcement_reads').select('announcement_id').eq('tenant_id', t!.id)),
     room ? choreSchedule(room.propertyId, from, to) : Promise.resolve({ tasks: [], items: [] as Row[] }),
   ]);
@@ -1358,12 +1467,35 @@ on('POST', '/penghuni/chores/report', async ({ body: b, tenant: t }, log) => {
   const occ = sched.items.find((i) => i.taskId === task.id && i.date === b.date);
   if (!occ) throw bad('Tidak ada jadwal piket ini pada tanggal tersebut.');
   if (task.mode !== 'bersama' && !occ.assigned.some((p: Row) => p.id === t!.id)) throw bad('Piket ini bukan giliran Anda.');
-  const photos = (Array.isArray(b.photos) ? b.photos : []).map((p: unknown) => str(p, 200)).filter((p: string) => p.startsWith(`chores/${t!.id}/`)).slice(0, 4);
+  const photos = (Array.isArray(b.photos) ? b.photos : []).map((p: unknown) => str(p, 200)).filter((p: string) => p.startsWith(`chores/${t!.id}/`));
   if (!photos.length) throw bad('Lampirkan minimal satu foto keadaan setelah piket.');
   const row = { task_id: task.id, due_date: b.date, tenant_id: t!.id, assigned: occ.assigned.map((p: Row) => p.name), photos, note: str(b.note, 600) };
-  const existing = toCamel(await q(sb.from('chore_reports').select('*').eq('task_id', task.id).eq('due_date', b.date).maybeSingle()));
-  const rec = existing ? await update('chore_reports', existing.id, { photos: [...(existing.photos || []), ...photos].slice(0, 8), note: row.note || existing.note, tenantId: existing.tenantId || t!.id })
-    : await insert('chore_reports', toCamel(row)!);
+  // Gabung laporan dengan aman untuk dua penghuni yang mengirim bersamaan: baca ulang data terbaru,
+  // tulis dengan syarat updated_at belum berubah, lalu ulangi sekali bila ada penulis lain.
+  const mergeReport = async (attempt = 0): Promise<Row> => {
+    const hdr = await q<Row | null>(sb.from('chore_reports').select('*').eq('task_id', task.id).eq('due_date', b.date).maybeSingle());
+    if (!hdr) {
+      const { data, error } = await sb.from('chore_reports').insert(toSnake(row)).select().single();
+      if (error?.code === '23505' && attempt < 3) return mergeReport(attempt + 1);
+      if (error) { console.error(error); throw new HttpError(500, 'Gagal menyimpan bukti piket.'); }
+      return toCamel(data)!;
+    }
+    const ex = toCamel(hdr)!;
+    const kept = (ex.photos || []) as string[];
+    const merged = [...new Set([...kept, ...photos])];
+    if (merged.length > MAX_CHORE_PHOTOS) throw bad(`Bukti piket maksimal ${MAX_CHORE_PHOTOS} foto (sudah ada ${kept.length}). Hapus foto lama dulu.`);
+    // Catatan penghuni kedua tidak menimpa catatan penghuni pertama dan tidak tampil atas namanya.
+    const noteText = ex.tenantId === t!.id ? (row.note || ex.note)
+      : row.note ? (ex.note ? `${ex.note}
+${t!.name}: ${row.note}` : `${t!.name}: ${row.note}`) : ex.note;
+    const { data: updated } = await sb.from('chore_reports')
+      .update({ photos: merged, note: noteText, tenant_id: ex.tenantId || t!.id })
+      .eq('id', ex.id).eq('updated_at', ex.updatedAt).select('*').maybeSingle();
+    if (updated) return toCamel(updated)!;
+    if (attempt >= 3) throw bad('Laporan piket ini sedang diperbarui penghuni lain. Coba kirim lagi.');
+    return mergeReport(attempt + 1);
+  };
+  const rec = await mergeReport();
   log({ action: 'chore.report', summary: `Mengirim bukti piket "${task.name}" ${tanggal(b.date)} (${photos.length} foto)` });
   return pick(rec, ['id']);
 });
@@ -1415,7 +1547,7 @@ on('POST', '/waitlist', async ({ body: b }, log) => {
   const name = str(b.name, 80), phone = str(b.phone, 20), email = emailField(b.email);
   if (!name) throw bad('Isi nama Anda.');
   if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890.');
-  const propertyId = b.propertyId && (await one('properties', str(b.propertyId, 40))) ? str(b.propertyId, 40) : null;
+  const propertyId = b.propertyId && (await one('properties', str(b.propertyId, 60))) ? str(b.propertyId, 60) : null;
   if (b.moveDate && !isDate(b.moveDate)) throw bad('Tanggal rencana masuk tidak valid.');
   const since = new Date(Date.now() - 3600e3).toISOString();
   const { count } = await sb.from('waitlist').select('id', { count: 'exact', head: true }).eq('phone', phone).gte('created_at', since);
@@ -1451,8 +1583,8 @@ on('POST', '/admin/tenants/:id/account', async ({ body: b, params }, log) => {
 async function setAccount(t: Row, b: Row) {
   const username = str(b.username ?? t.username, 60).toLowerCase();
   if (!USERNAME_RE.test(username)) throw bad('Username 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda minus. Tanpa spasi.');
-  const dup = await q<Row | null>(sb.from('tenants').select('id, name').eq('username', username).neq('id', t.id).maybeSingle());
-  if (dup) throw bad(`Username "${username}" sudah dipakai ${dup.name}.`);
+  const takenBy = await usernameTakenAnywhere(username, { table: 'tenants', id: t.id });
+  if (takenBy) throw bad(`Username "${username}" sudah dipakai akun ${takenBy} lain. Pilih username lain.`);
   const patch: Row = { username, login_enabled: b.enabled === undefined ? true : !!b.enabled };
   const pw = b.password === undefined || b.password === null ? '' : String(b.password);
   if (pw) {
@@ -1635,16 +1767,24 @@ on('GET', '/admin/contracts/:id/pdf', async ({ params }, log) => {
 
 // ================================================================ ADMIN — kondisi kamar
 const CONDITIONS = ['baik', 'kurang', 'rusak', 'tidak_ada'];
+const MAX_INSPECTION_ITEMS = 100;
+const MAX_INSPECTION_PHOTOS = 12;
 on('POST', '/admin/inspections', async ({ body: b }, log) => {
   const t = await one('tenants', str(b.tenantId, 40)); if (!t) throw bad('Pilih penghuni.');
   if (!['masuk', 'keluar'].includes(b.kind)) throw bad('Pilih kondisi saat masuk atau keluar.');
   if (!isDate(b.date)) throw bad('Isi tanggal pemeriksaan.');
   if (!Array.isArray(b.items) || !b.items.length) throw bad('Isi minimal satu barang/bagian kamar.');
-  const items = b.items.slice(0, 40).map((it: Row) => ({
-    name: str(it.name, 80), condition: CONDITIONS.includes(it.condition) ? it.condition : 'baik', note: str(it.note, 300),
-    photos: (Array.isArray(it.photos) ? it.photos : []).map((p: unknown) => str(p, 200)).filter((p: string) => p.startsWith(`inspections/${t.id}/`)).slice(0, 6),
-  })).filter((it: Row) => it.name);
-  const patch = { tenantId: t.id, roomId: t.roomId, kind: b.kind, date: b.date, items, note: str(b.note, 1500), depositDeduction: num(b.depositDeduction), deductionNote: str(b.deductionNote, 600), tenantAckAt: null, tenantNote: '' };
+  if (b.items.length > MAX_INSPECTION_ITEMS) throw bad(`Maksimal ${MAX_INSPECTION_ITEMS} bagian kamar dalam satu catatan kondisi.`);
+  // Jumlah foto & bagian tidak lagi dipotong diam-diam: bila terlalu banyak, admin diberi tahu.
+  const items = b.items.map((it: Row) => {
+    const photos = (Array.isArray(it.photos) ? it.photos : []).map((p: unknown) => str(p, 200)).filter((p: string) => p.startsWith(`inspections/${t.id}/`));
+    if (photos.length > MAX_INSPECTION_PHOTOS) throw bad(`Foto per bagian kamar maksimal ${MAX_INSPECTION_PHOTOS}: ${str(it.name, 80)}.`);
+    return {
+      name: str(it.name, 80), condition: CONDITIONS.includes(it.condition) ? it.condition : 'baik', note: str(it.note, 300),
+      photos,
+    };
+  }).filter((it: Row) => it.name);
+  const patch = { tenantId: t.id, roomId: t.roomId, kind: b.kind, date: b.date, items, note: str(b.note, 1500), depositDeduction: depositDeduction(b.depositDeduction), deductionNote: str(b.deductionNote, 600), tenantAckAt: null, tenantNote: '' };
   const existing = toCamel(await q(sb.from('room_inspections').select('id').eq('tenant_id', t.id).eq('kind', b.kind).maybeSingle()));
   const rec = existing ? await update('room_inspections', existing.id, patch) : await insert('room_inspections', patch);
   const bad_ = items.filter((i: Row) => i.condition !== 'baik').length;
@@ -1706,9 +1846,11 @@ const WAITLIST_LABEL: Record<string, string> = { menunggu: 'Menunggu', perlu_dik
 
 // ================================================================ ADMIN — pengumuman
 on('GET', '/admin/announcements', async () => {
-  const [list, reads, tenants, rooms, props] = await Promise.all([
-    all('announcements'), q<Row[]>(sb.from('announcement_reads').select('*')), q<Row[]>(sb.from('tenants').select('id, name, phone, room_id').eq('status', 'aktif')), all('rooms'), all('properties'),
+  const [list, tenants, rooms, props] = await Promise.all([
+    all('announcements'), q<Row[]>(sb.from('tenants').select('id, name, phone, room_id').eq('status', 'aktif')), all('rooms'), all('properties'),
   ]);
+  // Dibaca per pengumuman, dipotong per 100 id lalu per halaman: pembacaan di atas 1000 baris tidak lagi hilang.
+  const reads = await rowsIn('announcement_reads', 'announcement_id', list.map((a) => a.id));
   const rm = new Map(rooms.map((r) => [r.id, r])); const pm = new Map(props.map((p) => [p.id, p.name]));
   return list.map((a) => {
     const audience = (tenants || []).filter((t) => !a.propertyId || rm.get(t.room_id)?.propertyId === a.propertyId);
@@ -1725,7 +1867,7 @@ function annFromBody(b: Row) {
   if (b.title !== undefined) a.title = str(b.title, 120);
   if (b.body !== undefined) a.body = str(b.body, 4000);
   if (b.priority !== undefined) a.priority = b.priority === 'penting' ? 'penting' : 'biasa';
-  if (b.propertyId !== undefined) a.propertyId = b.propertyId ? str(b.propertyId, 40) : null;
+  if (b.propertyId !== undefined) a.propertyId = b.propertyId ? str(b.propertyId, 60) : null;
   if (b.pinned !== undefined) a.pinned = !!b.pinned;
   if (b.expiresOn !== undefined) { if (b.expiresOn && !isDate(b.expiresOn)) throw bad('Tanggal berakhir tidak valid.'); a.expiresOn = b.expiresOn || null; }
   return a;
@@ -1781,7 +1923,7 @@ on('GET', '/admin/chores', async () => {
 });
 function choreFromBody(b: Row) {
   const c: Row = {};
-  if (b.propertyId !== undefined) c.propertyId = str(b.propertyId, 40);
+  if (b.propertyId !== undefined) c.propertyId = str(b.propertyId, 60);
   if (b.name !== undefined) c.name = str(b.name, 100);
   if (b.description !== undefined) c.description = str(b.description, 600);
   if (b.frequency !== undefined) { if (!['harian', 'mingguan', 'dua_mingguan', 'bulanan'].includes(b.frequency)) throw bad('Pilih frekuensi piket.'); c.frequency = b.frequency; }
@@ -1796,12 +1938,27 @@ on('POST', '/admin/chores', async ({ body: b }, log) => {
   if (!c.name) throw bad('Isi nama tugas piket.');
   const prop = await one('properties', c.propertyId); if (!prop) throw bad('Pilih kos.');
   if (!c.startDate) throw bad('Isi tanggal mulai piket.');
-  const rec = await insert('chore_tasks', { frequency: 'mingguan', mode: 'bergilir', peoplePerTurn: 1, ...c });
+  const rec = await insert('chore_tasks', { frequency: 'mingguan', mode: 'bergilir', peoplePerTurn: 1, active: true, ...c });
   log({ action: 'chore.create', summary: `Membuat jadwal piket "${rec.name}" di ${prop.name}` });
   return created(rec);
 });
 on('PUT', '/admin/chores/:id', async ({ params, body: b }, log) => {
+  const cur = await one('chore_tasks', params.id); if (!cur) throw notFound('Jadwal piket tidak ditemukan.');
   const c = choreFromBody(b); delete c.propertyId;
+  // Mengubah tanggal mulai atau frekuensi memindahkan tanggal giliran, sehingga laporan yang sudah
+  // dikirim (foto bukti) tidak lagi punya jadwal. Perubahan ditahan dengan pesan jelas kecuali admin
+  // mengirim force: true.
+  const shifting = (c.startDate && c.startDate !== cur.startDate) || (c.frequency && c.frequency !== cur.frequency);
+  if (shifting && b.force !== true && b.force !== 'true') {
+    const reports = await pages<Row>((from, to) => sb.from('chore_reports').select('due_date').eq('task_id', cur.id).range(from, to));
+    if (reports.length) {
+      const from = fmt(new Date(parse(todayStr()).getTime() - 730 * DAY));
+      const to = fmt(new Date(parse(todayStr()).getTime() + 730 * DAY));
+      const valid = new Set(choreDates({ ...cur, ...c }, from, to).map((d) => d.date));
+      const lost = reports.filter((r) => !valid.has(r.due_date));
+      if (lost.length) throw bad(`Perubahan ini membuat ${lost.length} laporan piket yang sudah dikirim (mis. ${tanggal(lost[0].due_date)}) tidak lagi punya jadwal, jadi bukti fotonya tidak akan tampil. Kirim ulang dengan force: true bila tetap ingin mengubahnya.`);
+    }
+  }
   const rec = await update('chore_tasks', params.id, c);
   log({ action: 'chore.update', summary: `Mengubah jadwal piket "${rec.name}"${c.active === false ? ' (dinonaktifkan)' : ''}` });
   return rec;
@@ -1815,6 +1972,7 @@ on('DELETE', '/admin/chores/:id', async ({ params }, log) => {
 // ================================================================ KOS SEKITAR (market.ts)
 const market = createMarket({
   sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
+  all, pages, rowsIn,
   readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
   background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
   PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, extraFee, waLink, byCode, bySort, createProperty,
@@ -1824,6 +1982,7 @@ const market = createMarket({
 // ================================================================ TITIP JUALAN & TEMPAT SEKITAR (community.ts)
 const community = createCommunity({
   sb, q, one, insert, update, str, num, isDate, pick, toCamel, bad, notFound, HttpError, on, created, readImage, putFile, randomToken, clientInfo,
+  all, pages, rowsIn,
   normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL,
 });
 

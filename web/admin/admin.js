@@ -36,6 +36,12 @@
     else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers['Content-Type'] = 'application/json'; }
     return fetch(API + path, opt);
   }
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     // Perpanjang sesi sebelum habis (token login berlaku sekitar 1 jam).
     const s = getSession();
@@ -113,9 +119,15 @@
   // Konfirmasi di dalam halaman (dialog bawaan browser tidak selalu tersedia).
   function askConfirm(title, text, ok = 'Ya, lanjutkan') {
     return new Promise((resolve) => {
-      let done = false;
-      openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { done = true; resolve(true); } });
-      dlg.addEventListener('close', () => { if (!done) resolve(false); }, { once: true });
+      let settled = false;
+      const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const show = () => {
+        openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { finish(true); } });
+        dlg.addEventListener('close', () => finish(false), { once: true });
+      };
+      // Event 'close' dari dialog yang baru ditutup dikirim tertunda; pendengar baru dipasang setelah
+      // event itu lewat, supaya konfirmasi tidak langsung dibatalkan sendiri.
+      if (dlg.open) { dlg.close(); setTimeout(show, 0); } else show();
     });
   }
   // Tampilkan teks (CSV/cadangan) untuk disalin, dipakai bila unduhan tidak tersedia.
@@ -611,7 +623,8 @@
       },
       onOk: async (d) => {
         if (!d.billFrom) d.billFrom = '';
-        if (!d.endDate) delete d.endDate;
+        // Dikosongkan saat mengubah = hapus tanggalnya (null), bukan "tidak berubah".
+        if (isNew && !d.endDate) delete d.endDate; else d.endDate = d.endDate || null;
         if (pre.leadId) d.leadId = pre.leadId;
         if (isNew) {
           const withAcc = d.makeAccount === 'on'; delete d.makeAccount;
@@ -1380,7 +1393,16 @@
       },
       onOk: async (d) => {
         const body = { ...d, active: t ? d.active === 'on' : true };
-        if (t) await api('PUT', `/chores/${t.id}`, body); else await api('POST', '/chores', body);
+        if (t) {
+          try { await api('PUT', `/chores/${t.id}`, body); }
+          catch (ex) {
+            // Server menahan perubahan tanggal mulai/frekuensi yang membuat laporan piket yang sudah
+            // dikirim kehilangan jadwal. Admin boleh melanjutkan setelah diberi tahu akibatnya.
+            if (!/force: true/.test(ex.message || '') ||
+              !(await askConfirm('Bukti piket bisa hilang', `${ex.message} Lanjutkan tetap mengubah tanggal mulai/frekuensi?`, 'Ya, ubah'))) throw ex;
+            await api('PUT', `/chores/${t.id}`, { ...body, force: true });
+          }
+        } else await api('POST', '/chores', body);
         toast(t ? 'Jadwal piket diperbarui.' : 'Jadwal piket dibuat dan langsung tampil di dashboard penghuni.'); route();
       },
     });

@@ -15,6 +15,12 @@
   let data = null; let chatBox = null; let leadFilter = 'aktif'; let propSel = null;
 
   // ---------- API ----------
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     const opt = { method, headers: {} };
     const s = getSession(); if (s?.token) opt.headers['X-Owner-Session'] = s.token;
@@ -68,9 +74,16 @@
   });
   function askConfirm(title, text, ok = 'Ya, lanjutkan') {
     return new Promise((resolve) => {
-      let done = false;
-      openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { done = true; resolve(true); } });
-      dlg.addEventListener('close', () => { if (!done) resolve(false); }, { once: true });
+      let settled = false;
+      const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const show = () => {
+        openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { finish(true); } });
+        dlg.addEventListener('close', () => finish(false), { once: true });
+      };
+      // Dialog yang masih terbuka ditutup lebih dulu, dan pendengar 'close' dipasang setelah event
+      // penutupan yang tertunda selesai — kalau tidak, event lama itu langsung membatalkan konfirmasi
+      // sehingga menekan "Hapus" tidak mengerjakan apa pun.
+      if (dlg.open) { dlg.close(); setTimeout(show, 0); } else show();
     });
   }
 
@@ -358,7 +371,8 @@
         bindPhotos(b, 'photos');
         const sync = () => { $('#rExtra', b).hidden = $('#rExtraPer', b).hidden = $('#rCap', b).value !== '2'; }; $('#rCap', b).onchange = sync; sync();
         $('#rDel', b)?.addEventListener('click', async () => {
-          dlg.close();
+          // askConfirm sendiri yang menutup dialog kamar lebih dulu; menutupnya di sini membuat
+          // event 'close' yang tertunda membatalkan konfirmasinya.
           if (!(await askConfirm('Hapus kamar', `Kamar ${r.code} akan dihapus dari website.`, 'Hapus'))) return;
           try { await api('DELETE', `/rooms/${r.id}`); toast('Kamar dihapus.'); reload(); } catch (ex) { toast(ex.message, true); }
         });
