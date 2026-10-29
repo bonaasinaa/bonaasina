@@ -6,6 +6,7 @@ import { contractPdf, receiptPdf, cardPdf, qrSvg, terbilang, DEFAULT_CONTRACT_TE
 import { createMarket } from './market.ts';
 import { createCommunity } from './community.ts';
 import { createMailer, isEmail } from './mailer.ts';
+import { createChat } from './chat.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const secretKeys = safeJson(Deno.env.get('SUPABASE_SECRET_KEYS'));
@@ -633,6 +634,7 @@ on('GET', '/admin/summary', async () => {
     waitlistToNotify: waitlistToNotify.count ?? 0,
     market: await market.adminCounts(),
     community: await community.counts(),
+    chat: await chat.counts(),
   };
 });
 
@@ -2161,11 +2163,16 @@ const community = createCommunity({
   normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL,
 });
 
+// Live chat & bot (chat.ts, chatbot.ts)
+const chat = createChat({
+  sb, q, str, toCamel, pick, bad, notFound, HttpError, on, created, sha256, randomToken, clientInfo, getSettings, normalizePhone, SITE_URL, mail,
+});
+
 // Server
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-session, x-owner-session, x-lead-session',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-session, x-owner-session, x-lead-session, x-chat-session',
   'Access-Control-Expose-Headers': 'x-sb-edge-region',
   'Access-Control-Max-Age': '86400',
 };

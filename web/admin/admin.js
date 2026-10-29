@@ -184,12 +184,13 @@
     try { const [props, settings] = await Promise.all([get('/properties'), get('/settings')]); setProps(props); cache.settings = settings; }
     catch (ex) { BonaLoader.hide(); if (ex.message !== 'Silakan masuk dulu.') main.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; return; }
     try { await route(); } finally { BonaLoader.hide(); }
+    refreshChatBadge();
     prefetchAll();
   }
 
   // Router
-  const views = { ringkasan, tagihan, laporan, penghuni, kontrak, pengumuman, piket, kerusakan, kamar, survei, tunggu, aktivitas, pengaturan, reservasi, persetujuan, daftar, mitra, pemilik, fee, notifikasi, titip, tempat };
-  const TITLES = { ringkasan: 'Ringkasan', tagihan: 'Tagihan', laporan: 'Laporan', penghuni: 'Penghuni', kontrak: 'Kontrak', pengumuman: 'Pengumuman', piket: 'Piket', kerusakan: 'Kerusakan', kamar: 'Kamar & kos', survei: 'Survei', tunggu: 'Daftar tunggu', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan',
+  const views = { ringkasan, chat, tagihan, laporan, penghuni, kontrak, pengumuman, piket, kerusakan, kamar, survei, tunggu, aktivitas, pengaturan, reservasi, persetujuan, daftar, mitra, pemilik, fee, notifikasi, titip, tempat };
+  const TITLES = { ringkasan: 'Ringkasan', chat: 'Live chat', tagihan: 'Tagihan', laporan: 'Laporan', penghuni: 'Penghuni', kontrak: 'Kontrak', pengumuman: 'Pengumuman', piket: 'Piket', kerusakan: 'Kerusakan', kamar: 'Kamar & kos', survei: 'Survei', tunggu: 'Daftar tunggu', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan',
     reservasi: 'Reservasi', persetujuan: 'Persetujuan & refund', daftar: 'Pendaftaran mitra', mitra: 'Mitra kos', pemilik: 'Pemilik kos', fee: 'Fee & aturan', notifikasi: 'Notifikasi', titip: 'Titip jualan', tempat: 'Tempat sekitar' };
   const hashParams = () => new URLSearchParams(location.hash.split('?')[1] || '');
   // Data yang dibutuhkan tiap menu; diambil bersamaan sebelum halaman digambar.
@@ -200,6 +201,7 @@
     kamar: ['/rooms', '/properties'], survei: ['/surveys'], kerusakan: ['/issues'],
     reservasi: ['/leads', '/rooms', '/properties'], persetujuan: ['/leads'], daftar: ['/applications'], mitra: ['/partners', '/owners', '/rooms'], pemilik: ['/owners'], fee: ['/settings', '/leads', '/partners'], notifikasi: ['/notifications'], titip: ['/listings'], tempat: ['/places'],
     laporan: [`/reports?year=${repYear}`, '/expenses'], aktivitas: [activityPath()], pengaturan: ['/settings'],
+    chat: ['/chats/unread'], // isi menu diambil sendiri oleh chat() dan diperbarui berkala
   }[name] || []);
   const currentView = () => { const n = (location.hash.slice(1) || 'ringkasan').split('?')[0]; return views[n] ? n : 'ringkasan'; };
   let routeSeq = 0, shownView = null;
@@ -253,7 +255,7 @@
     finally { if (seq === routeSeq) progress(false); if (blocking) BonaLoader.hide(); }
     refreshBadges();
   }
-  addEventListener('hashchange', () => route());
+  addEventListener('hashchange', () => { if (!onChatView()) stopChatTimers(); route(); });
 
   // Ambil data semua menu di latar belakang setelah masuk, supaya klik pertama ke tiap menu juga instan.
   async function prefetchAll() {
@@ -289,7 +291,9 @@
     const m = s.market || {};
     set('#badgeRes', (m.leadsNew || 0)); set('#badgeAppr', (m.approvals || 0) + (m.refunds || 0) + (m.feeToReturn || 0)); set('#badgeMitra', m.partnersPending || 0); set('#badgeDaftar', m.applications || 0); set('#badgeNotif', m.notifUnread || 0);
     const cm = s.community || {}; set('#badgeTitip', cm.listingsNew || 0); set('#badgeTempat', cm.placesSuggested || 0);
-    const total = s.overdue + s.proofsPending + s.newSurveys + s.openIssues + (s.contractsEnding || 0) + (s.contractDecisions || 0) + (s.waitlistToNotify || 0) + (m.leadsNew || 0) + (m.approvals || 0) + (m.refunds || 0) + (m.partnersPending || 0) + (m.applications || 0) + (s.community?.listingsNew || 0) + (s.community?.placesSuggested || 0);
+    const chatN = chatUnreadPrev === null ? (s.chat?.unreadThreads || 0) : Number($('#badgeChat').textContent || 0);
+    set('#badgeChat', chatN);
+    const total = chatN + s.overdue + s.proofsPending + s.newSurveys + s.openIssues + (s.contractsEnding || 0) + (s.contractDecisions || 0) + (s.waitlistToNotify || 0) + (m.leadsNew || 0) + (m.approvals || 0) + (m.refunds || 0) + (m.partnersPending || 0) + (m.applications || 0) + (s.community?.listingsNew || 0) + (s.community?.placesSuggested || 0);
     $('#navDot').hidden = !total;
   }
   async function refreshBadges() {
@@ -353,6 +357,7 @@
         <div class="panel"><h2>Hunian kamar <a class="small" href="#kamar">Kelola kamar</a></h2>${donut}<div class="occ mt">${perProp}</div></div>
       </div>
       ${todoPanel(s)}
+      <div class="panel mt" id="chatWidget"></div>
       ${proofs.length ? `<div class="panel mt"><h2>Bukti bayar menunggu dicek</h2><table><tbody>${proofs.map((i) => `<tr>
         <td data-label="Penghuni"><div class="who-cell">${D.avatar(i.tenantName)}<div><strong>${esc(i.tenantName)}</strong><span class="sub">${esc(i.roomCode)}, ${esc(i.periodLabel)}</span></div></div></td>
         <td data-label="Dikirim" class="nowrap">${tgl(i.proofUploadedAt)}</td>
@@ -374,11 +379,13 @@
       if (!(await askConfirm('Data sudah diperbarui?', 'Pengingat ini akan disembunyikan. Pastikan harga, nomor WhatsApp, dan rekening sudah benar.', 'Ya, sembunyikan'))) return;
       cache.settings = await api('PUT', '/settings', { isSample: false }); toast('Pengingat disembunyikan.'); route();
     });
+    chatWidget(s.chat || {});
     bindInvoiceActions(inv);
   }
 
   function todoItems(s) {
     return [
+      [s.chat?.unreadThreads, '#chat', 'chat dari website belum dibalas', true],
       [s.proofsPending, '#tagihan', 'bukti bayar menunggu dicek', true],
       [s.contractDecisions, '#kontrak', 'penghuni memilih perpanjang atau berhenti', true],
       [s.waitlistToNotify, '#tunggu', 'calon penyewa perlu dikabari, ada kamar kosong', true],
@@ -2004,6 +2011,230 @@
       try { await api('POST', '/notifications/read', { ids: [Number(b.dataset.notif)] }); } catch { /* abaikan */ }
       if (b.dataset.lead) location.hash = `#reservasi?id=${b.dataset.lead}`; else route();
     };
+  }
+
+  // Live chat: kotak masuk, pengaturan, dan kamus bot.
+  const CHAT_WHO = { pengunjung: '', admin: 'Admin', bot: 'Bot otomatis', sistem: '' };
+  const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+  const relShort = (iso) => { if (!iso) return ''; const d = new Date(iso), now = new Date(); const sameDay = d.toDateString() === now.toDateString(); return sameDay ? d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : `${d.getDate()} ${BULAN[d.getMonth()]}`; };
+  let chatFilter = 'terbuka', chatTimer = 0, chatListTimer = 0, chatLast = 0, chatOpenId = null, chatQuery = '';
+  const stopChatTimers = () => { clearTimeout(chatTimer); clearTimeout(chatListTimer); };
+  const onChatView = () => currentView() === 'chat';
+
+  async function chat() {
+    stopChatTimers();
+    const p = hashParams(); const tab = p.get('tab') || 'kotak';
+    const tabs = `<div class="seg" id="lcTabs">${[['kotak', 'Kotak masuk'], ['atur', 'Pengaturan'], ['kamus', 'Kamus bot']].map(([k, l]) => `<button aria-pressed="${tab === k}" data-k="${k}">${l}</button>`).join('')}</div>`;
+    main.innerHTML = head('Live chat', 'Percakapan dari tombol chat di website. Bot menjawab pertanyaan umum lebih dulu; pesan yang perlu Anda balas ditandai belum dibaca.') + `<div class="toolbar">${tabs}</div><div id="lcBody"></div>`;
+    $('#lcTabs').onclick = (e) => { const b = e.target.closest('button'); if (b) location.hash = b.dataset.k === 'kotak' ? '#chat' : `#chat?tab=${b.dataset.k}`; };
+    if (tab === 'atur') return chatSettingsView();
+    if (tab === 'kamus') return chatKamusView();
+    chatOpenId = p.get('id');
+    $('#lcBody').innerHTML = `<div class="lc-admin${chatOpenId ? ' has-open' : ''}">
+        <div class="lc-admin__list panel">
+          <div class="seg" id="lcSeg">${[['belum', 'Belum'], ['terbuka', 'Terbuka'], ['selesai', 'Selesai'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${chatFilter === k}" data-k="${k}">${l}</button>`).join('')}</div>
+          <input class="search" type="search" id="lcSearch" placeholder="Cari nama atau isi pesan" value="${esc(chatQuery)}" aria-label="Cari percakapan">
+          <div id="lcThreads" class="lc-threads"><p class="muted small">Memuat…</p></div>
+        </div>
+        <div class="lc-admin__conv panel" id="lcConv">${chatOpenId ? '<p class="muted">Memuat percakapan…</p>' : '<div class="empty empty--calm">Pilih percakapan di sebelah kiri.</div>'}</div>
+      </div>`;
+    $('#lcSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; chatFilter = b.dataset.k; $$('#lcSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); loadThreads(); };
+    $('#lcSearch').oninput = (e) => { chatQuery = e.target.value; drawThreads(); };
+    await loadThreads();
+    if (chatOpenId) await openThread(chatOpenId);
+  }
+
+  let chatThreads = [];
+  async function loadThreads() {
+    clearTimeout(chatListTimer);
+    if (!onChatView() || hashParams().get('tab')) return;
+    try {
+      const out = await api('GET', `/chats?status=${chatFilter}`);
+      chatThreads = out.threads; drawThreads(); setChatBadge(out);
+    } catch (ex) { const el = $('#lcThreads'); if (el) el.innerHTML = `<p class="err">${esc(ex.message)}</p>`; }
+    chatListTimer = setTimeout(loadThreads, document.hidden ? 60000 : 10000);
+  }
+  function drawThreads() {
+    const el = $('#lcThreads'); if (!el) return;
+    const qq = chatQuery.trim().toLowerCase();
+    const list = chatThreads.filter((t) => !qq || `${t.name} ${t.lastPreview} ${t.contact}`.toLowerCase().includes(qq));
+    el.innerHTML = list.length ? list.map((t) => `<a href="#chat?id=${esc(t.id)}" class="lc-thread${t.id === chatOpenId ? ' is-active' : ''}${t.unreadAdmin ? ' is-unread' : ''}">
+        ${window.BonaDash.avatar(t.name)}<div><strong>${esc(t.name)}</strong><span>${t.lastSender === 'admin' ? 'Anda: ' : t.lastSender === 'bot' ? 'Bot: ' : ''}${esc(t.lastPreview)}</span></div>
+        <div class="lc-thread__meta"><time>${relShort(t.lastMessageAt)}</time>${t.unreadAdmin ? `<span class="badge">${t.unreadAdmin}</span>` : t.status === 'selesai' ? '<span class="pill pill--lunas">Selesai</span>' : ''}</div></a>`).join('')
+      : `<div class="empty empty--calm">${chatFilter === 'belum' ? 'Tidak ada pesan yang belum dibaca.' : 'Belum ada percakapan.'}</div>`;
+  }
+
+  async function openThread(id) {
+    clearTimeout(chatTimer); chatLast = 0;
+    const box = $('#lcConv'); if (!box) return;
+    let out;
+    try { out = await api('GET', `/chats/${id}`); } catch (ex) { box.innerHTML = `<div class="empty">${esc(ex.message)}</div>`; return; }
+    const t = out.thread;
+    const phone = normPhone(t.contact);
+    const waBtn = phone.length >= 10 ? `<a class="btn btn--ghost btn--sm btn--wa" href="${esc(waMe(t.contact, `Horas ${t.name}, ini admin Bonaasina menanggapi chat Anda di website. `))}" target="_blank" rel="noopener">${window.BonaDash.ico('wa')}WhatsApp</a>` : '';
+    box.innerHTML = `<div class="lc-conv__head">
+        <a class="back lc-conv__back" href="#chat">← Semua chat</a>
+        <div class="who-cell">${window.BonaDash.avatar(t.name)}<div><strong>${esc(t.name)}</strong><span class="sub">${t.contact ? esc(t.contact) + ' · ' : ''}mulai ${tgl(t.createdAt)}${t.page ? ` dari ${esc(t.page)}` : ''}${t.userAgent ? ` · ${esc(t.userAgent)}` : ''}</span></div></div>
+        <div class="btn-row">${waBtn}<button class="btn btn--ghost btn--sm" id="lcStatus">${t.status === 'selesai' ? 'Buka lagi' : 'Tandai selesai'}</button><button class="btn btn--ghost btn--sm" id="lcDel" title="Hapus percakapan (misalnya spam)">Hapus</button></div>
+      </div>
+      <div class="lc-conv__list" id="lcMsgs" aria-live="polite"></div>
+      <form class="chat__form lc-conv__form" id="lcReply"><textarea rows="2" maxlength="1000" placeholder="Tulis balasan… (Enter untuk kirim, Shift+Enter baris baru)" aria-label="Tulis balasan"></textarea><button class="btn btn--red" type="submit">Kirim</button></form>
+      <p class="hint">Pengunjung melihat balasan Anda di jendela chat website (diperbarui tiap beberapa detik saat jendela terbuka). Bila pengunjung sudah menutup website, hubungi lewat WhatsApp bila nomornya ada.</p>`;
+    addChatMsgs(out.messages, t);
+    $('#lcStatus').onclick = async () => {
+      try { await api('PUT', `/chats/${id}`, { status: t.status === 'selesai' ? 'terbuka' : 'selesai' }); toast(t.status === 'selesai' ? 'Percakapan dibuka lagi.' : 'Percakapan ditandai selesai.'); loadThreads(); openThread(id); }
+      catch (ex) { toast(ex.message, true); }
+    };
+    $('#lcDel').onclick = async () => {
+      if (!(await askConfirm('Hapus percakapan ini?', `Semua pesan dengan ${t.name} dihapus permanen. Pengunjung akan memulai dari awal bila membuka chat lagi.`, 'Hapus'))) return;
+      try { await api('DELETE', `/chats/${id}`); toast('Percakapan dihapus.'); location.hash = '#chat'; } catch (ex) { toast(ex.message, true); }
+    };
+    const form = $('#lcReply'), ta = $('textarea', form);
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer:fine)').matches) { e.preventDefault(); form.requestSubmit(); } });
+    form.onsubmit = async (e) => {
+      e.preventDefault(); const text = ta.value.trim(); if (!text) return;
+      const btn = $('button', form); btn.disabled = true;
+      try { const m = await api('POST', `/chats/${id}/messages`, { body: text }); ta.value = ''; addChatMsgs([m], t); loadThreads(); }
+      catch (ex) { toast(ex.message, true); }
+      finally { btn.disabled = false; ta.focus(); }
+    };
+    setTimeout(() => ta.focus({ preventScroll: true }), 30);
+    const poll = async () => {
+      if (!onChatView() || hashParams().get('id') !== id) return;
+      if (!document.hidden) { try { const o = await api('GET', `/chats/${id}?after=${chatLast}`); addChatMsgs(o.messages, o.thread); } catch { /* coba lagi nanti */ } }
+      chatTimer = setTimeout(poll, document.hidden ? 30000 : 4000);
+    };
+    chatTimer = setTimeout(poll, 4000);
+    refreshChatBadge();
+  }
+  function addChatMsgs(msgs, t) {
+    const list = $('#lcMsgs'); if (!list || !msgs?.length) return;
+    const near = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+    for (const m of msgs) {
+      if (m.id <= chatLast) continue; chatLast = m.id;
+      const div = document.createElement('div');
+      const cls = m.sender === 'admin' ? 'msg--me' : m.sender === 'sistem' ? 'msg--sys' : m.sender === 'bot' ? 'msg--other msg--bot' : 'msg--other';
+      div.className = `msg ${cls}`;
+      const who = m.sender === 'pengunjung' ? t.name : CHAT_WHO[m.sender];
+      div.innerHTML = `${who ? `<span class="msg__who">${esc(who)}</span>` : ''}${linkify(m.body)}${m.options?.length ? `<span class="msg__opts">Pilihan: ${m.options.map((o) => esc(o.label)).join(' · ')}</span>` : ''}<small>${relShort(m.createdAt)}</small>`;
+      list.appendChild(div);
+    }
+    if (near || msgs.length) list.scrollTop = list.scrollHeight;
+  }
+
+  // Lencana & pemberitahuan pesan baru (berjalan di semua menu)
+  let chatUnreadPrev = null, chatBadgeTimer = 0;
+  const baseTitle = () => document.title.replace(/^\(\d+\+?\) /, '');
+  function setChatBadge(c) {
+    const b = $('#badgeChat'); if (!b) return;
+    b.textContent = c.unreadThreads || ''; b.hidden = !c.unreadThreads;
+    document.title = (c.unread ? `(${c.unread}) ` : '') + baseTitle();
+    if (chatUnreadPrev !== null && c.unread > chatUnreadPrev && c.latest?.[0] && !(onChatView() && hashParams().get('id') === c.latest[0].id)) {
+      toast(`Pesan chat baru dari ${c.latest[0].name}: ${String(c.latest[0].preview || '').slice(0, 60)}`);
+    }
+    chatUnreadPrev = c.unread;
+    chatWidget(c);
+    renderBadges();
+  }
+  async function refreshChatBadge() {
+    clearTimeout(chatBadgeTimer);
+    if (!$('#app').hidden && !document.hidden) { try { setChatBadge(await api('GET', '/chats/unread')); } catch { /* abaikan */ } }
+    chatBadgeTimer = setTimeout(refreshChatBadge, 20000);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#app').hidden) refreshChatBadge(); });
+  // Widget "Live chat" di Ringkasan.
+  function chatWidget(c) {
+    const el = $('#chatWidget'); if (!el) return;
+    el.innerHTML = `<h2>Live chat <a class="small" href="#chat">Buka kotak masuk</a></h2>${c.latest?.length ? `<div class="lc-threads">${c.latest.map((t) => `<a href="#chat?id=${esc(t.id)}" class="lc-thread is-unread">${window.BonaDash.avatar(t.name)}<div><strong>${esc(t.name)}</strong><span>${esc(t.preview)}</span></div><div class="lc-thread__meta"><time>${relShort(t.at)}</time><span class="badge">${t.unread}</span></div></a>`).join('')}</div>`
+      : '<p class="empty--ok">Tidak ada chat yang menunggu balasan.</p>'}`;
+  }
+
+  // Pengaturan live chat
+  async function chatSettingsView() {
+    const s = await api('GET', '/chat-settings');
+    const HARI = [[1, 'Sen'], [2, 'Sel'], [3, 'Rab'], [4, 'Kam'], [5, 'Jum'], [6, 'Sab'], [0, 'Min']];
+    $('#lcBody').innerHTML = `<form class="panel" id="lcSetForm">
+        <h2>Status</h2>
+        <div class="chips">
+          <label class="chip"><input type="checkbox" name="visible" ${s.visible ? 'checked' : ''}><span>Tampilkan tombol chat di website</span></label>
+          <label class="chip"><input type="checkbox" name="enabled" ${s.enabled ? 'checked' : ''}><span>Terima pesan baru</span></label>
+          <label class="chip"><input type="checkbox" name="botEnabled" ${s.botEnabled ? 'checked' : ''}><span>Bot sambutan & jawaban otomatis</span></label>
+        </div>
+        <p class="hint">Bila tombol disembunyikan atau chat dimatikan, website kembali menampilkan tombol WhatsApp biasa. Riwayat percakapan tetap tersimpan dan tetap bisa Anda balas.</p>
+        <h2 class="mt">Jam layanan (WIB)</h2>
+        <fieldset class="chips-field"><legend>Hari</legend><div class="chips">${HARI.map(([d, l]) => `<label class="chip"><input type="checkbox" name="day" value="${d}" ${s.days.includes(d) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>
+        <div class="fields fields--2 mt"><label>Buka<input type="time" name="opens" value="${esc(s.opens)}" required></label><label>Tutup<input type="time" name="closes" value="${esc(s.closes)}" required></label></div>
+        <p class="hint">Sekarang: <strong>${s.online ? 'di dalam jam layanan' : 'di luar jam layanan'}</strong> (${esc(s.hoursText)}). Di luar jam layanan pengunjung tetap bisa menulis; mereka diberi tahu kapan admin membalas.</p>
+        <h2 class="mt">Pesan</h2>
+        <label>Sapaan bot (pesan pertama saat chat dibuka)<textarea name="greeting" rows="2" maxlength="300">${esc(s.greeting)}</textarea></label>
+        <label class="mt">Pesan di luar jam layanan<textarea name="offlineText" rows="3" maxlength="400">${esc(s.offlineText)}</textarea></label>
+        <p class="hint">Nomor WhatsApp di panel chat diambil dari Pengaturan → WhatsApp (${esc(s.whatsapp || 'belum diisi')}).</p>
+        <div class="form-actions"><button class="btn btn--red" type="submit">Simpan pengaturan chat</button></div>
+      </form>`;
+    $('#lcSetForm').onsubmit = async (e) => {
+      e.preventDefault(); const f = e.target;
+      const body = { visible: f.visible.checked, enabled: f.enabled.checked, botEnabled: f.botEnabled.checked, days: $$('input[name=day]:checked', f).map((x) => Number(x.value)), opens: f.opens.value, closes: f.closes.value, greeting: f.greeting.value, offlineText: f.offlineText.value };
+      try { await api('PUT', '/chat-settings', body); toast('Pengaturan live chat disimpan.'); chatSettingsView(); } catch (ex) { toast(ex.message, true); }
+    };
+  }
+
+  // Kamus bot
+  async function chatKamusView() {
+    const s = await api('GET', '/chat-settings');
+    let kamus = structuredClone(s.kamus);
+    const LOCK = new Set(['admin', 'menu']);
+    const card = (e, i) => `<details class="panel kamus" data-i="${i}" ${e._open ? 'open' : ''}>
+        <summary><strong>${esc(e.label || 'Topik baru')}</strong><span class="muted small">${e.enabled ? '' : 'nonaktif · '}${e.chip ? 'tampil sebagai tombol · ' : ''}${e.keywords.length} kata kunci</span></summary>
+        <div class="fields fields--2 mt">
+          <label>Judul topik (teks tombol)<input data-f="label" value="${esc(e.label)}" maxlength="40"></label>
+          <label>Kode<input data-f="id" value="${esc(e.id)}" maxlength="24" ${LOCK.has(e.id) ? 'readonly' : ''}></label>
+        </div>
+        <label class="mt">Kata kunci (pisahkan dengan koma)<textarea data-f="keywords" rows="2">${esc(e.keywords.join(', '))}</textarea></label>
+        <label class="mt">Jawaban bot<textarea data-f="answer" rows="5" maxlength="1500">${esc(e.answer)}</textarea></label>
+        <div class="chips mt">
+          <label class="chip"><input type="checkbox" data-f="chip" ${e.chip ? 'checked' : ''}><span>Tampilkan sebagai tombol pilihan</span></label>
+          <label class="chip"><input type="checkbox" data-f="enabled" ${e.enabled ? 'checked' : ''}><span>Aktif</span></label>
+        </div>
+        ${LOCK.has(e.id) ? `<p class="hint">${e.id === 'admin' ? 'Topik ini meneruskan pengunjung ke admin (meminta nama, lalu masuk ke kotak masuk).' : 'Topik ini menjawab sapaan seperti “halo” dengan menu pilihan.'}</p>` : `<div class="btn-row mt"><button type="button" class="btn btn--ghost btn--sm" data-del="${i}">Hapus topik</button></div>`}
+      </details>`;
+    const draw = () => {
+      $('#lcBody').innerHTML = `
+        <div class="panel"><h2>Coba bot</h2><p class="muted small">Tulis pertanyaan seperti pengunjung (boleh singkatan, misalnya “brp hrg kmr perbulan?”). Memakai kamus di bawah, termasuk perubahan yang belum disimpan.</p>
+          <form class="toolbar mt" id="kTest"><input class="search" name="q" placeholder="Contoh: ada wifi gak?" required><button class="btn btn--ghost">Coba</button></form><div id="kOut"></div></div>
+        <div class="panel mt"><h2>Tanda yang bisa dipakai di jawaban</h2><p class="muted small">Diisi otomatis dari data website, jadi jawaban bot selalu sama dengan yang tampil di halaman. Bila pengunjung menyebut “Asina” atau “Bona”, jawaban fokus ke kos itu. Tanya jawab di Pengaturan → FAQ juga otomatis ikut dikenali bot.</p>
+          <div class="kamus-tags">${Object.entries(s.placeholders).map(([k, v]) => `<span><code>{${esc(k)}}</code> ${esc(v)}</span>`).join('')}</div></div>
+        <div id="kList" class="mt">${kamus.map(card).join('')}</div>
+        <div class="form-actions"><button type="button" class="btn btn--ghost" id="kAdd">Tambah topik</button><button type="button" class="btn btn--ghost" id="kReset">Kembalikan kamus bawaan</button><button type="button" class="btn btn--red" id="kSave">Simpan kamus</button></div>`;
+      bind();
+    };
+    const read = () => {
+      $$('#kList .kamus').forEach((d) => {
+        const e = kamus[Number(d.dataset.i)]; e._open = d.open;
+        $$('[data-f]', d).forEach((x) => { const f = x.dataset.f; e[f] = x.type === 'checkbox' ? x.checked : f === 'keywords' ? x.value.split(/[,\n]/).map((k) => k.trim()).filter(Boolean) : x.value; });
+      });
+      return kamus.map(({ _open, ...e }) => e);
+    };
+    const bind = () => {
+      $('#kAdd').onclick = () => { read(); kamus.push({ id: `topik${kamus.length + 1}`, label: '', keywords: [], answer: '', chip: false, enabled: true, _open: true }); draw(); $$('#kList .kamus').at(-1)?.scrollIntoView({ block: 'center' }); };
+      $('#kList').onclick = (e) => { const d = e.target.closest('[data-del]'); if (!d) return; read(); kamus.splice(Number(d.dataset.del), 1); draw(); };
+      $('#kSave').onclick = async () => {
+        try { const out = await api('PUT', '/chat-settings', { kamus: read() }); kamus = structuredClone(out.kamus); toast('Kamus bot disimpan.'); draw(); } catch (ex) { toast(ex.message, true); }
+      };
+      $('#kReset').onclick = async () => {
+        if (!(await askConfirm('Kembalikan kamus bawaan?', 'Semua perubahan dan topik tambahan Anda di kamus bot akan dihapus.', 'Kembalikan'))) return;
+        try { const out = await api('PUT', '/chat-settings', { kamus: null }); kamus = structuredClone(out.kamus); toast('Kamus bawaan dipakai lagi.'); draw(); } catch (ex) { toast(ex.message, true); }
+      };
+      $('#kTest').onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const r = await api('POST', '/chat-bot/test', { text: e.target.q.value, kamus: read() });
+          const topicName = r.topic ? (kamus.find((k) => k.id === r.topic)?.label || r.topic) : null;
+          $('#kOut').innerHTML = `<p class="small mt">${topicName ? `Dikenali sebagai <strong>${esc(topicName)}</strong>` : '<strong>Tidak dikenali</strong> (bot menawarkan pilihan topik)'} · skor ${r.score}</p>
+            <div class="msg msg--other msg--bot lc-preview">${linkify(r.text)}${r.options?.length ? `<span class="msg__opts">Pilihan: ${r.options.map((o) => esc(o.label)).join(' · ')}</span>` : ''}</div>`;
+        } catch (ex) { toast(ex.message, true); }
+      };
+    };
+    draw();
   }
 
   // Mulai
