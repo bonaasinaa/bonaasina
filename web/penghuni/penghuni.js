@@ -264,7 +264,8 @@
   function kontrak() {
     const list = data.contracts;
     const pending = list.find((c) => c.phase === 'menunggu');
-    const current = list.find((c) => ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase));
+    // Kontrak yang sedang berjalan didahulukan; kontrak perpanjangan yang belum mulai tidak menutupinya.
+    const current = list.find((c) => ['aktif', 'akan_habis'].includes(c.phase)) || list.find((c) => c.phase === 'akan_mulai');
     const canDecide = current && current.phase !== 'akan_mulai' && current.daysLeft !== null && current.daysLeft <= 60;
     main.innerHTML = head('Kontrak sewa', 'Baca dan setujui kontrak secara elektronik. Salinan PDF tersimpan dan bisa diunduh kapan saja.') + `
       ${pending ? `<section class="panel panel--focus"><h2>Kontrak baru menunggu persetujuan Anda</h2>

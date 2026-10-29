@@ -366,6 +366,15 @@ export function createMarket(H: Record<string, any>) {
       else if (error.code !== '23505') { console.error(error); throw new HttpError(500, 'Gagal menyimpan reservasi.'); }
     }
     if (!rec) throw new HttpError(500, 'Gagal membuat nomor reservasi. Coba lagi.');
+    // Hitung ulang setelah insert: reservasi yang dikirim bersamaan tidak melewati batas per jam.
+    const [againPhone, againIp] = await Promise.all([
+      sb.from('leads').select('id', { count: 'exact', head: true }).eq('phone', phone).gte('created_at', hourAgo),
+      sb.from('leads').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', hourAgo),
+    ]);
+    if ((againPhone.count ?? 0) > 3 || (ip && (againIp.count ?? 0) > 8)) {
+      await q(sb.from('leads').delete().eq('id', rec.id));
+      throw new HttpError(429, 'Reservasi dari nomor/perangkat ini sudah cukup banyak. Coba lagi nanti atau hubungi pemilik lewat WhatsApp.');
+    }
     const what = `${room ? `kamar ${room.code}` : 'kamar (belum dipilih)'}, ${periodText(period, duration)} mulai ${tanggal(b.moveDate)}${people === 2 ? ', 2 orang' : ''}`;
     await sysMsg(rec, `Reservasi dibuat: ${what}.${wantVisit ? ` Minta kunjungan ${tanggal(b.visitDate)} ${rec.visitTime}.` : ''} Pemilik akan memastikan ketersediaan dulu — belum perlu membayar apa pun.`);
     await notifyOwner(p, rec, 'lead', `Reservasi baru dari ${name}`, `${what}. Konfirmasi ketersediaan secepatnya.`);
