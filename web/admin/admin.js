@@ -1152,12 +1152,14 @@
   let ctrFilter = savedFilter('contracts', 'tindakan');
   const needsAction = (c) => c.phase === 'menunggu' || (c.phase === 'akan_habis' && !c.decision) || (c.decision && !c.decisionHandledAt);
   async function kontrak() {
-    const [list, s, tenants] = await Promise.all([get('/contracts'), get('/summary'), get('/tenants')]);
+    // Filter & hitungan dikerjakan server; hanya satu halaman (100) yang dikirim, plus penanda hasMore.
+    const [page, s, tenants] = await Promise.all([get(`/contracts?status=${ctrFilter}`), get('/summary'), get('/tenants')]);
+    const list = page.items || [];
     const tm = new Map(tenants.map((t) => [t.id, t]));
-    const counts = { tindakan: list.filter(needsAction).length, aktif: list.filter((c) => ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase)).length, semua: list.length };
-    if (ctrFilter === 'tindakan' && !counts.tindakan && !kontrak.visited) ctrFilter = 'aktif';
+    const counts = page.counts || { tindakan: 0, aktif: 0, semua: 0 };
+    if (ctrFilter === 'tindakan' && !counts.tindakan && !kontrak.visited) { ctrFilter = 'aktif'; return kontrak(); }
     kontrak.visited = true;
-    const rows = list.filter((c) => ctrFilter === 'semua' || (ctrFilter === 'tindakan' ? needsAction(c) : ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase)));
+    const rows = list;
     main.innerHTML = head('Kontrak', 'Kontrak sewa digital. Penghuni membaca dan menyetujui di dashboard mereka; PDF tersimpan otomatis.') +
       (s.tenantsWithoutContract ? `<div class="notice"><p><strong>${s.tenantsWithoutContract} penghuni aktif belum punya kontrak berjalan.</strong> Buat kontrak dari halaman detail penghuni.</p><a class="btn btn--sm" href="#penghuni">Lihat penghuni</a></div>` : '') + `
       <div class="toolbar"><div class="seg" id="ctrSeg">${[['tindakan', 'Perlu tindakan'], ['aktif', 'Berjalan'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${ctrFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
@@ -1167,7 +1169,8 @@
         <td data-label="Masa sewa">${tgl(c.startDate)} – ${tgl(c.endDate)}${c.daysLeft !== null && c.daysLeft >= 0 && c.phase !== 'menunggu' ? `<span class="sub">${c.daysLeft} hari lagi</span>` : ''}</td>
         <td data-label="Status"><span class="pill pill--${c.phase}">${PHASE[c.phase]}</span>${c.decision ? ` <span class="pill pill--${c.decision}">${DECISION[c.decision]}</span>` : ''}${c.decisionNote ? `<span class="sub">"${esc(c.decisionNote)}"</span>` : ''}</td>
         <td class="actions act-wrap">${contractButtons(c, tm.get(c.tenantId))}</td></tr>`).join('')}</tbody></table>`
-        : `<div class="empty ${ctrFilter === 'tindakan' ? 'empty--ok' : ''}">${ctrFilter === 'tindakan' ? 'Tidak ada kontrak yang perlu ditindaklanjuti.' : 'Belum ada kontrak. Buat dari halaman detail penghuni.'}</div>`}</div>`;
+        : `<div class="empty ${ctrFilter === 'tindakan' ? 'empty--ok' : ''}">${ctrFilter === 'tindakan' ? 'Tidak ada kontrak yang perlu ditindaklanjuti.' : 'Belum ada kontrak. Buat dari halaman detail penghuni.'}</div>`}</div>` +
+      (page.hasMore ? '<p class="small muted mt">Menampilkan 100 kontrak terbaru. Pilih filter lain untuk melihat sisanya.</p>' : '');
     $('#ctrSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; ctrFilter = b.dataset.k; rememberFilter('contracts', ctrFilter); route(); };
     main.onclick = (e) => contractClick(e, list, (c) => tm.get(c.tenantId) || { id: c.tenantId, name: c.tenantName, phone: c.tenantPhone });
   }
@@ -1325,7 +1328,12 @@
 
   // ========== PENGUMUMAN ==========
   async function pengumuman() {
-    const list = await get('/announcements');
+    const page = await get('/announcements');
+    drawAnn(page.items || [], !!page.hasMore);
+  }
+  // Daftar pengumuman ditampilkan per halaman (20) supaya layar ini tidak lagi mengunduh
+  // seluruh pengumuman + seluruh catatan pembacaan.
+  function drawAnn(list, hasMore) {
     main.innerHTML = head('Pengumuman', 'Tampil di dashboard penghuni. Terlihat siapa yang sudah membaca.', '<button class="btn btn--red" data-ann-new>Buat pengumuman</button>') +
       (list.length ? list.map((a) => {
         const pct = a.audienceCount ? Math.round((a.read.length / a.audienceCount) * 100) : 0;
@@ -1342,12 +1350,22 @@
             <button class="btn btn--ghost btn--sm" data-ann-edit="${a.id}">Ubah</button><button class="btn btn--ghost btn--sm" data-ann-del="${a.id}">Hapus</button></div>
         </article>`;
       }).join('') : '<div class="panel empty">Belum ada pengumuman. Contoh: jadwal air mati, kerja bakti, atau perubahan aturan kos.</div>');
+    if (hasMore) main.insertAdjacentHTML('beforeend', '<div class="more mt"><button class="btn btn--ghost" id="annMore">Muat lebih banyak</button></div>');
     main.onclick = async (e) => {
       if (e.target.closest('[data-ann-new]')) annDialog(null);
       const ed = e.target.closest('[data-ann-edit]'); if (ed) annDialog(list.find((a) => a.id === ed.dataset.annEdit));
       const del = e.target.closest('[data-ann-del]');
       if (del && (await askConfirm('Hapus pengumuman', 'Pengumuman ini akan hilang dari dashboard penghuni.', 'Hapus'))) { await api('DELETE', `/announcements/${del.dataset.annDel}`); toast('Pengumuman dihapus.'); route(); }
     };
+    $('#annMore')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true;
+      const before = list[list.length - 1]?.createdAt || '';
+      try {
+        const more = await api('GET', `/announcements?before=${encodeURIComponent(before)}`);
+        drawAnn([...list, ...(more.items || [])], !!more.hasMore);
+      } catch (ex) { toast(ex.message, true); }
+      finally { btn.disabled = false; }
+    });
   }
   function annDialog(a) {
     openDialog({

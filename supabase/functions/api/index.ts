@@ -1799,13 +1799,36 @@ async function contractBody(t: Row, room: Row, prop: Row | null, d: Row) {
     cara_bayar: (s.paymentInfo || s.paymentMethods || 'transfer ke rekening pengelola').replace(/\n+/g, '; '),
   });
 }
-on('GET', '/admin/contracts', async () => {
-  const [list, tenants, rooms, props] = await Promise.all([all('contracts'), all('tenants'), all('rooms'), all('properties')]);
+on('GET', '/admin/contracts', async ({ url }) => {
+  const today = todayStr();
+  const want = ['tindakan', 'aktif', 'semua'].includes(str(url.searchParams.get('status'), 20)) ? str(url.searchParams.get('status'), 20) : 'semua';
+  const needsAction = (c: Row) => c.phase === 'menunggu' || (c.phase === 'akan_habis' && !c.decision) || (!!c.decision && !c.decisionHandledAt);
+  // Kontrak yang dibatalkan tidak ikut dibaca untuk dua segmen utama (dulu seluruh riwayat termasuk
+  // yang dibatalkan selalu diunduh, beserta seluruh kamar & penghuni hanya untuk label).
+  const rows = want === 'semua'
+    ? await all('contracts')
+    : (await pages<Row>((from: number, to: number) => sb.from('contracts').select('*').neq('status', 'dibatalkan')
+        .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to))).map((r) => toCamel(r)!);
+  const withPhase = rows.map((c) => ({ ...c, ...contractPhase(c, today) }));
+  const counts = {
+    tindakan: withPhase.filter(needsAction).length,
+    aktif: withPhase.filter((c) => ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase)).length,
+    semua: withPhase.length,
+  };
+  const filtered = want === 'tindakan' ? withPhase.filter(needsAction) : want === 'aktif' ? withPhase.filter((c) => ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase)) : withPhase;
+  const limit = 100;
+  const page = filtered.slice(0, limit);
+  const [tenants, rooms, props] = await Promise.all([
+    rowsIn('tenants', 'id', [...new Set(page.map((c) => c.tenantId).filter(Boolean))] as string[], 'id, name, phone, status'),
+    rowsIn('rooms', 'id', [...new Set(page.map((c) => c.roomId).filter(Boolean))] as string[], 'id, code'),
+    all('properties'),
+  ]);
   const tm = new Map(tenants.map((t) => [t.id, t])); const rm = new Map(rooms.map((r) => [r.id, r])); const pm = new Map(props.map((p) => [p.id, p.name]));
-  return list.map((c): Row => {
+  const items = page.map((c) => {
     const t = tm.get(c.tenantId);
     return { ...contractOut(c), tenantName: t?.name || '(dihapus)', tenantPhone: t?.phone || '', tenantStatus: t?.status, roomCode: rm.get(c.roomId)?.code || '-', propertyName: pm.get(c.propertyId) || '-' };
-  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }).sort((a: Row, b: Row) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  return { items, counts, hasMore: filtered.length > limit };
 });
 on('GET', '/admin/contracts/:id', async ({ params }) => {
   const c = await one('contracts', params.id); if (!c) throw notFound('Kontrak tidak ditemukan.');
@@ -1970,14 +1993,22 @@ on('DELETE', '/admin/waitlist/:id', async ({ params }, log) => {
 const WAITLIST_LABEL: Record<string, string> = { menunggu: 'Menunggu', perlu_dikabari: 'Perlu dikabari', dikabari: 'Sudah dikabari', selesai: 'Selesai', batal: 'Batal' };
 
 // ================================================================ ADMIN — pengumuman
-on('GET', '/admin/announcements', async () => {
-  const [list, tenants, rooms, props] = await Promise.all([
-    all('announcements'), q<Row[]>(sb.from('tenants').select('id, name, phone, room_id').eq('status', 'aktif')), all('rooms'), all('properties'),
+on('GET', '/admin/announcements', async ({ url }) => {
+  // Satu halaman 20 pengumuman; 'before' mengambil yang lebih lama. Pembacaan hanya diambil untuk
+  // pengumuman di halaman ini, bukan seluruh riwayat pengumuman + seluruh catatan pembacaan.
+  const before = str(url.searchParams.get('before'), 30);
+  const limit = 20;
+  let aq = sb.from('announcements').select('*').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
+  if (before) aq = aq.lt('created_at', before);
+  const fetched = ((await q<Row[]>(aq)) || []);
+  const list = fetched.slice(0, limit).map((r) => toCamel(r)!);
+  const [tenants, rooms, props] = await Promise.all([
+    pages<Row>((from, to) => sb.from('tenants').select('id, name, phone, room_id').eq('status', 'aktif').range(from, to)),
+    all('rooms'), all('properties'),
   ]);
-  // Dibaca per pengumuman, dipotong per 100 id lalu per halaman: pembacaan di atas 1000 baris tidak lagi hilang.
-  const reads = await rowsIn('announcement_reads', 'announcement_id', list.map((a) => a.id));
+  const reads = list.length ? await rowsIn('announcement_reads', 'announcement_id', list.map((a) => a.id)) : [];
   const rm = new Map(rooms.map((r) => [r.id, r])); const pm = new Map(props.map((p) => [p.id, p.name]));
-  return list.map((a) => {
+  const items = list.map((a) => {
     const audience = (tenants || []).filter((t) => !a.propertyId || rm.get(t.room_id)?.propertyId === a.propertyId);
     const readers = new Map((reads || []).filter((r) => r.announcement_id === a.id).map((r) => [r.tenant_id, r.read_at]));
     return {
@@ -1986,6 +2017,7 @@ on('GET', '/admin/announcements', async () => {
       unread: audience.filter((t) => !readers.has(t.id)).map((t) => ({ name: t.name, waUrl: t.phone ? waLink(t.phone, `Horas ${t.name}, ada pengumuman baru di dashboard penghuni Bonaasina: "${a.title}". Mohon dibaca ya. Terima kasih.`) : null })),
     };
   }).sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt));
+  return { items, hasMore: fetched.length > limit };
 });
 function annFromBody(b: Row) {
   const a: Row = {};
