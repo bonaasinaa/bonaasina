@@ -12,7 +12,9 @@
   const PERIODS = [['harian', 'Harian', 'priceDaily', 'per malam'], ['bulanan', 'Bulanan', 'priceMonthly', 'per bulan'], ['semesteran', '6 bulanan', 'priceSemester', 'per 6 bulan'], ['tahunan', 'Tahunan', 'priceYearly', 'per tahun']];
   const STATUS_KAMAR = { kosong: 'Kosong', dipesan: 'Dipesan', terisi: 'Terisi', perbaikan: 'Perbaikan' };
   const PROP_STATUS = { draf: 'Belum tampil, masih dilengkapi', menunggu: 'Sedang dicek admin', aktif: 'Tampil di website', nonaktif: 'Disembunyikan' };
-  let data = null; let chatBox = null; let leadFilter = 'aktif'; let propSel = null;
+  let data = null; let chatBox = null; let propSel = null;
+  // Filter reservasi diingat selama tab ini hidup (dulu kembali ke "Berjalan" setiap muat ulang).
+  let leadFilter = (() => { try { return sessionStorage.getItem('bona.filter.ownerLeads') || 'aktif'; } catch { return 'aktif'; } })();
 
   // ---------- API ----------
   // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
@@ -273,7 +275,7 @@
       <div class="toolbar"><div class="seg" id="ldSeg">${[['aktif', 'Berjalan'], ['berhasil', 'Berhasil'], ['selesai', 'Selesai/batal'], ['semua', 'Semua']].map(([k, t]) => `<button aria-pressed="${leadFilter === k}" data-k="${k}">${t}</button>`).join('')}</div></div>
       <div class="table-wrap" id="ldTable"></div>`;
     draw();
-    $('#ldSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; leadFilter = b.dataset.k; $$('#ldSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
+    $('#ldSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; leadFilter = b.dataset.k; try { sessionStorage.setItem('bona.filter.ownerLeads', leadFilter); } catch { /* abaikan */ } $$('#ldSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
   }
   async function reservasiDetail(id) {
     const l = await BonaLoader.during('Membuka reservasi…', () => api('GET', `/leads/${id}`));

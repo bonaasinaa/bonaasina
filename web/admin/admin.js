@@ -480,7 +480,10 @@
   }
 
   // ========== TAGIHAN ==========
-  let invFilter = 'belum', invQuery = '';
+  // Filter tiap layar diingat selama tab ini hidup, supaya tidak kembali ke bawaan setiap muat ulang.
+  const savedFilter = (key, def) => { try { return sessionStorage.getItem(`bona.filter.${key}`) || def; } catch { return def; } };
+  const rememberFilter = (key, value) => { try { sessionStorage.setItem(`bona.filter.${key}`, value); } catch { /* abaikan */ } };
+  let invFilter = savedFilter('invoices', 'belum'), invQuery = '';
   async function tagihan() {
     const [inv, tenants] = await Promise.all([get('/invoices'), get('/tenants')]);
     const counts = { bukti: inv.filter((i) => i.status === 'belum' && i.proofStatus === 'menunggu').length, belum: inv.filter((i) => i.status === 'belum').length, terlambat: inv.filter((i) => i.overdue).length, lunas: inv.filter((i) => i.status === 'lunas').length, semua: inv.length };
@@ -512,7 +515,7 @@
       </div>
       <div class="table-wrap" id="invTable"></div>`;
     draw();
-    $('#invSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; invFilter = b.dataset.k; $$('#invSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
+    $('#invSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; invFilter = b.dataset.k; rememberFilter('invoices', invFilter); $$('#invSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
     $('#invSearch').oninput = (e) => { invQuery = e.target.value; draw(); };
     bindInvoiceActions(inv);
     $('#addInv').onclick = () => {
@@ -1146,7 +1149,7 @@
   }
 
   // ========== KONTRAK ==========
-  let ctrFilter = 'tindakan';
+  let ctrFilter = savedFilter('contracts', 'tindakan');
   const needsAction = (c) => c.phase === 'menunggu' || (c.phase === 'akan_habis' && !c.decision) || (c.decision && !c.decisionHandledAt);
   async function kontrak() {
     const [list, s, tenants] = await Promise.all([get('/contracts'), get('/summary'), get('/tenants')]);
@@ -1165,7 +1168,7 @@
         <td data-label="Status"><span class="pill pill--${c.phase}">${PHASE[c.phase]}</span>${c.decision ? ` <span class="pill pill--${c.decision}">${DECISION[c.decision]}</span>` : ''}${c.decisionNote ? `<span class="sub">"${esc(c.decisionNote)}"</span>` : ''}</td>
         <td class="actions act-wrap">${contractButtons(c, tm.get(c.tenantId))}</td></tr>`).join('')}</tbody></table>`
         : `<div class="empty ${ctrFilter === 'tindakan' ? 'empty--ok' : ''}">${ctrFilter === 'tindakan' ? 'Tidak ada kontrak yang perlu ditindaklanjuti.' : 'Belum ada kontrak. Buat dari halaman detail penghuni.'}</div>`}</div>`;
-    $('#ctrSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; ctrFilter = b.dataset.k; route(); };
+    $('#ctrSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; ctrFilter = b.dataset.k; rememberFilter('contracts', ctrFilter); route(); };
     main.onclick = (e) => contractClick(e, list, (c) => tm.get(c.tenantId) || { id: c.tenantId, name: c.tenantName, phone: c.tenantPhone });
   }
 
@@ -1432,7 +1435,7 @@
 
   // ========== DAFTAR TUNGGU ==========
   const WL = { perlu_dikabari: 'Perlu dikabari', menunggu: 'Menunggu kamar', dikabari: 'Sudah dikabari', selesai: 'Selesai', batal: 'Batal' };
-  let wlFilter = 'perlu_dikabari';
+  let wlFilter = savedFilter('waitlist', 'perlu_dikabari');
   async function tunggu() {
     const list = await get('/waitlist');
     const counts = Object.fromEntries(['perlu_dikabari', 'menunggu', 'dikabari'].map((k) => [k, list.filter((w) => w.status === k).length]));
@@ -1449,7 +1452,7 @@
         <td data-label="Status"><select class="inline" data-wl-status="${w.id}" aria-label="Status ${esc(w.name)}">${Object.entries(WL).map(([k, l]) => `<option value="${k}" ${w.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${w.matchedRoom ? `<span class="sub">Kamar ${esc(w.matchedRoom.code)} ${esc(w.matchedRoom.propertyName || '')} ${w.matchedRoom.status === 'kosong' ? 'kosong' : `(${STATUS_KAMAR[w.matchedRoom.status] || w.matchedRoom.status})`}</span>` : ''}${w.notifiedAt ? `<span class="sub">Dikabari ${tgl(w.notifiedAt)}</span>` : ''}</td>
         <td class="actions"><a class="btn btn--green btn--sm" href="${esc(w.waUrl)}" target="_blank" rel="noopener" data-wl-wa="${w.id}">${w.status === 'perlu_dikabari' ? 'Kabari via WA' : 'Hubungi'}</a>${w.status === 'perlu_dikabari' ? `<button class="btn btn--ghost btn--sm" data-wl-done="${w.id}">Tandai dikabari</button>` : ''}<button class="btn btn--ghost btn--sm" data-wl-del="${w.id}">Hapus</button></td></tr>`).join('')}</tbody></table>`
         : `<div class="empty">${wlFilter === 'perlu_dikabari' ? 'Tidak ada calon penyewa yang perlu dikabari sekarang.' : 'Belum ada yang mendaftar. Formulir daftar tunggu ada di website.'}</div>`}</div>`;
-    $('#wlSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; wlFilter = b.dataset.k; route(); };
+    $('#wlSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; wlFilter = b.dataset.k; rememberFilter('waitlist', wlFilter); route(); };
     main.onchange = async (e) => { const s = e.target.closest('[data-wl-status]'); if (!s) return; try { await api('PUT', `/waitlist/${s.dataset.wlStatus}`, { status: s.value }); toast('Status diperbarui.'); route(); } catch (ex) { toast(ex.message, true); } };
     main.onclick = async (e) => {
       const done = e.target.closest('[data-wl-done]'); if (done) { await api('PUT', `/waitlist/${done.dataset.wlDone}`, { status: 'dikabari' }); toast('Ditandai sudah dikabari.'); route(); }

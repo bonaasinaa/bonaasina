@@ -681,6 +681,12 @@ export function createMarket(H: Record<string, any>) {
     const { count } = await sb.from('messages').select('id', { count: 'exact', head: true }).eq('lead_id', l.id).eq('sender', sender).gte('created_at', since);
     if ((count ?? 0) >= 20) throw new HttpError(429, 'Terlalu banyak pesan dalam satu menit. Tunggu sebentar.');
     const m = toCamel(await q(sb.from('messages').insert({ lead_id: l.id, sender, body: text }).select().single()));
+    // Kiriman bersamaan bisa lolos hitungan sebelumnya; hitung ulang dan batalkan bila melewati batas.
+    const { count: burst } = await sb.from('messages').select('id', { count: 'exact', head: true }).eq('lead_id', l.id).eq('sender', sender).gte('created_at', since);
+    if ((burst ?? 0) > 20) {
+      await q(sb.from('messages').delete().eq('id', m.id));
+      throw new HttpError(429, 'Terlalu banyak pesan dalam satu menit. Tunggu sebentar.');
+    }
     // Notifikasi chat cukup satu yang belum dibaca per reservasi.
     const p = await one('properties', l.propertyId);
     const targets: [string, string | null][] = sender === 'customer' ? [p?.ownerId ? ['pemilik', p.ownerId] : ['admin', null]] : [['customer', l.id]];
@@ -854,7 +860,12 @@ export function createMarket(H: Record<string, any>) {
     if (l.refundStatus && l.refundStatus !== 'ditolak') throw bad('Refund sudah berjalan.');
     const reason = str(b.reason, 400);
     if (!reason) throw bad('Tulis alasan meminta refund.');
-    await save(l, { refundStatus: 'diminta', refundReason: reason, refundAccount: account, refundRequestedAt: nowIso(), refundAmount: l.dpAmount, cancelledBy: 'customer' });
+    // Bersyarat: dua permintaan bersamaan tidak menghasilkan dua permintaan refund.
+    const { data: asked } = await sb.from('leads')
+      .update({ refund_status: 'diminta', refund_reason: reason, refund_account: account, refund_requested_at: nowIso(), refund_amount: l.dpAmount, cancelled_by: 'customer' })
+      .eq('id', l.id).or('refund_status.is.null,refund_status.eq.ditolak').select('*').maybeSingle();
+    if (!asked) throw bad('Permintaan refund untuk reservasi ini sudah tercatat.');
+    Object.assign(l, toCamel(asked));
     await sysMsg(l, `Penyewa meminta pengembalian DP. Alasan: ${reason}\nRekening tujuan: ${account}`);
     await notifyOwner(p, l, 'refund', `${l.name} meminta refund DP`, `${reason}. Proses sesuai aturan booking kos Anda.`);
     if (isMitra(p)) await notifyAdmin(l, 'refund', `Permintaan refund ${l.name} di ${p.name}`, reason);
@@ -867,6 +878,9 @@ export function createMarket(H: Record<string, any>) {
     const received = b.received === true || b.received === 'true';
     if (received) {
       if (l.refundStatus !== 'dikirim') throw bad('Pemilik belum mengirim bukti refund.');
+      // Kunci status dulu supaya konfirmasi "diterima" dan laporan masalah tidak sama-sama tercatat.
+      const { data: locked } = await sb.from('leads').update({ refund_status: 'selesai' }).eq('id', l.id).eq('refund_status', 'dikirim').select('id').maybeSingle();
+      if (!locked) throw bad('Status refund sudah berubah. Muat ulang halaman reservasi.');
       await finishRefund(l, p, 'Penyewa mengonfirmasi dana refund sudah diterima.');
       log({ action: 'customer.refund_ok', summary: 'Mengonfirmasi refund sudah diterima' });
       return { ok: true };
