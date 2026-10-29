@@ -9,7 +9,7 @@
   $('#year').textContent = new Date().getFullYear();
   const ago = (iso) => { if (!iso) return ''; const d = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return d <= 0 ? 'hari ini' : d === 1 ? 'kemarin' : `${d} hari lalu`; };
 
-  fetch(API + '/kos-sekitar').then((r) => r.json()).then((d) => {
+  fetch(API + '/kos-sekitar').then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
     st.list = d.properties || [];
     if (d.intro) $('#intro').textContent = d.intro;
     chips(); draw();

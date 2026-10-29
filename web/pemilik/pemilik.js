@@ -310,12 +310,22 @@
         <td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${r.hidden ? ', disembunyikan' : ''}${(r.photos || []).length ? `, ${r.photos.length} foto` : ', belum ada foto'}</span></td>
         <td data-label="Kapasitas">${Number(r.capacity) === 2 ? `2 orang${r.extraPersonFee ? `<span class="sub">+${rp(r.extraPersonFee)}/${r.extraPersonPeriod === 'tahunan' ? 'tahun' : 'bln'} bila berdua</span>` : ''}` : '1 orang'}</td>
         ${per.map(([, t, key]) => `<td class="num" data-label="${t}">${r[key] ? rp(r[key]) : '<span class="muted">-</span>'}</td>`).join('')}
-        <td data-label="Status"><select class="inline" data-status="${r.id}" aria-label="Status ${esc(r.code)}">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+        <td data-label="Status"><select class="inline" data-status="${r.id}" data-saved="${r.status}" aria-label="Status ${esc(r.code)}">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
         <td class="actions"><button class="btn btn--ghost btn--sm" data-edit="${r.id}">Ubah</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada kamar. Tambahkan kamar beserta harga dan fotonya.</div>'}</div>`;
     $('#propSel')?.addEventListener('change', (e) => { propSel = e.target.value; route(); });
     main.onchange = async (e) => {
       const s = e.target.closest('[data-status]'); if (!s) return;
-      try { await api('PUT', `/rooms/${s.dataset.status}`, { status: s.value }); toast('Status kamar diperbarui di website.'); const r = data.rooms.find((x) => x.id === s.dataset.status); if (r) r.status = s.value; } catch (ex) { toast(ex.message, true); }
+      const saved = s.dataset.saved || s.value;
+      try {
+        await api('PUT', `/rooms/${s.dataset.status}`, { status: s.value });
+        s.dataset.saved = s.value;
+        const r = data.rooms.find((x) => x.id === s.dataset.status); if (r) r.status = s.value;
+        toast('Status kamar diperbarui di website.');
+      } catch (ex) {
+        // Server menolak: kembalikan pilihan ke status yang tersimpan supaya tampilan tidak menipu.
+        s.value = saved;
+        toast(ex.message, true);
+      }
     };
     main.onclick = async (e) => {
       if (e.target.closest('[data-add]')) roomDialog(null, p);

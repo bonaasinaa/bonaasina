@@ -247,7 +247,10 @@
       const busy = dlg.open || (main.contains(document.activeElement) && document.activeElement.matches('input:not(.search), textarea'));
       if (changed && busy && dlg.open) dlg.dataset.refresh = '1';
       else if (changed && !busy) await draw();
-    } catch (ex) { if (!cached) fail(ex); }
+    } catch (ex) {
+      // Data cache boleh tetap tampil, tetapi kegagalan menyegarkan tidak boleh hilang tanpa kabar.
+      if (!cached) fail(ex); else toast(ex.message, true);
+    }
     finally { if (seq === routeSeq) progress(false); if (blocking) BonaLoader.hide(); }
     refreshBadges();
   }
@@ -653,15 +656,23 @@
           <td data-label="Tipe">${esc(r.type)}<span class="sub">${[r.sizeM2, r.floor].filter(Boolean).map(esc).join(', ')}${(r.photos || []).length ? `, ${r.photos.length} foto` : ''}</span></td>
           <td class="num" data-label="Bulanan">${rp(r.priceMonthly)}</td>
           <td class="num" data-label="Tahunan">${rp(r.priceYearly)}</td>
-          <td data-label="Status">${r.tenant ? '<span class="pill pill--terisi">Terisi</span>' : `<select class="inline" data-status="${r.id}" aria-label="Status kamar ${esc(r.code)}">${['kosong', 'dipesan', 'perbaikan', 'terisi'].map((s) => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${STATUS_KAMAR[s]}</option>`).join('')}</select>`}</td>
+          <td data-label="Status">${r.tenant ? '<span class="pill pill--terisi">Terisi</span>' : `<select class="inline" data-status="${r.id}" data-saved="${r.status}" aria-label="Status kamar ${esc(r.code)}">${['kosong', 'dipesan', 'perbaikan', 'terisi'].map((s) => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${STATUS_KAMAR[s]}</option>`).join('')}</select>`}</td>
           <td data-label="Penghuni">${r.tenant ? esc(r.tenant.name) : '<span class="muted">-</span>'}</td>
           <td class="actions"><button class="btn btn--ghost btn--sm" data-edit-room="${r.id}">Ubah</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada kamar.</div>'}</div>`;
       }).join('');
 
     main.onchange = async (e) => {
       const s = e.target.closest('[data-status]'); if (!s) return;
-      try { await api('PUT', `/rooms/${s.dataset.status}`, { status: s.value }); toast('Status kamar diperbarui. Website ikut berubah.'); }
-      catch (ex) { toast(ex.message, true); }
+      const saved = s.dataset.saved || s.value;
+      try {
+        await api('PUT', `/rooms/${s.dataset.status}`, { status: s.value });
+        s.dataset.saved = s.value;
+        toast('Status kamar diperbarui. Website ikut berubah.');
+      } catch (ex) {
+        // Server menolak: tampilkan lagi status yang benar-benar tersimpan.
+        s.value = saved;
+        toast(ex.message, true);
+      }
     };
     main.onclick = (e) => {
       if (e.target.closest('[data-add-room]')) roomDialog(null);

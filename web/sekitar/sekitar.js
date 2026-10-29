@@ -8,7 +8,7 @@
   $('#year').textContent = new Date().getFullYear();
   const mapUrl = (p) => { const qy = p.mapsQuery || [p.name, p.address].filter(Boolean).join(', '); return qy ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(qy)}` : null; };
 
-  fetch(API + '/sekitar').then((r) => r.json()).then((d) => {
+  fetch(API + '/sekitar').then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
     st.list = d.places || []; st.cats = d.categories || {};
     $('#usulCat').innerHTML = Object.entries(st.cats).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
     chips(); draw();

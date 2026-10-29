@@ -72,6 +72,9 @@
   }
 
   // ---------------------------------------------------------------- chat (diperbarui tiap beberapa detik)
+  // Draf pesan yang belum terkirim disimpan per judul chat: panel ini digambar ulang setiap status
+  // reservasi berubah, dan tanpa ini teks yang sedang diketik ikut terhapus.
+  const chatDrafts = new Map();
   function chat(el, { load, send, me, enabled = true, offText = '', title = 'Chat', who = {} }) {
     const NAMES = { customer: 'Penyewa', pemilik: 'Pemilik', admin: 'Admin Bonaasina', sistem: 'Bonaasina', ...who };
     el.innerHTML = `<div class="chat"><div class="chat__head"><strong>${esc(title)}</strong><span class="chat__live" hidden>Langsung</span></div>
@@ -105,12 +108,16 @@
     const form = $('.chat__form', el);
     if (form) {
       const ta = $('textarea', form);
-      ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
+      if (chatDrafts.get(title)) ta.value = chatDrafts.get(title);
+      ta.addEventListener('input', () => {
+        chatDrafts.set(title, ta.value);
+        ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
+      });
       ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer:fine)').matches) { e.preventDefault(); form.requestSubmit(); } });
       form.addEventListener('submit', async (e) => {
         e.preventDefault(); const text = ta.value.trim(); if (!text) return;
         const btn = $('button', form); btn.disabled = true;
-        try { const m = await send(text); ta.value = ''; ta.style.height = ''; add([m]); }
+        try { const m = await send(text); ta.value = ''; chatDrafts.delete(title); ta.style.height = ''; add([m]); }
         catch (ex) { window.BonaMarket.onError?.(ex); }
         finally { btn.disabled = false; ta.focus(); }
       });
