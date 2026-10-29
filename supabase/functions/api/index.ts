@@ -328,7 +328,13 @@ function describeUA(ua: string | null) {
   return os ? `${browser} di ${os}` : browser;
 }
 function clientInfo(req: Request) {
-  const ip = (req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || req.headers.get('x-forwarded-for') || '').split(',')[0].trim().slice(0, 64);
+  // Urutan ini penting: cf-connecting-ip diisi Cloudflare (tidak bisa ditimpa klien), x-real-ip diisi
+  // proxy, dan x-forwarded-for diambil entri TERAKHIR (yang ditambahkan proxy terdekat) — dulu entri
+  // pertama dipakai sehingga klien bisa mengarang alamat untuk melewati batas percobaan login.
+  const cf = (req.headers.get('cf-connecting-ip') || '').trim();
+  const real = (req.headers.get('x-real-ip') || '').trim();
+  const fwd = (req.headers.get('x-forwarded-for') || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const ip = (cf || real || fwd[fwd.length - 1] || '').slice(0, 64);
   return { ip, ua: describeUA(req.headers.get('user-agent')) };
 }
 // Jalankan di latar belakang supaya respons ke pengguna tidak menunggu penulisan log.
@@ -473,7 +479,15 @@ on('POST', '/penghuni/invoices/:id/proof', async ({ req, params, tenant: t }, lo
   const { buf, type, ext } = await readImage(req);
   const path = `proofs/${t!.id}/${inv.id}-${Date.now()}.${ext}`;
   await putFile('private', path, buf, type);
-  const rec = await update('invoices', inv.id, { proofPath: path, proofStatus: 'menunggu', proofNote: null, proofUploadedAt: new Date().toISOString() });
+  // Bersyarat: bila admin menandai lunas saat foto sedang diunggah, status lunas tidak boleh tertimpa.
+  const { data: updated } = await sb.from('invoices')
+    .update({ proof_path: path, proof_status: 'menunggu', proof_note: null, proof_uploaded_at: new Date().toISOString() })
+    .eq('id', inv.id).eq('status', 'belum').select('*').maybeSingle();
+  if (!updated) {
+    await sb.storage.from('private').remove([path]).catch(() => {});
+    throw bad('Tagihan ini sudah ditandai lunas pengelola, jadi bukti bayar tidak disimpan. Muat ulang halaman Tagihan.');
+  }
+  const rec = toCamel(updated)!;
   mail.sendAdmin({
     kind: 'invoice.proof', dedupeKey: `invoice.proof:${path}`, subject: `Bukti bayar dari ${t!.name}: ${inv.periodLabel}`,
     title: 'Bukti bayar baru perlu diperiksa', rows: [['Penghuni', t!.name], ['Tagihan', inv.periodLabel], ['Jumlah', rupiah(inv.amount)]],
@@ -516,6 +530,14 @@ on('POST', '/penghuni/issues/:id/photo', async ({ req, params, tenant: t }, log)
 // ================================================================ ADMIN — login
 on('POST', '/admin/login', async ({ req, body: b }, log) => {
   const email = str(b.email, 200).toLowerCase();
+  // Batas percobaan masuk admin (per IP dan per email), sama seperti login penghuni.
+  const since = new Date(Date.now() - 15 * 60e3).toISOString();
+  const { ip } = clientInfo(req);
+  const [byIp, byEmail] = await Promise.all([
+    sb.from('activity_log').select('id', { count: 'exact', head: true }).eq('action', 'login.failed').eq('ip', ip).gte('created_at', since),
+    sb.from('activity_log').select('id', { count: 'exact', head: true }).eq('action', 'login.failed').eq('actor', email).gte('created_at', since),
+  ]);
+  if ((byIp.count ?? 0) >= 10 || (byEmail.count ?? 0) >= 10) throw new HttpError(429, 'Terlalu banyak percobaan masuk. Coba lagi 15 menit lagi.');
   const fail = (why: string) => { writeLog(req, 'admin', email || '(tanpa email)', { action: 'login.failed', summary: `Gagal masuk: ${why}`, ok: false }); return new HttpError(401, 'Email atau kata sandi salah.'); };
   if (!(await q<Row | null>(sb.from('admins').select('email').eq('email', email).maybeSingle()))) throw fail('email tidak terdaftar sebagai admin');
   const auth = createClient(SUPABASE_URL, PUBLISHABLE, { auth: { persistSession: false } });
@@ -1578,9 +1600,15 @@ async function receiptFor(inv: Row) {
   });
 }
 async function issueReceipt(inv: Row) {
+  // Nomor kuitansi hanya dipakai sekali per tagihan: pemakaian dikunci dengan update bersyarat.
+  const cur = await one('invoices', inv.id);
+  if (!cur || cur.receiptNo) return cur;
   const { data, error } = await sb.rpc('next_doc_no', { kind: 'kuitansi' });
   if (error || !data) { console.error(error); throw new HttpError(500, 'Gagal membuat nomor kuitansi.'); }
-  return await update('invoices', inv.id, { receiptNo: data as string, receiptCode: cardCode(12), receiptIssuedAt: new Date().toISOString() });
+  const { data: updated } = await sb.from('invoices')
+    .update({ receipt_no: data as string, receipt_code: cardCode(12), receipt_issued_at: new Date().toISOString() })
+    .eq('id', inv.id).is('receipt_no', null).select('*').maybeSingle();
+  return updated ? toCamel(updated)! : (await one('invoices', inv.id));
 }
 on('GET', '/penghuni/invoices/:id/receipt.pdf', async ({ params, tenant: t }, log) => {
   const inv = await one('invoices', params.id);
@@ -1800,6 +1828,16 @@ on('POST', '/admin/contracts', async ({ body: b }, log) => {
   if (error || !number) { console.error(error); throw new HttpError(500, 'Gagal membuat nomor kontrak.'); }
   const renewedFrom = b.renewedFrom ? str(b.renewedFrom, 40) : null;
   const rec = await insert('contracts', { number, tenantId: t.id, roomId: room.id, propertyId: room.propertyId, ...d, body, status: 'menunggu', renewedFrom });
+  // Bila dua kontrak terkirim bersamaan, yang lebih baru dibatalkan supaya penghuni hanya punya satu.
+  const pendingNow = await q<Row[]>(sb.from('contracts').select('id, number, created_at').eq('tenant_id', t.id).eq('status', 'menunggu').order('created_at'));
+  if ((pendingNow || []).length > 1) {
+    const keep = (pendingNow || [])[0];
+    if (keep.id !== rec.id) {
+      await q(sb.from('contracts').update({ status: 'dibatalkan' }).eq('id', rec.id));
+      throw bad(`Kontrak ${keep.number} sudah menunggu persetujuan. Batalkan dulu bila ingin membuat yang baru.`);
+    }
+    for (const extra of (pendingNow || []).slice(1)) await q(sb.from('contracts').update({ status: 'dibatalkan' }).eq('id', extra.id));
+  }
   if (renewedFrom) await q(sb.from('contracts').update({ decision_handled_at: new Date().toISOString() }).eq('id', renewedFrom).eq('tenant_id', t.id));
   if (t.email) mail.send({
     to: t.email, kind: 'contract.new', dedupeKey: `contract.new:${rec.id}`,
