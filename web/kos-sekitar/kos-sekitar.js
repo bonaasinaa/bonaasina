@@ -1,4 +1,4 @@
-/* Bonaasina — daftar Kos Sekitar (kos mitra yang sudah tayang). */
+/* Bonaasina: daftar Kos Sekitar (kos mitra yang sudah tayang). */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

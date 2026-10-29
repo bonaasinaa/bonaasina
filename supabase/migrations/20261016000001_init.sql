@@ -1,6 +1,5 @@
--- Bonaasina — skema awal (Fase 1 + Fase 2)
--- Semua tabel memakai RLS tanpa policy: hanya Edge Function "api" (kunci rahasia) yang boleh membaca/menulis.
--- Browser tidak pernah mengakses tabel secara langsung.
+-- Bonaasina, skema awal (Fase 1 + Fase 2). Semua tabel memakai RLS tanpa policy: hanya Edge Function "api"
+-- (kunci rahasia) yang boleh membaca/menulis, browser tidak pernah mengakses tabel secara langsung.
 
 create extension if not exists pgcrypto;
 
@@ -193,9 +192,8 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
--- Penyimpanan file -------------------------------------------------------------
--- photos  : foto kos & kamar, publik
--- private : bukti bayar & foto kerusakan, hanya lewat tautan bertanda tangan dari admin
+-- Penyimpanan file: bucket photos (foto kos & kamar, publik) dan private (bukti bayar, foto kerusakan),
+-- yang kedua hanya bisa dibuka lewat tautan bertanda tangan dari admin.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values
   ('photos', 'photos', true, 5242880, array['image/jpeg','image/png','image/webp']),
   ('private', 'private', false, 5242880, array['image/jpeg','image/png','image/webp'])

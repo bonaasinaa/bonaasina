@@ -1,4 +1,4 @@
-/* Dashboard penghuni Bonaasina — tagihan & kuitansi, kontrak, kondisi kamar, piket, pengumuman, kerusakan, profil & kartu. */
+/* Dashboard penghuni Bonaasina: tagihan & kuitansi, kontrak, kondisi kamar, piket, pengumuman, kerusakan, profil & kartu. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -18,7 +18,7 @@
   const setSession = (s) => { try { s ? localStorage.setItem(KEY, JSON.stringify(s)) : localStorage.removeItem(KEY); } catch { /* abaikan */ } };
   let data = null;
 
-  // ---------- API ----------
+  // API
   // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
   window.addEventListener('unhandledrejection', (e) => {
     e.preventDefault();
@@ -70,7 +70,7 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('is-on'), 3600);
   }
 
-  // ---------- dialog ----------
+  // Dialog
   const dlg = $('#dlg'); let dlgHandler = null;
   function openDialog({ title, body, ok = 'Simpan', okClass = 'btn--red', onOk, onOpen, wide = false }) {
     dlg.classList.toggle('dlg--wide', wide);
@@ -89,7 +89,7 @@
     finally { btn.disabled = false; }
   });
 
-  // ---------- masuk & keluar ----------
+  // Masuk & keluar
   function showLogin(msg) {
     BonaLoader.reset();
     $('#app').hidden = true; $('#login').hidden = false; dlg.open && dlg.close();
@@ -140,7 +140,7 @@
     route(true);
   }
 
-  // ---------- router ----------
+  // Router
   const views = { beranda, tagihan, kontrak, kondisi, piket, pengumuman, kerusakan, profil };
   const TITLES = { beranda: 'Beranda', tagihan: 'Tagihan & kuitansi', kontrak: 'Kontrak', kondisi: 'Kondisi kamar', piket: 'Piket', pengumuman: 'Pengumuman', kerusakan: 'Lapor kerusakan', profil: 'Profil & kartu' };
   let shown = null;
@@ -149,7 +149,7 @@
     const name = views[location.hash.slice(1)] ? location.hash.slice(1) : 'beranda';
     const isNew = shown !== name;
     $$('#sideNav a').forEach((a) => (a.dataset.view === name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
-    $('#topTitle').textContent = TITLES[name]; document.title = `${TITLES[name]} — Dashboard Penghuni Bonaasina`;
+    $('#topTitle').textContent = TITLES[name]; document.title = `${TITLES[name]} | Dashboard Penghuni Bonaasina`;
     closeNav(); badges();
     const y = scrollY;
     main.onclick = null; main.onchange = null;
@@ -194,7 +194,7 @@
     return { cls: 'belum', text: 'Belum dibayar' };
   }
 
-  // ========== BERANDA ==========
+  // Beranda
   function beranda() {
     const { tenant, room, property, invoices, contracts, chores, announcements, notifications, today } = data;
     const first = (tenant.name || '').split(' ')[0];
@@ -224,7 +224,7 @@
     D.sideWidget(unpaid[0] ? `<small>Tagihan berikutnya</small><strong style="font-size:1.4rem">${rp(unpaid[0].amount)}</strong><small>${late ? 'Sudah lewat jatuh tempo' : `Jatuh tempo ${tgl(unpaid[0].dueDate)}`}</small>` : '<small>Status bayar</small><strong style="font-size:1.4rem">Lunas</strong><small>Terima kasih sudah tepat waktu</small>');
   }
 
-  // ========== TAGIHAN ==========
+  // Tagihan
   let uploadFor = null;
   function tagihan() {
     const unpaid = data.invoices.filter((i) => i.status === 'belum').sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -260,7 +260,7 @@
     });
   }
 
-  // ========== KONTRAK ==========
+  // Kontrak
   function kontrak() {
     const list = data.contracts;
     const pending = list.find((c) => c.phase === 'menunggu');
@@ -314,7 +314,7 @@
     });
   }
 
-  // ========== KONDISI KAMAR ==========
+  // Kondisi kamar
   function kondisi() {
     const list = data.inspections;
     const masuk = list.find((x) => x.kind === 'masuk');
@@ -339,7 +339,7 @@
     };
   }
 
-  // ========== PIKET ==========
+  // Piket
   function piket() {
     const { chores, today } = data;
     const mine = chores.filter((c) => c.mine);
@@ -386,7 +386,7 @@
   }
   const addDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 
-  // ========== PENGUMUMAN ==========
+  // Pengumuman
   function pengumuman() {
     const list = data.announcements;
     const unread = list.filter((a) => !a.read);
@@ -408,7 +408,7 @@
     }
   }
 
-  // ========== KERUSAKAN ==========
+  // Kerusakan
   const CATS = ['Listrik', 'Air & kamar mandi', 'Pintu & kunci', 'Perabot', 'WiFi', 'Kebersihan', 'Lainnya'];
   const ISSUE = { baru: 'Diterima', dikerjakan: 'Sedang dikerjakan', selesai: 'Selesai' };
   function kerusakan() {
@@ -446,7 +446,7 @@
     });
   }
 
-  // ========== PROFIL & KARTU ==========
+  // Profil & kartu
   function profil() {
     const { tenant: t, room, property, card } = data;
     main.innerHTML = head('Profil & kartu penghuni', 'Data Anda yang tercatat di pengelola, kartu penghuni, dan kata sandi.') + `
@@ -501,6 +501,6 @@
         <div class="idcard__qr">${c.qrSvg || ''}<span>No. ${fmtCode(c.code)}</span></div></div></div>`;
   }
 
-  // ---------- mulai ----------
+  // Mulai
   if (getSession()?.token) start(); else showLogin();
 })();

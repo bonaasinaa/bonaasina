@@ -1,5 +1,4 @@
--- Bonaasina — fitur penghuni: akun login, kontrak digital, kondisi kamar, daftar tunggu,
--- kuitansi, pengumuman, piket, ID card.
+-- Bonaasina, fitur penghuni: akun login, kontrak digital, kondisi kamar, daftar tunggu, kuitansi, pengumuman, piket, ID card.
 -- Sama seperti tabel lain: RLS aktif tanpa policy, hanya Edge Function "api" (kunci rahasia) yang mengakses.
 
 -- Akun login & kartu penghuni ---------------------------------------------------

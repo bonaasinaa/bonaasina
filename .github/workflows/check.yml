@@ -1,0 +1,19 @@
+# Penjaga komentar antislop-code: gagal bila ada pemisah dekoratif, label KAPITAL, emoji, narasi langkah, atau blok komentar lebih dari dua baris.
+name: Cek komentar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  komentar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Jalankan penjaga komentar
+        run: node scripts/check-comments.mjs --strict

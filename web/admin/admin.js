@@ -1,4 +1,4 @@
-/* Admin Bonaasina — satu halaman, tanpa framework. */
+/* Admin Bonaasina: satu halaman, tanpa framework. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -16,7 +16,7 @@
   const CYCLE_NAME = { harian: 'Harian', bulanan: 'Bulanan', semesteran: '6 bulanan', tahunan: 'Tahunan' };
   const CYCLE_PRICE = { harian: 'priceDaily', bulanan: 'priceMonthly', semesteran: 'priceSemester', tahunan: 'priceYearly' };
 
-  // ---------- API ----------
+  // API
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '') + '/admin';
   const SESSION_KEY = 'bonaasina-admin-session';
   const getSession = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; } };
@@ -59,9 +59,8 @@
     return data;
   }
 
-  // ---------- cache data (supaya pindah menu terasa instan) ----------
-  // Data terakhir tiap alamat disimpan di memori. Menu dibuka langsung dari cache, lalu diperbarui
-  // dari server di latar belakang; tampilan hanya digambar ulang bila datanya memang berubah.
+  // Cache data supaya pindah menu terasa instan: data terakhir tiap alamat disimpan di memori, menu dibuka
+  // langsung dari cache lalu diperbarui dari server, dan tampilan hanya digambar ulang bila datanya berubah.
   const store = new Map(); // path → { data, json, t, stale }
   const inflight = new Map();
   let forceFresh = false;
@@ -91,7 +90,7 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('is-on'), 3200);
   }
 
-  // ---------- dialog ----------
+  // Dialog
   const dlg = $('#dlg'); let dlgHandler = null;
   function openDialog({ title, body, ok = 'Simpan', okClass = 'btn--red', onOk, onOpen, wide = false }) {
     dlg.classList.toggle('dlg--wide', wide);
@@ -143,7 +142,7 @@
     catch { if (el.select) el.select(); else getSelection().selectAllChildren(el); toast('Teks sudah dipilih. Tekan Ctrl+C untuk menyalin.'); }
   }
 
-  // ---------- login ----------
+  // Login
   function showLogin() {
     $('#app').hidden = true; $('#login').hidden = false; $('#setupForm').hidden = true; $('#loginForm').hidden = false;
     $('#loginForm [name=email]').focus();
@@ -188,7 +187,7 @@
     prefetchAll();
   }
 
-  // ---------- router ----------
+  // Router
   const views = { ringkasan, tagihan, laporan, penghuni, kontrak, pengumuman, piket, kerusakan, kamar, survei, tunggu, aktivitas, pengaturan, reservasi, persetujuan, daftar, mitra, pemilik, fee, notifikasi, titip, tempat };
   const TITLES = { ringkasan: 'Ringkasan', tagihan: 'Tagihan', laporan: 'Laporan', penghuni: 'Penghuni', kontrak: 'Kontrak', pengumuman: 'Pengumuman', piket: 'Piket', kerusakan: 'Kerusakan', kamar: 'Kamar & kos', survei: 'Survei', tunggu: 'Daftar tunggu', aktivitas: 'Log aktivitas', pengaturan: 'Pengaturan',
     reservasi: 'Reservasi', persetujuan: 'Persetujuan & refund', daftar: 'Pendaftaran mitra', mitra: 'Mitra kos', pemilik: 'Pemilik kos', fee: 'Fee & aturan', notifikasi: 'Notifikasi', titip: 'Titip jualan', tempat: 'Tempat sekitar' };
@@ -214,7 +213,7 @@
     const isNewView = shownView !== key;
     $$('#sideNav a').forEach((a) => { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
     $('#topTitle').textContent = TITLES[name];
-    document.title = `${TITLES[name]} — Admin Bonaasina`;
+    document.title = `${TITLES[name]} | Admin Bonaasina`;
     closeNav();
     if (isNewView) { window.bonaTrack?.(`/admin/${name}`, `Admin: ${TITLES[name]}`); trackView(name); }
 
@@ -298,7 +297,7 @@
     try { await fetchFresh('/summary'); renderBadges(); } catch { /* abaikan */ }
   }
 
-  // ---------- menu di layar kecil ----------
+  // Menu di layar kecil
   const nav = $('#side');
   function openNav() { nav.classList.add('is-open'); $('#navScrim').hidden = false; $('#menuBtn').setAttribute('aria-expanded', 'true'); document.body.classList.add('nav-open'); }
   function closeNav() { nav.classList.remove('is-open'); $('#navScrim').hidden = true; $('#menuBtn').setAttribute('aria-expanded', 'false'); document.body.classList.remove('nav-open'); }
@@ -308,7 +307,7 @@
   const propName = (id) => cache.allProps.find((p) => p.id === id)?.name || '-';
   const head = (title, sub, actions = '') => `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div><div class="actions">${actions}</div></div>`;
 
-  // ========== RINGKASAN ==========
+  // Ringkasan
   async function ringkasan() {
     const D = window.BonaDash;
     const [s, inv, rep] = await Promise.all([get('/summary'), get('/invoices'), get(`/reports?year=${new Date().getFullYear()}`).catch(() => null)]);
@@ -405,7 +404,7 @@
     return `<div class="panel mt"><h2>Perlu tindakan</h2>${items.length ? `<div class="todo">${items.map(([n, href, text, urgent]) => `<a href="${href}" class="${urgent ? 'is-urgent' : ''}"><span class="count">${n}</span><span>${text}</span></a>`).join('')}</div>` : '<p class="empty--ok">Semua beres. Tidak ada yang perlu ditindaklanjuti.</p>'}</div>`;
   }
 
-  // ---------- aksi tagihan (dipakai di beberapa halaman) ----------
+  // Aksi tagihan (dipakai di beberapa halaman)
   function bindInvoiceActions(list) {
     main.onclick = async (e) => {
       const r = e.target.closest('[data-remind]'), p = e.target.closest('[data-pay]'), u = e.target.closest('[data-unpay]'), x = e.target.closest('[data-del-inv]'), pf = e.target.closest('[data-proof]');
@@ -479,7 +478,7 @@
     };
   }
 
-  // ========== TAGIHAN ==========
+  // Tagihan
   // Filter tiap layar diingat selama tab ini hidup, supaya tidak kembali ke bawaan setiap muat ulang.
   const savedFilter = (key, def) => { try { return sessionStorage.getItem(`bona.filter.${key}`) || def; } catch { return def; } };
   const rememberFilter = (key, value) => { try { sessionStorage.setItem(`bona.filter.${key}`, value); } catch { /* abaikan */ } };
@@ -535,7 +534,7 @@
     };
   }
 
-  // ========== PENGHUNI ==========
+  // Penghuni
   let tenantFilter = 'aktif';
   async function penghuni() {
     const id = hashParams().get('id');
@@ -644,7 +643,7 @@
     });
   }
 
-  // ========== KAMAR & KOS ==========
+  // Kamar & kos
   async function kamar() {
     const [allRooms, allProps] = await Promise.all([get('/rooms'), get('/properties')]);
     setProps(allProps); const props = cache.properties;
@@ -781,7 +780,7 @@
         <label>Fasilitas bersama <span class="hint">satu per baris</span><textarea name="facilities" rows="5">${lines(p.facilities)}</textarea></label>
         <label>Aturan kos <span class="hint">satu per baris, hanya tampil di dashboard penghuni</span><textarea name="rules" rows="5">${lines(p.rules)}</textarea></label>
         ${window.BonaDash.logoField('logo', p.logo, 'Logo kos')}
-        <label class="span-all">Dekat dengan <span class="hint">satu per baris, misalnya "Pasar — 5 menit"</span><textarea name="nearby" rows="3">${lines(p.nearby)}</textarea></label>
+        <label class="span-all">Dekat dengan <span class="hint">satu per baris, misalnya "Pasar, 5 menit"</span><textarea name="nearby" rows="3">${lines(p.nearby)}</textarea></label>
         ${photoField('photos', p.photos || [])}
         <p class="fieldset-title span-all">Periode sewa yang dibuka</p>
         <div class="span-all chips">${Object.entries(CYCLE_NAME).map(([k, v]) => `<label class="chip"><input type="checkbox" name="per_${k}" ${(p.periods || ['bulanan', 'tahunan']).includes(k) ? 'checked' : ''}><span>${v}</span></label>`).join('')}</div>
@@ -810,7 +809,7 @@
     });
   }
 
-  // ========== SURVEI ==========
+  // Survei
   let surveiLimit = 50;
   async function survei() {
     // Daftar survei dimuat 50 baris; tombol "Muat lebih banyak" menaikkan batas (maks 500 di server).
@@ -838,7 +837,7 @@
     $('#svMore')?.addEventListener('click', (e) => { e.currentTarget.disabled = true; surveiLimit += 50; route(); });
   }
 
-  // ========== KERUSAKAN (Fase 2) ==========
+  // Kerusakan (Fase 2)
   const STATUS_ISSUE = { baru: 'Baru', dikerjakan: 'Sedang dikerjakan', selesai: 'Selesai' };
   let issueFilter = 'terbuka';
   async function kerusakan() {
@@ -879,7 +878,7 @@
     };
   }
 
-  // ========== LAPORAN ==========
+  // Laporan
   let repYear = String(new Date().getFullYear());
   async function laporan() {
     const [rep, exps] = await Promise.all([get(`/reports?year=${repYear}`), get('/expenses')]);
@@ -930,7 +929,7 @@
     };
   }
 
-  // ========== LOG AKTIVITAS ==========
+  // Log aktivitas
   let actFilter = 'semua', actQuery = '';
   function activityPath(before) {
     const p = new URLSearchParams({ type: actFilter }); if (actQuery) p.set('q', actQuery); if (before) p.set('before', before);
@@ -987,7 +986,7 @@
     });
   }
 
-  // ========== ALAT BERSAMA (fitur penghuni) ==========
+  // Alat bersama (fitur penghuni)
   const SITE = location.origin;
   const BULAN_PANJANG = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const tglPanjang = (s) => { if (!s) return '-'; const [y, m, d] = s.slice(0, 10).split('-').map(Number); return `${d} ${BULAN_PANJANG[m - 1]} ${y}`; };
@@ -1029,7 +1028,7 @@
       </div></div>`;
   }
 
-  // ---------- akun login penghuni ----------
+  // Akun login penghuni
   function showCredentials(t, username, password) {
     const link = `${SITE}/penghuni/`;
     const msg = `Horas ${t.name}, akun dashboard penghuni Bonaasina Anda sudah siap.\n\nAlamat: ${link}\nUsername: ${username}\nKata sandi: ${password}\n\nDi dashboard Anda bisa melihat tagihan dan kuitansi, menyetujui kontrak sewa, membaca pengumuman, melihat jadwal piket, dan menyimpan kartu penghuni. Kata sandi bisa diganti di menu Profil. Jangan bagikan ke orang lain ya.`;
@@ -1064,7 +1063,7 @@
     });
   }
 
-  // ---------- kontrak ----------
+  // Kontrak
   function contractDialog(tenant, existing, renewFrom) {
     const start0 = existing?.startDate || (renewFrom ? addDays(renewFrom.endDate, 1) : (tenant.startDate > today() ? tenant.startDate : today()));
     const end0 = existing?.endDate || addDays(addMonthsC(start0, 12), -1);
@@ -1153,7 +1152,7 @@
     return true;
   }
 
-  // ========== KONTRAK ==========
+  // Kontrak
   let ctrFilter = savedFilter('contracts', 'tindakan');
   const needsAction = (c) => c.phase === 'menunggu' || (c.phase === 'akan_habis' && !c.decision) || (c.decision && !c.decisionHandledAt);
   async function kontrak() {
@@ -1180,7 +1179,7 @@
     main.onclick = (e) => contractClick(e, list, (c) => tm.get(c.tenantId) || { id: c.tenantId, name: c.tenantName, phone: c.tenantPhone });
   }
 
-  // ========== DETAIL PENGHUNI ==========
+  // Detail penghuni
   async function penghuniDetail(id) {
     const [d, s] = await Promise.all([get(`/tenants/${id}/detail`), get('/settings')]);
     cache.settings = s;
@@ -1224,7 +1223,7 @@
           <td class="actions">${i.status === 'lunas' ? `<button class="btn btn--ghost btn--sm" data-receipt="${i.id}">Kuitansi</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Belum ada tagihan.</p>'}
       </section>`;
     $('#topTitle').textContent = t.name;
-    document.title = `${t.name} — Admin Bonaasina`;
+    document.title = `${t.name} | Admin Bonaasina`;
     $('#photoIn')?.addEventListener('change', async (e) => {
       const f = e.target.files[0]; if (!f) return;
       try { await BonaLoader.during('Mengunggah foto…', async () => api('POST', `/tenants/${t.id}/photo`, undefined, await shrink(f, 900))); toast('Foto kartu diperbarui.'); route(); }
@@ -1260,7 +1259,7 @@
     });
   }
 
-  // ---------- kondisi kamar ----------
+  // Kondisi kamar
   function inspectionView(x, masuk) {
     if (!x) return;
     const was = (name) => masuk && x.kind === 'keluar' ? masuk.items.find((m) => m.name === name) : null;
@@ -1331,7 +1330,7 @@
     });
   }
 
-  // ========== PENGUMUMAN ==========
+  // Pengumuman
   async function pengumuman() {
     const page = await get('/announcements');
     drawAnn(page.items || [], !!page.hasMore);
@@ -1392,7 +1391,7 @@
     });
   }
 
-  // ========== PIKET ==========
+  // Piket
   const FREQ = { harian: 'Setiap hari', mingguan: 'Setiap minggu', dua_mingguan: 'Dua minggu sekali', bulanan: 'Setiap bulan' };
   const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   const hariOf = (s) => { const [y, m, d] = s.split('-').map(Number); return HARI[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]; };
@@ -1456,7 +1455,7 @@
     });
   }
 
-  // ========== DAFTAR TUNGGU ==========
+  // Daftar tunggu
   const WL = { perlu_dikabari: 'Perlu dikabari', menunggu: 'Menunggu kamar', dikabari: 'Sudah dikabari', selesai: 'Selesai', batal: 'Batal' };
   let wlFilter = savedFilter('waitlist', 'perlu_dikabari');
   async function tunggu() {
@@ -1486,7 +1485,7 @@
     };
   }
 
-  // ========== PENGATURAN ==========
+  // Pengaturan
   async function pengaturan() {
     const s = await get('/settings'); cache.settings = s;
     const faq = s.faq || [];
@@ -1564,7 +1563,7 @@
     return `<div class="faq-row"><label>Pertanyaan<input name="faq_q" value="${esc(f.q)}"></label><label>Jawaban<textarea name="faq_a" rows="2">${esc(f.a)}</textarea></label><div><button type="button" class="btn btn--ghost btn--sm" data-rm-faq>Hapus</button></div></div>`;
   }
 
-  // ================================================================ KOS SEKITAR (kemitraan)
+  // Kos Sekitar (kemitraan)
   const MK = window.BonaMarket;
   const PROP_STATUS = { draf: 'Masih dilengkapi pemilik', menunggu: 'Minta ditampilkan', aktif: 'Tampil di website', nonaktif: 'Disembunyikan' };
   let resFilter = 'tindakan', resKos = 'semua';
@@ -1587,7 +1586,7 @@
       <td class="actions"><a class="btn btn--${l.needsApproval ? 'green' : 'ghost'} btn--sm" href="#reservasi?id=${l.id}">${l.needsApproval ? 'Periksa & setujui' : 'Buka'}</a></td></tr>`).join('')}</tbody></table>` : `<div class="empty">${empty}</div>`;
   }
 
-  // ---------- reservasi ----------
+  // Reservasi
   async function reservasi() {
     const id = hashParams().get('id');
     if (id) return reservasiDetail(id);
@@ -1619,7 +1618,7 @@
     const l = await api('GET', `/leads/${id}`);
     const ctx = leadCtx(l);
     const own = l.propertyKind !== 'mitra';
-    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)}${own ? ' (kos Bonaasina — Anda pemiliknya)' : ` (mitra: ${esc(l.ownerName)})`}, ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`,
+    main.innerHTML = `<a class="back" href="#reservasi">← Semua reservasi</a>` + head(esc(l.name), `${esc(l.propertyName)}${own ? ' (kos Bonaasina, Anda pemiliknya)' : ` (mitra: ${esc(l.ownerName)})`}, ${esc(l.periodLabel)} mulai ${tgl(l.moveDate)}`,
       `<a class="btn btn--green" href="https://wa.me/${esc(l.waCustomer)}" target="_blank" rel="noopener">WhatsApp penyewa</a>${!own && l.ownerPhone ? `<a class="btn btn--ghost" href="${esc(waMe(l.ownerPhone, `Horas ${l.ownerName}, ini admin Bonaasina soal reservasi ${l.name} (#${l.code}) di ${l.propertyName}. `))}" target="_blank" rel="noopener">WhatsApp pemilik</a>` : ''}`) +
       `<div class="lead-grid"><div id="leadPanel">${MK.leadPanel(l, ctx)}</div><div><div id="chatBox"></div><p class="hint">${own ? 'Anda membalas sebagai pemilik kos.' : 'Pesan Anda tampil sebagai “Admin Bonaasina” bagi penyewa dan pemilik.'}</p></div></div>`;
     MK.bindLead($('#leadPanel'), l, ctx);
@@ -1635,7 +1634,7 @@
     });
   }
 
-  // ---------- persetujuan & refund ----------
+  // Persetujuan & refund
   async function persetujuan() {
     const all = await get('/leads');
     const groups = [
@@ -1649,7 +1648,7 @@
       groups.map(([t, sub, list]) => `<div class="panel mt"><h2>${t} <span class="pill pill--${list.length ? 'baru' : 'aktif'}">${list.length}</span></h2><p class="muted small" style="margin:-6px 0 10px">${sub}</p><div class="table-wrap">${leadRows(list, 'Tidak ada.')}</div></div>`).join('');
   }
 
-  // ---------- mitra kos ----------
+  // Mitra kos
   async function mitra() {
     const [parts, owners, rooms] = await Promise.all([get('/partners'), get('/owners'), get('/rooms')]);
     const s = cache.settings || {};
@@ -1663,7 +1662,7 @@
           <div class="grid grid--stats mt" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
             <div><p class="stat__label">Kamar kosong</p><p class="stat__value">${p.freeRooms}/${p.totalRooms}</p></div><div><p class="stat__label">Reservasi aktif</p><p class="stat__value">${p.leadsActive}</p></div>
             <div><p class="stat__label">Booking berhasil</p><p class="stat__value">${p.bookings}</p></div><div><p class="stat__label">Fee diterima</p><p class="stat__value">${rp(p.feeReceived)}</p></div><div><p class="stat__label">Fee belum masuk</p><p class="stat__value">${rp(p.feeOpen)}</p></div></div>
-          ${rs.length ? `<details class="mt"><summary class="small"><strong>${rs.length} kamar</strong> — lihat & ubah</summary><div class="table-wrap mt"><table><tbody>${rs.map((r) => `<tr><td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${Number(r.capacity) === 2 ? ', 2 orang' : ''}</span></td><td data-label="Harga">${(p.periods || []).map((k) => `${CYCLE_NAME[k]} ${rp(r[CYCLE_PRICE[k]])}`).join(', ')}</td><td data-label="Status"><span class="pill pill--${r.effectiveStatus}">${STATUS_KAMAR[r.effectiveStatus]}</span></td></tr>`).join('')}</tbody></table></div></details>` : '<p class="hint mt">Belum ada kamar. Kamar, harga, dan foto diisi pemilik dari dashboard-nya.</p>'}
+          ${rs.length ? `<details class="mt"><summary class="small"><strong>${rs.length} kamar</strong>, lihat & ubah</summary><div class="table-wrap mt"><table><tbody>${rs.map((r) => `<tr><td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${Number(r.capacity) === 2 ? ', 2 orang' : ''}</span></td><td data-label="Harga">${(p.periods || []).map((k) => `${CYCLE_NAME[k]} ${rp(r[CYCLE_PRICE[k]])}`).join(', ')}</td><td data-label="Status"><span class="pill pill--${r.effectiveStatus}">${STATUS_KAMAR[r.effectiveStatus]}</span></td></tr>`).join('')}</tbody></table></div></details>` : '<p class="hint mt">Belum ada kamar. Kamar, harga, dan foto diisi pemilik dari dashboard-nya.</p>'}
           ${p.reviewNote ? `<p class="hint">Catatan untuk pemilik: ${esc(p.reviewNote)}</p>` : ''}</div>`;
       }).join('') : '<div class="panel empty mt">Belum ada kos mitra. Buat akun pemilik dulu di menu Pemilik kos, lalu tambahkan kosnya di sini.</div>');
     main.onclick = async (e) => {
@@ -1709,7 +1708,7 @@
     });
   }
 
-  // ========== TITIP JUALAN & JASA ==========
+  // Titip jualan & jasa
   let titipFilter = 'baru';
   async function titip() {
     const D = window.BonaDash;
@@ -1775,7 +1774,7 @@
     };
   }
 
-  // ========== TEMPAT SEKITAR ==========
+  // Tempat sekitar
   let tempatFilter = 'aktif';
   async function tempat() {
     const D = window.BonaDash;
@@ -1822,7 +1821,7 @@
     };
   }
 
-  // ---------- pendaftaran mitra ----------
+  // Pendaftaran mitra
   let daftarFilter = 'baru';
   function waDialog(title, note, out) {
     openDialog({
@@ -1881,7 +1880,7 @@
     };
   }
 
-  // ---------- pemilik kos ----------
+  // Pemilik kos
   function ownerCredentials(o, password) {
     const link = `${SITE}/pemilik/`;
     const msg = `Horas ${o.name}, akun pemilik kos mitra Bonaasina Anda sudah siap.\n\nAlamat: ${link}\nUsername: ${o.username}\nKata sandi sementara: ${password}\n\nSaat pertama masuk, Anda diminta membuat kata sandi sendiri. Lalu lengkapi info kos, kamar & harga, foto, rekening untuk DP, dan nomor WhatsApp, kemudian tekan "Minta ditampilkan di website".\n\nAlur singkat: reservasi masuk → Anda konfirmasi kamar tersedia → penyewa transfer DP ke rekening Anda → Anda bayar biaya layanan ke Bonaasina → admin menyetujui dan bukti booking terbit.`;
@@ -1931,7 +1930,7 @@
     };
   }
 
-  // ---------- fee & aturan ----------
+  // Fee & aturan
   async function fee() {
     const [s, leads, parts] = await Promise.all([get('/settings'), get('/leads'), get('/partners')]);
     cache.settings = s;
@@ -1982,7 +1981,7 @@
     };
   }
 
-  // ---------- notifikasi ----------
+  // Notifikasi
   async function notifikasi() {
     const n = await get('/notifications');
     main.innerHTML = head('Notifikasi', 'Kabar terbaru dari reservasi, pemilik kos, dan penyewa.', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel" id="notifPanel">${MK.notifs(n.items)}</div>
@@ -2007,7 +2006,7 @@
     };
   }
 
-  // ---------- mulai ----------
+  // Mulai
   // Ada sesi tersimpan → langsung masuk (api() akan memperpanjang atau mengarahkan ke login bila sesi sudah mati).
   if (getSession()?.refreshToken) {
     start().catch((ex) => {

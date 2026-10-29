@@ -1,4 +1,4 @@
-/* Dashboard customer Bonaasina — status reservasi, pembayaran DP, chat dengan pemilik, refund, bukti booking. */
+/* Dashboard customer Bonaasina: status reservasi, pembayaran DP, chat dengan pemilik, refund, bukti booking. */
 (() => {
   const M = window.BonaMarket;
   const { esc, rp, tgl, waktu, sisa } = M;
@@ -56,7 +56,7 @@
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 
-  // ---------- dialog ----------
+  // Dialog
   const dlg = $('#dlg'); let dlgHandler = null;
   function openDialog({ title, body, ok = 'Simpan', okClass = 'btn--red', onOk, onOpen }) {
     $('#dlgTitle').textContent = title; $('#dlgBody').innerHTML = body;
@@ -85,7 +85,7 @@
     });
   }
 
-  // ---------- masuk ----------
+  // Masuk
   const params = new URLSearchParams(location.search);
   function showLogin(msg) {
     BonaLoader.reset(); chatBox?.stop();
@@ -131,7 +131,7 @@
     setSession(null); data = null; chatBox?.stop(); main.innerHTML = ''; showLogin();
   });
 
-  // ---------- data ----------
+  // Data
   async function load() { data = await api('GET', '/me'); return data; }
   async function start() {
     $('#login').hidden = true; $('#changePw').hidden = true; $('#app').hidden = false;
@@ -160,14 +160,14 @@
     if (data?.notifications?.unread) { try { await api('POST', '/notifications/read', {}); data.notifications.unread = 0; list.forEach((n) => { n.readAt ||= new Date().toISOString(); }); bell(); } catch { /* abaikan */ } }
   });
 
-  // ---------- tampilan ----------
+  // Tampilan
   function nextCard(l) {
     const pay = l.payTo ? `<div class="bank">${esc(l.payTo)}</div>` : '<p class="hint">Rekening pemilik akan tampil di sini. Tanyakan lewat chat bila belum ada.</p>';
     switch (l.status) {
       case 'baru': return `<section class="next next--wait"><h2>Menunggu konfirmasi pemilik</h2>
         <p>Pemilik ${esc(l.propertyName)} sedang memastikan kamar tersedia untuk Anda. <strong>Anda belum perlu membayar apa pun.</strong> Setelah dikonfirmasi, nominal DP dan rekening tujuan muncul di sini, dan pemilik juga mengabari lewat WhatsApp.</p>
         <div class="btn-row"><button class="btn btn--ghost" data-visit>${l.visitStatus ? 'Ubah permintaan kunjungan' : 'Minta jadwal kunjungan'}</button><button class="btn btn--ghost" data-cancel>Batalkan reservasi</button></div></section>`;
-      case 'menunggu_dp': return `<section class="next next--act"><h2>Kamar tersedia — bayar DP untuk mengunci</h2>
+      case 'menunggu_dp': return `<section class="next next--act"><h2>Kamar tersedia, bayar DP untuk mengunci</h2>
         ${l.dpRejectNote ? `<p class="err">Bukti sebelumnya belum diterima: ${esc(l.dpRejectNote)}</p>` : ''}
         <p>Transfer booking/DP langsung ke rekening pemilik kos:</p>
         <p class="big-amount">${rp(l.dpAmount)}</p>${pay}
@@ -181,7 +181,7 @@
       case 'berhasil': return `<section class="next next--ok"><h2>Booking berhasil 🎉</h2><p>Bukti booking <strong>${esc(l.invoiceNo)}</strong> sudah terbit. Tunjukkan saat datang. Sisa pembayaran <strong>${rp(l.remaining)}</strong> dibayar langsung ke pemilik.</p>
         <div class="btn-row"><button class="btn btn--red" data-pdf>Unduh bukti booking (PDF)</button>${l.visitStatus !== 'selesai' ? '<button class="btn btn--ghost" data-visit>Atur kunjungan / jam datang</button>' : ''}</div></section>`;
       case 'ditolak': return `<section class="next next--wait"><h2>Kamar belum bisa diterima</h2><p>${esc(l.rejectReason || 'Kamar tidak tersedia.')}</p><div class="btn-row"><a class="btn btn--red" href="/kos-sekitar/">Lihat kos lain di sekitar</a></div></section>`;
-      case 'kedaluwarsa': return `<section class="next next--wait"><h2>Batas bayar DP sudah lewat</h2><p>Reservasi otomatis kedaluwarsa karena bukti DP belum dikirim. Bila masih berminat, kirim pesan ke pemilik — pemilik bisa menawarkan ulang.</p><div class="btn-row"><a class="btn btn--ghost" href="/kos/?k=${esc(l.propertySlug)}">Buka halaman kos</a></div></section>`;
+      case 'kedaluwarsa': return `<section class="next next--wait"><h2>Batas bayar DP sudah lewat</h2><p>Reservasi otomatis kedaluwarsa karena bukti DP belum dikirim. Bila masih berminat, kirim pesan ke pemilik, dan pemilik bisa menawarkan ulang.</p><div class="btn-row"><a class="btn btn--ghost" href="/kos/?k=${esc(l.propertySlug)}">Buka halaman kos</a></div></section>`;
       default: return `<section class="next"><h2>${esc(M.STATUS[l.status] || l.status)}</h2><p>${esc(l.cancelReason || '')}</p>${l.invoiceNo ? '<div class="btn-row"><button class="btn btn--ghost" data-pdf>Unduh bukti booking</button></div>' : ''}<div class="btn-row"><a class="btn btn--ghost" href="/kos-sekitar/">Cari kos lain</a></div></section>`;
     }
   }
@@ -199,7 +199,7 @@
   }
   function render(keep) {
     const l = data.lead; const y = keep ? scrollY : 0;
-    document.title = `Reservasi ${l.propertyName} — Bonaasina`;
+    document.title = `Reservasi ${l.propertyName} | Bonaasina`;
     bell();
     const wa = l.ownerWhatsapp ? `https://wa.me/${l.ownerWhatsapp}?text=${encodeURIComponent(`Horas, saya ${l.name} (reservasi #${l.code}, ${l.username}) di ${l.propertyName}. `)}` : null;
     const unread = data.unreadMessages ? `<span class="unread">${data.unreadMessages}</span>` : '';

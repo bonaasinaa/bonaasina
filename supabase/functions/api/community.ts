@@ -1,8 +1,5 @@
-// Bonaasina — fitur komunitas sekitar kos:
-//   1. Titip jualan & jasa mahasiswa (/titip/). Siapa saja mengirim lewat formulir → admin menyetujui → tampil.
-//      Pembeli menghubungi penjual lewat WhatsApp; website tidak memproses pembayaran.
-//   2. Info tempat sekitar (/sekitar/): warung makan, toko, laundry, fotokopi, dll. Admin mengisi;
-//      pengunjung boleh mengusulkan tempat baru yang masuk ke admin untuk disetujui.
+// Bonaasina, fitur komunitas sekitar kos: titip jualan & jasa mahasiswa (/titip/) dan info tempat sekitar (/sekitar/).
+// Keduanya diisi lewat formulir (pengunjung boleh mengusulkan tempat), disetujui admin, lalu tampil; pembeli menghubungi penjual lewat WhatsApp dan website tidak memproses pembayaran.
 type Row = Record<string, any>;
 
 export function createCommunity(H: Record<string, any>) {
@@ -30,7 +27,7 @@ export function createCommunity(H: Record<string, any>) {
     list.push(now); uploadHits.set(ip, list); return true;
   }
 
-  // ------------------------------------------------------------ TITIP JUALAN & JASA
+  // Titip jualan & jasa
   const publicListing = (r: Row) => ({
     ...pick(r, ['id', 'kind', 'category', 'title', 'description', 'price', 'priceNote', 'photos', 'sellerInfo', 'area', 'featured', 'approvedAt']),
     sellerName: r.sellerName.split(/\s+/).slice(0, 2).join(' '),
@@ -168,7 +165,7 @@ export function createCommunity(H: Record<string, any>) {
     return { ok: true };
   });
 
-  // ------------------------------------------------------------ TEMPAT SEKITAR
+  // Tempat sekitar
   const PLACE_FIELDS = ['id', 'name', 'category', 'description', 'address', 'mapsQuery', 'openHours', 'priceNote', 'distanceNote', 'photo'];
   function placeFields(b: Row) {
     const out: Row = {

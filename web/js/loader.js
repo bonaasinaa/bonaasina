@@ -1,5 +1,4 @@
-/* Layar muat penuh Bonaasina — dipakai admin & dashboard penghuni.
-   Muncul hanya bila proses lebih lama dari ~120 ms (supaya tidak berkedip saat data sudah ada di cache),
+/* Layar muat penuh untuk admin & dashboard penghuni. Muncul hanya bila proses lebih lama dari ~120 ms supaya tidak berkedip,
    dan bila sudah muncul tampil minimal 300 ms supaya tidak terasa seperti kilatan. */
 window.BonaLoader = (() => {
   let el = null, showTimer = 0, hideTimer = 0, shownAt = 0, active = 0;

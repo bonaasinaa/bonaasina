@@ -1,8 +1,5 @@
--- Indeks untuk query yang dipakai paling sering oleh dashboard (temuan Heal: "reads every announcement
--- of every kos", "notifications beyond the newest 60", chat per reservasi).
---
--- Tanpa indeks ini Postgres memindai tabel lalu mengurutkan sebelum LIMIT, sehingga biayanya tumbuh
--- mengikuti jumlah baris, bukan jumlah baris yang ditampilkan.
+-- Indeks untuk query dashboard yang paling sering dipakai (temuan Heal: membaca pengumuman setiap kos, notifikasi
+-- melewati 60 terbaru, chat per reservasi). Tanpa indeks, Postgres memindai lalu mengurutkan sebelum LIMIT, jadi biayanya tumbuh mengikuti jumlah baris tabel.
 
 create index if not exists announcements_created_idx on public.announcements (created_at desc);
 create index if not exists announcements_property_created_idx on public.announcements (property_id, created_at desc);

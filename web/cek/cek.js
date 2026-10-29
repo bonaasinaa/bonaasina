@@ -1,4 +1,4 @@
-/* Bonaasina — cek keaslian kartu, kuitansi, dan bukti booking (dipindah dari skrip inline supaya CSP bisa ketat). */
+/* Bonaasina: cek keaslian kartu, kuitansi, dan bukti booking (dipindah dari skrip inline supaya CSP bisa ketat). */
 (() => {
   const out = document.getElementById('out');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

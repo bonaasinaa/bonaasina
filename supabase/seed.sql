@@ -1,6 +1,5 @@
--- Data awal Bonaasina: dua kos, kamar CONTOH, dan pengaturan.
--- Kamar, harga, alamat, dan nomor WA di sini masih contoh — ubah lewat halaman admin.
--- Ganti email admin di baris terakhir bila perlu.
+-- Data awal Bonaasina: dua kos, kamar CONTOH, dan pengaturan. Kamar, harga, alamat, dan nomor WA masih contoh,
+-- ubah lewat halaman admin. Ganti email admin di baris terakhir bila perlu.
 
 insert into public.settings (id, data) values (1, $json${
   "isSample": true,

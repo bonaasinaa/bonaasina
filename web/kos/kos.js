@@ -1,4 +1,4 @@
-/* Bonaasina — halaman detail satu kos (mitra atau milik sendiri): foto, kamar & harga per periode, aturan, lokasi, reservasi. */
+/* Bonaasina: halaman detail satu kos (mitra atau milik sendiri): foto, kamar & harga per periode, aturan, lokasi, reservasi. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -16,7 +16,7 @@
   fetch(`${API}/kos/${encodeURIComponent(slug)}`).then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; }).then((data) => {
     d = data; const p = d.property;
     cycle = p.periods.includes('bulanan') ? 'bulanan' : p.periods[0];
-    document.title = `${p.name} — Kos Sekitar Bonaasina`;
+    document.title = `${p.name} | Kos Sekitar Bonaasina`;
     $('meta[name=description]').content = `${p.name}${p.city ? `, ${p.city}` : ''}. ${p.tagline || 'Lihat kamar kosong, harga, dan pesan lewat Bonaasina.'}`;
     render();
   }).catch((ex) => { box.innerHTML = `<div class="kempty">${esc(ex.message || 'Kos tidak ditemukan.')} <a href="/kos-sekitar/">Lihat kos lain</a>.</div>`; });
@@ -100,7 +100,7 @@
       lb.addEventListener('click', (e) => { if (e.target === lb) lb.close(); });
     }
     let idx = i;
-    const show = () => { $('img', lb).src = list[idx]; $('img', lb).alt = `${title} ${idx + 1}`; $('figcaption', lb).textContent = `${title} — ${idx + 1} dari ${list.length}`; $$('.lightbox__nav', lb).forEach((b) => { b.hidden = list.length < 2; }); };
+    const show = () => { $('img', lb).src = list[idx]; $('img', lb).alt = `${title} ${idx + 1}`; $('figcaption', lb).textContent = `${title} (${idx + 1} dari ${list.length})`; $$('.lightbox__nav', lb).forEach((b) => { b.hidden = list.length < 2; }); };
     $('.lightbox__prev', lb).onclick = () => { idx = (idx - 1 + list.length) % list.length; show(); };
     $('.lightbox__next', lb).onclick = () => { idx = (idx + 1) % list.length; show(); };
     show(); lb.showModal();

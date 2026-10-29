@@ -1,4 +1,4 @@
-# Bonaasina — Kos Asina & Kos Bona
+# Bonaasina: Kos Asina & Kos Bona
 
 Website untuk calon penyewa, admin untuk pemilik, dan dashboard untuk penghuni.
 
@@ -32,7 +32,7 @@ Supabase Auth: login admin
 - Browser **tidak pernah** membaca tabel langsung. Semua lewat fungsi `api`, yang memeriksa siapa pemanggilnya.
 - **Admin** masuk dengan email + kata sandi (Supabase Auth). Email harus terdaftar di tabel `admins`.
 - **Penghuni** masuk dengan username + kata sandi yang dibuat admin (menu Penghuni → Buat akun, atau saat menambah penghuni). Kata sandi disimpan sebagai hash bcrypt; sesi berupa token acak di header `X-Tenant-Session` (hash di tabel `tenant_sessions`, berlaku 30 hari, diperpanjang otomatis). Mengganti kata sandi, menonaktifkan akun, atau mencatat penghuni keluar langsung mengakhiri semua sesinya. Halaman login admin juga menerima username penghuni dan mengarahkannya ke `/penghuni/`. Login penghuni dibatasi 10 percobaan gagal per 15 menit per IP.
-- **Kontrak digital**: admin membuat kontrak dari templat (Pengaturan → Templat kontrak; tanda `{nama_penghuni}` dsb. diisi otomatis), penghuni menyetujui di dashboard (centang + ketik nama), lalu PDF final disimpan beserta waktu, perangkat, dan IP. 30 hari sebelum berakhir penghuni diminta memilih perpanjang/berhenti; admin melihatnya di Ringkasan & menu Kontrak. Templat bawaan adalah draf umum, **bukan nasihat hukum** — sebaiknya ditinjau sebelum dipakai.
+- **Kontrak digital**: admin membuat kontrak dari templat (Pengaturan → Templat kontrak; tanda `{nama_penghuni}` dsb. diisi otomatis), penghuni menyetujui di dashboard (centang + ketik nama), lalu PDF final disimpan beserta waktu, perangkat, dan IP. 30 hari sebelum berakhir penghuni diminta memilih perpanjang/berhenti; admin melihatnya di Ringkasan & menu Kontrak. Templat bawaan adalah draf umum, **bukan nasihat hukum**, jadi sebaiknya ditinjau sebelum dipakai.
 - **Kuitansi PDF** bernomor (`BNS/KW/tahun/urut`) terbit otomatis saat admin menandai tagihan lunas; berisi QR ke `/cek/`. Nomor kontrak `BNS/KTR/tahun/urut`.
 - **Daftar tunggu**: calon penyewa mendaftar di website; saat kamar kosong (penghuni keluar atau status kamar diubah ke Kosong) pendaftar otomatis ditandai *Perlu dikabari* dan admin mengabari lewat tombol WhatsApp.
 - **Piket**: tugas per kos (harian/mingguan/2 mingguan/bulanan), bergilir N orang per giliran atau bersama; penghuni mengirim foto bukti.

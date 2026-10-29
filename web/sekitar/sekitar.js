@@ -1,4 +1,4 @@
-/* Bonaasina — Info sekitar kos: warung, laundry, toko, dll. + formulir usulan tempat. */
+/* Bonaasina: Info sekitar kos: warung, laundry, toko, dll. + formulir usulan tempat. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

@@ -1,16 +1,5 @@
-// Bonaasina — Kos Sekitar: kos mitra, reservasi, akun pemilik & customer, chat, notifikasi, fee, refund.
-//
-// Alur reservasi (sama untuk kos mitra dan kos Bonaasina sendiri):
-//   1. baru         customer mengisi reservasi (boleh sekalian minta jadwal kunjungan). Akun customer dibuat otomatis.
-//   2. menunggu_dp  pemilik memastikan kamar tersedia, menetapkan total sewa & DP (≥ minimum booking) dan batas bayar.
-//                   Pemilik mengirim pesan WhatsApp berisi tautan dashboard + username + kata sandi.
-//   3. dp_dikirim   customer transfer DP langsung ke rekening pemilik dan mengunggah bukti.
-//   4. dp_diterima  pemilik memastikan uang DP masuk. Fee Bonaasina dihitung; pemilik transfer fee & unggah bukti.
-//   5. berhasil     admin memeriksa kedua bukti lalu menyetujui. Bukti booking (BNS/BK) & invoice fee (BNS/FEE) terbit.
-//   Cabang: ditolak (kamar tidak tersedia), batal (sebelum DP), kedaluwarsa (lewat batas bayar DP).
-//   Refund (setelah DP ditransfer): diminta → dikirim (pemilik unggah bukti) → selesai (customer konfirmasi);
-//   pemilik bisa menolak dengan alasan, customer bisa melaporkan ke admin. Fee batal bila refund selesai.
-// Kos milik Bonaasina sendiri: admin bertindak sebagai pemilik dan tanpa fee (langsung berhasil setelah DP diterima).
+// Bonaasina, Kos Sekitar: kos mitra, reservasi, akun pemilik & customer, chat, notifikasi, fee, refund.
+// Status: baru, menunggu_dp, dp_dikirim, dp_diterima, berhasil; cabang ditolak, batal, kedaluwarsa. Alur dan aturan refund ada di README.md.
 import { transactionPdf } from './docs.ts';
 
 type Row = Record<string, any>;
@@ -26,7 +15,7 @@ export function createMarket(H: Record<string, any>) {
     mail, emailField,
   } = H;
 
-  // ------------------------------------------------------------ konstanta & teks
+  // Konstanta & teks
   const ACTIVE = ['baru', 'menunggu_dp', 'dp_dikirim', 'dp_diterima'];
   const LEAD_STATUS: Record<string, string> = {
     baru: 'Menunggu konfirmasi pemilik', menunggu_dp: 'Tersedia, menunggu DP', dp_dikirim: 'Bukti DP dikirim', dp_diterima: 'DP diterima pemilik',
@@ -94,7 +83,7 @@ export function createMarket(H: Record<string, any>) {
   }
   const feeText = (type: string, value: number) => (type === 'nominal' ? rupiah(value) : `${Number(value).toLocaleString('id-ID')}% dari DP`);
 
-  // ------------------------------------------------------------ notifikasi & pesan sistem
+  // Notifikasi & pesan sistem
   // Setiap notifikasi dashboard juga dikirim ke email penerimanya (bila ada), di latar belakang.
   async function notify(type: 'admin' | 'pemilik' | 'customer', id: string | null, leadId: string | null, kind: string, title: string, body = '') {
     if (type !== 'admin' && !id) return;
@@ -124,7 +113,7 @@ export function createMarket(H: Record<string, any>) {
   const notifyAdmin = (l: Row | null, kind: string, title: string, body = '') => notify('admin', null, l?.id ?? null, kind, title, body);
   const sysMsg = (l: Row, body: string) => q(sb.from('messages').insert({ lead_id: l.id, sender: 'sistem', body: str(body, 2000) }));
 
-  // ------------------------------------------------------------ sesi pemilik & customer
+  // Sesi pemilik & customer
   const SESSION_DAYS = 30;
   const caches = { owner: new Map<string, { v: Row; until: number }>(), lead: new Map<string, { v: Row; until: number }>() };
   async function newSession(kind: 'owner' | 'lead', id: string) {
@@ -241,9 +230,8 @@ export function createMarket(H: Record<string, any>) {
     return { ok: true };
   }
 
-  // ------------------------------------------------------------ data bersama
-  // Kamar terisi; bila daftar kos diberikan, hanya kamar milik kos itu yang dibaca
-  // (halaman publik tidak perlu menarik penghuni seluruh marketplace).
+  // Kamar terisi; bila daftar kos diberikan, hanya kamar milik kos itu yang dibaca,
+  // supaya halaman publik tidak menarik penghuni seluruh marketplace.
   async function activeRoomIds(propertyIds?: string[]) {
     if (!propertyIds?.length) {
       const rows = (await pages((from: number, to: number) => sb.from('tenants').select('room_id').eq('status', 'aktif').range(from, to))) as Row[];
@@ -286,7 +274,7 @@ export function createMarket(H: Record<string, any>) {
     }
   }
 
-  // ================================================================ PUBLIK: daftar & detail kos
+  // Publik: daftar & detail kos
   on('GET', '/kos-sekitar', async () => {
     // Seluruh kos mitra yang aktif, diambil per halaman (tidak terpotong 1000 baris).
     const [s, props] = await Promise.all([
@@ -321,7 +309,7 @@ export function createMarket(H: Record<string, any>) {
     };
   });
 
-  // ================================================================ PUBLIK: kirim reservasi
+  // Publik: kirim reservasi
   on('POST', '/leads', async ({ req, body: b }: Row, log: (e: Row) => void) => {
     if (b.website) return { ok: true }; // honeypot
     const name = str(b.name, 80), phone = phoneOf(b.phone), email = emailField(b.email);
@@ -380,7 +368,7 @@ export function createMarket(H: Record<string, any>) {
       throw new HttpError(429, 'Reservasi dari nomor/perangkat ini sudah cukup banyak. Coba lagi nanti atau hubungi pemilik lewat WhatsApp.');
     }
     const what = `${room ? `kamar ${room.code}` : 'kamar (belum dipilih)'}, ${periodText(period, duration)} mulai ${tanggal(b.moveDate)}${people === 2 ? ', 2 orang' : ''}`;
-    await sysMsg(rec, `Reservasi dibuat: ${what}.${wantVisit ? ` Minta kunjungan ${tanggal(b.visitDate)} ${rec.visitTime}.` : ''} Pemilik akan memastikan ketersediaan dulu — belum perlu membayar apa pun.`);
+    await sysMsg(rec, `Reservasi dibuat: ${what}.${wantVisit ? ` Minta kunjungan ${tanggal(b.visitDate)} ${rec.visitTime}.` : ''} Pemilik akan memastikan ketersediaan dulu, belum perlu membayar apa pun.`);
     await notifyOwner(p, rec, 'lead', `Reservasi baru dari ${name}`, `${what}. Konfirmasi ketersediaan secepatnya.`);
     if (isMitra(p)) await notifyAdmin(rec, 'lead', `Reservasi baru di ${p.name}`, `${name}: ${what}.`);
     await notifyCustomer(rec, 'info', 'Reservasi terkirim', `Pemilik ${p.name} akan memastikan ketersediaan kamar. Anda belum perlu membayar apa pun.`);
@@ -388,7 +376,7 @@ export function createMarket(H: Record<string, any>) {
     return created({ ok: true, code: rec.code, username: rec.username, password, link: `${site()}/akun/?u=${rec.username}`, propertyName: p.name });
   });
 
-  // ================================================================ tampilan reservasi
+  // Tampilan reservasi
   function timeline(l: Row) {
     const done = (s: string) => ['menunggu_dp', 'dp_dikirim', 'dp_diterima', 'berhasil'].indexOf(l.status) >= ['menunggu_dp', 'dp_dikirim', 'dp_diterima', 'berhasil'].indexOf(s);
     return [
@@ -464,7 +452,7 @@ export function createMarket(H: Record<string, any>) {
     };
   }
 
-  // ================================================================ aksi reservasi (pemilik & admin)
+  // Aksi reservasi (pemilik & admin)
   const need = (l: Row, ...st: string[]) => { if (!st.includes(l.status)) throw bad(`Aksi ini tidak bisa dilakukan saat status "${LEAD_STATUS[l.status] || l.status}".`); };
   const save = async (l: Row, patch: Row) => Object.assign(l, await update('leads', l.id, patch));
   const who = (role: Role) => (role === 'admin' ? 'Admin Bonaasina' : 'Pemilik');
@@ -505,7 +493,7 @@ export function createMarket(H: Record<string, any>) {
       dpRejectNote: '', rejectReason: '', dpProofPath: null, dpUploadedAt: null,
     });
     await sysMsg(l, `${who(role)} mengonfirmasi kamar ${room.code} tersedia. Total sewa ${rupiah(priceTotal)}, DP ${rupiah(dp)} dibayar sebelum ${WAKTU(deadline)}.${msg ? `\nPesan: ${msg}` : ''}`);
-    await notifyCustomer(l, 'status', 'Kamar tersedia — lanjutkan pembayaran DP', `Transfer DP ${rupiah(dp)} ke rekening pemilik sebelum ${WAKTU(deadline)}, lalu unggah buktinya.`);
+    await notifyCustomer(l, 'status', 'Kamar tersedia, lanjutkan pembayaran DP', `Transfer DP ${rupiah(dp)} ke rekening pemilik sebelum ${WAKTU(deadline)}, lalu unggah buktinya.`);
     return `Mengonfirmasi ketersediaan kamar ${room.code} untuk ${l.name} (DP ${rupiah(dp)})`;
   }
   async function doReject(l: Row, _p: Row, b: Row, role: Role) {
@@ -772,7 +760,7 @@ export function createMarket(H: Record<string, any>) {
     const { p } = await leadContext(l);
     const owner = p?.ownerId ? await one('owners', p.ownerId) : null;
     return await transactionPdf({
-      title: 'INVOICE FEE', number: l.feeInvoiceNo, issuedAt: l.feePaidAt || l.approvedAt || nowIso(), subtitle: `Kemitraan Kos Sekitar — ${p?.name || ''}`,
+      title: 'INVOICE FEE', number: l.feeInvoiceNo, issuedAt: l.feePaidAt || l.approvedAt || nowIso(), subtitle: `Kemitraan Kos Sekitar: ${p?.name || ''}`,
       intro: `Fee kemitraan atas booking yang terjadi lewat website Bonaasina telah diterima dari ${owner?.name || 'pemilik kos'}.`,
       rows: [
         ['Ditagihkan kepada', `${owner?.name || '-'} (pemilik ${p?.name || '-'})`], ['Booking', `#${l.code}, ${l.name}, mulai ${tanggal(l.moveDate)}`],
@@ -791,7 +779,7 @@ export function createMarket(H: Record<string, any>) {
     return { type: 'booking', valid: l.status === 'berhasil', invoiceNo: l.invoiceNo, name: l.name, propertyName: p?.name || '', roomCode: room?.code || '', periodLabel: `${periodText(l.period, l.duration)} mulai ${tanggal(l.moveDate)}`, amount: l.dpAmount, approvedAt: l.approvedAt, refunded: l.refundStatus === 'selesai' };
   }
 
-  // ================================================================ CUSTOMER (/akun)
+  // Customer (/akun)
   on('POST', '/akun/logout', async ({ req }: Row, log: (e: Row) => void) => { log({ action: 'customer.logout', summary: 'Keluar dari dashboard reservasi' }); return await logout('lead', req); });
   on('POST', '/akun/password', async ({ req, body: b, lead: l }: Row, log: (e: Row) => void) => {
     const out = await changePassword('lead', l, req, b);
@@ -925,7 +913,7 @@ export function createMarket(H: Record<string, any>) {
     return pdfOut(bytes, `bukti-booking-${fileSafe(l.invoiceNo)}.pdf`);
   });
 
-  // ================================================================ PEMILIK (/pemilik)
+  // Pemilik (/pemilik)
   const ownerProps = async (o: Row) => ((await q(sb.from('properties').select('*').eq('owner_id', o.id))) as Row[] || []).map((p) => toCamel(p)).sort(bySort) as Row[];
   async function ownerProp(o: Row, id: string) {
     const p = await one('properties', str(id, 60));
@@ -1126,7 +1114,7 @@ export function createMarket(H: Record<string, any>) {
   on('GET', '/pemilik/notifications', async ({ url, owner: o }: Row) => notifList('pemilik', o.id, Number(url.searchParams.get('before')) || 0));
   on('POST', '/pemilik/notifications/read', async ({ body: b, owner: o }: Row) => notifRead('pemilik', o.id, b));
 
-  // ================================================================ ADMIN — Kos Sekitar
+  // Admin: Kos Sekitar
   const USER_RE = /^[a-z0-9._-]{3,32}$/;
   function ownerOut(o: Row) { return pick(o, ['id', 'name', 'phone', 'email', 'username', 'mustChange', 'status', 'note', 'lastLoginAt', 'passwordSetAt', 'createdAt']); }
   async function usernameTaken(u: string, exceptOwner?: string) {
@@ -1255,7 +1243,7 @@ export function createMarket(H: Record<string, any>) {
   on('GET', '/admin/notifications', async ({ url }: Row) => notifList('admin', null, Number(url.searchParams.get('before')) || 0));
   on('POST', '/admin/notifications/read', async ({ body: b }: Row) => notifRead('admin', null, b));
 
-  // ================================================================ PENDAFTARAN MITRA (/mitra/)
+  // Pendaftaran mitra (/mitra/)
   const GENDERS = ['Putra', 'Putri', 'Campur', 'Pasutri'];
   on('POST', '/mitra/daftar', async ({ req, body: b }: Row, log: (e: Row) => void) => {
     if (b.website) return { ok: true }; // honeypot
@@ -1292,10 +1280,10 @@ export function createMarket(H: Record<string, any>) {
   on('GET', '/admin/applications', async () => ((await pages((from: number, to: number) => sb.from('partner_applications').select('*').order('created_at', { ascending: false }).order('id').range(from, to))) as Row[]).map((r) => toCamel(r)));
   const slugUser = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^kos\s+/, '').replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'mitra';
   function accountMessage(o: Row, kosName: string, password: string) {
-    return `Horas ${o.name}, selamat bergabung sebagai mitra Kos Sekitar Bonaasina! 🎉\n\n` +
+    return `Horas ${o.name}, selamat bergabung sebagai mitra Kos Sekitar Bonaasina!\n\n` +
       `Akun untuk ${kosName} sudah siap:\nAlamat: ${site()}/pemilik/\nUsername: ${o.username}\nKata sandi sementara: ${password}\n\n` +
       `Langkah berikutnya:\n1. Masuk, lalu buat kata sandi Anda sendiri.\n2. Lengkapi info kos, foto, kamar & harga, rekening, dan nomor WhatsApp.\n3. Tekan "Minta ditampilkan di website". Setelah kami cek, kos Anda tampil dan siap dipesan.\n\n` +
-      `Ada pertanyaan? Balas pesan ini saja. Terima kasih 🙏`;
+      `Ada pertanyaan? Balas pesan ini saja. Terima kasih.`;
   }
   on('POST', '/admin/applications/:id/approve', async ({ params, body: b }: Row, log: (e: Row) => void) => {
     const a = toCamel(await q(sb.from('partner_applications').select('*').eq('id', str(params.id, 60)).maybeSingle()));
@@ -1336,7 +1324,7 @@ export function createMarket(H: Record<string, any>) {
     // Hanya berhasil bila status belum berubah; penolakan tidak boleh menimpa persetujuan yang berjalan.
     const claimed = await q(sb.from('partner_applications').update({ status: 'ditolak', admin_note: note, decided_at: nowIso() }).eq('id', a.id).eq('status', a.status).select('id').maybeSingle());
     if (!claimed) throw bad('Pendaftaran ini baru saja diproses permintaan lain. Muat ulang daftarnya.');
-    const text = `Horas ${a.name}, terima kasih sudah mendaftarkan ${a.kosName} sebagai mitra Bonaasina.\n\nMohon maaf, untuk saat ini kami belum bisa menerimanya${note ? `: ${note}` : '.'}\n\nSilakan hubungi kami bila ada pertanyaan.`;
+    const text = `Horas ${a.name}, terima kasih sudah mendaftarkan ${a.kosName} sebagai mitra Bonaasina.\n\nMohon maaf, untuk saat ini kami belum bisa menerimanya${note ? `: ${note}` : '.'}\n\nSilakan balas pesan ini bila ada pertanyaan.`;
     mail.send({ to: a.email, kind: 'partner.rejected', dedupeKey: `partner.rejected:${a.id}`, subject: `Pendaftaran mitra ${a.kosName}`, title: 'Pendaftaran mitra belum bisa diterima', intro: text.replace(/^Horas [^,]+, /, `Horas ${a.name}, `) });
     log({ action: 'partner.reject', summary: `Menolak pendaftaran mitra ${a.kosName}` });
     return { text, url: waLink(a.phone, text) };

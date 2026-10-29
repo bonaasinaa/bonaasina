@@ -1,6 +1,5 @@
--- Bonaasina — notifikasi email lewat Resend.
--- Kolom email (opsional) untuk setiap orang yang perlu dikabari, dan catatan email terkirim
--- (sekaligus kunci idempoten supaya satu kejadian tidak mengirim email dua kali).
+-- Bonaasina, notifikasi email lewat Resend: kolom email opsional untuk setiap orang yang perlu dikabari, dan catatan
+-- email terkirim yang sekaligus jadi kunci idempoten supaya satu kejadian tidak mengirim email dua kali.
 alter table public.tenants add column if not exists email text not null default '';
 alter table public.leads add column if not exists email text not null default '';
 alter table public.surveys add column if not exists email text not null default '';

@@ -1,4 +1,4 @@
-/* Bonaasina — Titip jualan & jasa mahasiswa: daftar iklan + formulir pasang iklan (disetujui admin). */
+/* Bonaasina: Titip jualan & jasa mahasiswa: daftar iklan + formulir pasang iklan (disetujui admin). */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,7 +42,7 @@
       </div></article>`).join('');
   }
 
-  // ---------- formulir ----------
+  // Formulir
   const form = $('#tjForm'), photos = [];
   function fillCats() {
     const k = form.kind.value; $('#tjCat').innerHTML = (st.cats[k] || ['Lainnya']).map((c) => `<option>${esc(c)}</option>`).join('');

@@ -1,8 +1,5 @@
--- Perbaikan temuan Heal: PDF kontrak tidak pernah bisa disimpan.
---
--- Bucket "private" hanya mengizinkan foto (image/jpeg, image/png, image/webp), padahal isinya juga
--- PDF kontrak & bukti booking. Unggahan application/pdf ditolak storage (415) sehingga penghuni
--- selalu melihat "Gagal menyimpan PDF kontrak." saat menyetujui kontrak.
+-- Perbaikan temuan Heal: bucket "private" hanya mengizinkan foto (image/jpeg, image/png, image/webp), padahal isinya
+-- juga PDF kontrak & bukti booking. Unggahan application/pdf ditolak (415), jadi penghuni selalu gagal menyimpan kontrak.
 
 update storage.buckets
    set allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],

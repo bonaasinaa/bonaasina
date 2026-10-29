@@ -1,9 +1,5 @@
-// Bonaasina API — Supabase Edge Function (Deno).
-// Satu fungsi melayani tiga kelompok:
-//   /public, /surveys, /waitlist → calon penyewa (tanpa login)
-//   /penghuni/...              → penghuni (username + kata sandi; sesi di header X-Tenant-Session)
-//   /admin/...                 → pemilik (token login Supabase Auth, email harus terdaftar di tabel admins)
-// Fungsi ini memakai kunci rahasia (melewati RLS); tabel tidak bisa diakses dari browser secara langsung.
+// Bonaasina API, satu Supabase Edge Function (Deno) untuk tiga kelompok: /public, /surveys, /waitlist (calon penyewa, tanpa login),
+// /penghuni/... (sesi di header X-Tenant-Session) dan /admin/... (Supabase Auth, email harus terdaftar di tabel admins). Memakai kunci rahasia, jadi browser tidak pernah membaca tabel langsung.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 import bcrypt from 'npm:bcryptjs@2.4.3';
 import { contractPdf, receiptPdf, cardPdf, qrSvg, terbilang, DEFAULT_CONTRACT_TEMPLATE } from './docs.ts';
@@ -23,7 +19,7 @@ const sb: SupabaseClient = createClient(SUPABASE_URL, SECRET, { auth: { persistS
 
 function safeJson(s?: string | null) { try { return s ? JSON.parse(s) : null; } catch { return null; } }
 
-// ---------------------------------------------------------------- util umum
+// Util umum
 type Row = Record<string, any>;
 class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 const bad = (m: string) => new HttpError(400, m);
@@ -65,7 +61,7 @@ function randomToken(bytes = 24) {
   return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// ---------------------------------------------------------------- akses data
+// Akses data
 async function q<T = Row>(p: PromiseLike<{ data: any; error: any }>): Promise<T> {
   const { data, error } = await p;
   if (error) {
@@ -76,9 +72,8 @@ async function q<T = Row>(p: PromiseLike<{ data: any; error: any }>): Promise<T>
   }
   return data as T;
 }
-// PostgREST membatasi jumlah baris yang dikembalikan satu permintaan (max_rows, bawaan 1000) tanpa
-// memberi tahu pemanggil. Setiap daftar yang dibaca penuh diambil per halaman supaya tidak ada data
-// yang diam-diam hilang ketika tabel bertambah besar.
+// PostgREST memotong hasil satu permintaan di max_rows (bawaan 1000) tanpa memberi tahu pemanggil, jadi daftar yang dibaca penuh
+// diambil per halaman supaya tidak ada data yang diam-diam hilang ketika tabel bertambah besar.
 const PAGE_SIZE = 500;
 const ALL_MAX = 20000;
 const IN_CHUNK = 100;
@@ -92,8 +87,7 @@ async function pages<T = Row>(make: (from: number, to: number) => any, max = ALL
   return out;
 }
 // Daftar penuh sebuah tabel, urut kolom yang diminta + id sebagai pemecah seri supaya halaman stabil.
-// Username dipakai bersama oleh penghuni, pemilik kos, dan customer reservasi; /masuk mencoba
-// ketiganya, jadi keunikan harus dicek di ketiga tabel juga — bukan hanya di tenants.
+// Username dipakai bersama penghuni, pemilik, dan customer reservasi, jadi keunikannya dicek di ketiga tabel, bukan hanya di tenants.
 async function usernameTakenAnywhere(username: string, except?: { table: string; id: string }) {
   const tables: [string, string][] = [['owners', 'pemilik kos'], ['leads', 'customer reservasi'], ['tenants', 'penghuni']];
   const rows = await Promise.all(tables.map(([t]) => q<Row | null>(sb.from(t).select('id').eq('username', username).maybeSingle())));
@@ -138,7 +132,7 @@ const update = async (table: string, id: string, patch: Row) => {
 const remove = async (table: string, id: string) => { await q(sb.from(table).delete().eq('id', id)); return { ok: true }; };
 async function getSettings(): Promise<Row> { return (await q<Row | null>(sb.from('settings').select('data').eq('id', 1).maybeSingle()))?.data ?? {}; }
 
-// ---------------------------------------------------------------- tanggal & tagihan
+// Tanggal & tagihan
 const DAY = 864e5;
 const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -284,7 +278,7 @@ const DEFAULT_TEMPLATE =
   'Horas {nama}, ini pengingat dari {kos}.\n\nTagihan sewa kamar {kamar} untuk periode {periode} sebesar {jumlah} jatuh tempo {jatuh_tempo}.{keterlambatan}\n\n' +
   'Pembayaran bisa ditransfer ke:\n{rekening}\n\nSetelah bayar, unggah bukti transfer di dashboard penghuni Anda:\n{portal}\n\nTerima kasih.';
 
-// ---------------------------------------------------------------- berkas
+// Berkas
 const MIME_EXT: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 async function readImage(req: Request, maxBytes = 5 * 1024 * 1024) {
   const type = (req.headers.get('content-type') || '').split(';')[0];
@@ -310,10 +304,8 @@ async function signedUrl(path: string) {
 }
 const okPhoto = (u: string) => u.startsWith(PHOTO_PREFIX) || u.startsWith('/assets/');
 
-// ---------------------------------------------------------------- log aktivitas
-// Dicatat: login/keluar admin, semua perubahan data oleh admin, akses berkas & unduhan,
-// aktivitas penghuni di dashboard, permintaan survei & daftar tunggu, dan percobaan akses yang gagal.
-// Kunjungan halaman publik tidak dicatat di sini (itu tugas Google Analytics).
+// Log aktivitas mencatat login/keluar admin, perubahan data oleh admin, akses berkas & unduhan, aktivitas penghuni,
+// permintaan survei & daftar tunggu, dan percobaan akses gagal. Kunjungan halaman publik tidak dicatat (itu tugas Google Analytics).
 type ActorType = 'admin' | 'penghuni' | 'publik' | 'pemilik' | 'customer';
 type LogEntry = { action: string; summary: string; target?: string | null; ok?: boolean; meta?: Row; dedupeMinutes?: number };
 const LOG_KEEP_DAYS = 180;
@@ -328,9 +320,8 @@ function describeUA(ua: string | null) {
   return os ? `${browser} di ${os}` : browser;
 }
 function clientInfo(req: Request) {
-  // Urutan ini penting: cf-connecting-ip diisi Cloudflare (tidak bisa ditimpa klien), x-real-ip diisi
-  // proxy, dan x-forwarded-for diambil entri TERAKHIR (yang ditambahkan proxy terdekat) — dulu entri
-  // pertama dipakai sehingga klien bisa mengarang alamat untuk melewati batas percobaan login.
+  // Urutan ini penting: cf-connecting-ip diisi Cloudflare dan tidak bisa ditimpa klien, x-real-ip diisi proxy,
+  // x-forwarded-for diambil entri terakhir. Dulu entri pertama dipakai, sehingga klien bisa mengarang alamat untuk melewati batas login.
   const cf = (req.headers.get('cf-connecting-ip') || '').trim();
   const real = (req.headers.get('x-real-ip') || '').trim();
   const fwd = (req.headers.get('x-forwarded-for') || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -363,7 +354,7 @@ function writeLog(req: Request, actorType: ActorType, actor: string, e: LogEntry
     if (Math.random() < 0.02) await sb.from('activity_log').delete().lt('created_at', new Date(Date.now() - LOG_KEEP_DAYS * DAY).toISOString());
   })());
 }
-// ---------------------------------------------------------------- email (Resend)
+// Email (Resend)
 const mail = createMailer({ sb, background, SITE_URL });
 // Kolom email opsional dari formulir: kosong boleh, isi harus alamat yang benar.
 function emailField(v: unknown) {
@@ -380,7 +371,7 @@ async function invoiceDesc(id: string) {
   return r ? { text: `${r.tenants?.name || 'penghuni'}, ${r.period_label} (${rupiah(r.amount)})`, target: r.rooms?.code || null } : { text: 'tagihan', target: null };
 }
 
-// ---------------------------------------------------------------- router
+// Router
 type Ctx = { req: Request; url: URL; params: Record<string, string>; body: Row; tenant?: Row; owner?: Row; lead?: Row; adminEmail?: string; log?: LogEntry | null };
 // Handler memanggil log({...}) untuk mencatat aktivitasnya; catatan ditulis setelah handler berhasil.
 type Handler = (c: Ctx, log: (e: LogEntry) => void) => Promise<unknown> | unknown;
@@ -396,7 +387,7 @@ function on(method: string, path: string, fn: Handler, opts: { raw?: boolean } =
 }
 const created = (body: unknown) => ({ __status: 201, body });
 
-// ================================================================ PUBLIK
+// Publik
 export const PUBLIC_PROPERTY_FIELDS = ['id', 'slug', 'name', 'shortName', 'logo', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'facilities', 'nearby', 'photos', 'kind', 'city', 'periods', 'minBooking', 'bookingPolicy', 'visitHours', 'chatEnabled', 'checkedAt'];
 export const PUBLIC_ROOM_FIELDS = ['id', 'propertyId', 'code', 'type', 'sizeM2', 'floor', 'priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'capacity', 'extraPersonFee', 'extraPersonPeriod', 'facilities', 'photos', 'note'];
 on('GET', '/public', async () => {
@@ -471,7 +462,7 @@ on('POST', '/surveys', async ({ body: b }, log) => {
   return created({ ok: true, id: rec.id });
 });
 
-// ================================================================ DASHBOARD PENGHUNI — bukti bayar & kerusakan
+// Dashboard penghuni: bukti bayar & kerusakan
 on('POST', '/penghuni/invoices/:id/proof', async ({ req, params, tenant: t }, log) => {
   const inv = await one('invoices', params.id);
   if (!inv || inv.tenantId !== t!.id) throw notFound('Tagihan tidak ditemukan.');
@@ -527,7 +518,7 @@ on('POST', '/penghuni/issues/:id/photo', async ({ req, params, tenant: t }, log)
   return { ok: true };
 }, { raw: true });
 
-// ================================================================ ADMIN — login
+// Admin: login
 on('POST', '/admin/login', async ({ req, body: b }, log) => {
   const email = str(b.email, 200).toLowerCase();
   // Batas percobaan masuk admin (per IP dan per email), sama seperti login penghuni.
@@ -594,12 +585,12 @@ on('POST', '/admin/setup', async ({ req, body: b }, log) => {
 });
 function sessionOut(s: Row) { return { accessToken: s.access_token, refreshToken: s.refresh_token, expiresAt: s.expires_at }; }
 
-// ================================================================ ADMIN — ringkasan
+// Admin: ringkasan
 on('GET', '/admin/summary', async () => {
   const createdCount = await generateInvoicesThrottled();
   const today = todayStr(); const month = today.slice(0, 7); const monthStart = `${month}-01`;
   // Ringkasan hanya membaca baris yang benar-benar dipakai: tagihan belum lunas, pembayaran bulan ini,
-  // pengeluaran bulan ini, penghuni aktif, plus hitungan untuk lencana — bukan seluruh riwayat tabel.
+  // pengeluaran bulan ini, penghuni aktif, plus hitungan untuk lencana, bukan seluruh riwayat tabel.
   const [props, rooms, activeTenants, unpaidRows, paidMonth, expRows, contracts, s, [surveysBaru, issuesOpen, waitlistToNotify]] = await Promise.all([
     all('properties'), all('rooms'),
     pages<Row>((from, to) => sb.from('tenants').select('id, room_id, end_date').eq('status', 'aktif').range(from, to)),
@@ -645,7 +636,7 @@ on('GET', '/admin/summary', async () => {
   };
 });
 
-// ================================================================ ADMIN — kos & kamar
+// Admin: kos & kamar
 on('GET', '/admin/properties', async () => (await all('properties')).sort(bySort));
 // Kolom kos yang boleh diubah pemilik (admin bisa semuanya, lihat propertyAdminPatch).
 export function propertyPatch(b: Row) {
@@ -763,7 +754,7 @@ on('DELETE', '/admin/rooms/:id', async ({ params }, log) => {
   return out;
 });
 
-// ================================================================ ADMIN — penghuni
+// Admin: penghuni
 function tenantFromBody(b: Row) {
   const t: Row = {};
   for (const k of ['name', 'phone', 'occupation', 'origin', 'emergencyName', 'emergencyPhone', 'emergencyRelation', 'note', 'coName', 'coPhone', 'coRelation', 'coOccupation']) if (b[k] !== undefined) t[k] = str(b[k], k === 'note' ? 600 : 120);
@@ -879,7 +870,7 @@ on('POST', '/admin/tenants/:id/checkout', async ({ params, body }, log) => {
   log({ action: 'tenant.checkout', summary: `Mencatat ${cur.name} keluar per ${tanggal(endDate)}${waiting ? `; ${waiting} orang di daftar tunggu perlu dikabari` : ''}`, target: room?.code });
   return { ok: true, waitlistMatched: waiting };
 });
-// ================================================================ ADMIN — tagihan
+// Admin: tagihan
 on('GET', '/admin/invoices', async () => {
   await generateInvoicesThrottled();
   const [invs, tenants, rooms] = await Promise.all([all('invoices', 'due_date'), all('tenants'), all('rooms')]);
@@ -1006,7 +997,7 @@ on('GET', '/admin/file', async ({ url }, log) => {
   return out;
 });
 
-// ================================================================ ADMIN — survei, kerusakan, pengeluaran
+// Admin: survei, kerusakan, pengeluaran
 on('GET', '/admin/surveys', async ({ url }) => {
   // Maksimal 50 per halaman (bisa diminta lebih banyak oleh tombol "Muat lebih banyak", dibatasi 500).
   const limit = Math.min(500, Math.max(20, Number(url.searchParams.get('limit')) || 50));
@@ -1095,7 +1086,7 @@ on('DELETE', '/admin/expenses/:id', async ({ params }, log) => {
   return out;
 });
 
-// ================================================================ ADMIN — laporan
+// Admin: laporan
 async function report(year: string) {
   const [props, invs, exps] = await Promise.all([all('properties'), q<Row[]>(sb.from('invoices').select('*').eq('status', 'lunas').gte('paid_at', `${year}-01-01`).lte('paid_at', `${year}-12-31`)), q<Row[]>(sb.from('expenses').select('*').gte('date', `${year}-01-01`).lte('date', `${year}-12-31`))]);
   const paidAll = (invs || []).map((r) => toCamel(r)!); const expAll = (exps || []).map((r) => toCamel(r)!);
@@ -1126,7 +1117,7 @@ on('GET', '/admin/reports.csv', async ({ url }, log) => {
   return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="laporan-bonaasina-${year}.csv"` } });
 });
 
-// ================================================================ ADMIN — pengaturan, unggah, cadangan
+// Admin: pengaturan, unggah, cadangan
 const SETTING_FIELDS = ['siteName', 'tagline', 'ownerName', 'whatsapp', 'paymentInfo', 'paymentMethods', 'depositInfo', 'reminderTemplate', 'invoiceLeadDays', 'surveyHours',
   'bonaBankInfo', 'waTemplateConfirm', 'waTemplateReject', 'marketIntro', 'ownBankInfo', 'brandLogo', 'notifyEmail'];
 const SETTING_NUMBERS: Record<string, [number, number]> = { invoiceLeadDays: [0, 60], feeDueDays: [1, 30], dpHours: [1, 168], leadResponseHours: [1, 168] };
@@ -1182,7 +1173,7 @@ on('GET', '/admin/export', async (_c, log) => {
   return out;
 });
 
-// ================================================================ ADMIN — log aktivitas
+// Admin: log aktivitas
 on('GET', '/admin/activity', async ({ url }) => {
   const type = url.searchParams.get('type') || 'semua';
   const term = str(url.searchParams.get('q'), 80).replace(/[%,()]/g, ' ').trim();
@@ -1207,7 +1198,7 @@ on('GET', '/admin/activity', async ({ url }) => {
   return { items, hasMore: list.length > limit, counts: { semua: all30, admin, penghuni, publik, pemilik, customer, gagal }, keepDays: LOG_KEEP_DAYS };
 });
 
-// ================================================================ DASHBOARD PENGHUNI — masuk & data utama
+// Dashboard penghuni: masuk & data utama
 const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
 const SESSION_DAYS = 30;
 const cardCode = (n = 10) => { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; return [...crypto.getRandomValues(new Uint8Array(n))].map((x) => a[x % a.length]).join(''); };
@@ -1310,7 +1301,7 @@ function contractPhase(c: Row, today = todayStr()) {
 const CONTRACT_FIELDS = ['id', 'number', 'tenantId', 'roomId', 'propertyId', 'startDate', 'endDate', 'rentAmount', 'rentCycle', 'deposit', 'status', 'acceptedAt', 'acceptedName', 'decision', 'decisionNote', 'decisionAt', 'decisionHandledAt', 'renewedFrom', 'createdAt'];
 const contractOut = (c: Row): Row => ({ ...pick(c, CONTRACT_FIELDS), hasPdf: !!c.pdfPath, ...contractPhase(c) });
 
-// ---------------------------------------------------------------- piket: jadwal bergilir
+// Piket: jadwal bergilir
 const MAX_CHORE_PHOTOS = 24;
 function choreDates(task: Row, from: string, to: string) {
   const out: { date: string; k: number }[] = [];
@@ -1362,7 +1353,7 @@ async function choreSchedule(propertyId: string | null, from: string, to: string
   return { tasks, items };
 }
 
-// ---------------------------------------------------------------- daftar tunggu: cocokkan saat kamar kosong
+// Daftar tunggu: cocokkan saat kamar kosong
 async function matchWaitlist(roomId: string) {
   const room = await one('rooms', roomId);
   if (!room || room.hidden || room.status !== 'kosong' || (await activeInRoom(room.id))) return 0;
@@ -1492,7 +1483,7 @@ async function buildCard(t: Row) {
   return await cardPdf({ name: t.name, propertyName: prop?.name || 'Bonaasina', roomCode: room?.code || '-', since: t.startDate, validUntil: c && c.endDate >= todayStr() ? c.endDate : null, cardCode: code, photo, status: t.status });
 }
 
-// ---------------------------------------------------------------- penghuni: kontrak
+// Penghuni: kontrak
 async function myContract(id: string, t: Row) {
   const c = await one('contracts', id);
   if (!c || c.tenantId !== t.id || c.status === 'dibatalkan') throw notFound('Kontrak tidak ditemukan.');
@@ -1550,7 +1541,7 @@ on('POST', '/penghuni/contracts/:id/decision', async ({ params, body: b, tenant:
   return contractOut(rec);
 });
 
-// ---------------------------------------------------------------- penghuni: kondisi kamar, pengumuman, piket, kuitansi
+// Penghuni: kondisi kamar, pengumuman, piket, kuitansi
 on('POST', '/penghuni/inspections/:id/ack', async ({ params, body: b, tenant: t }, log) => {
   const x = await one('room_inspections', params.id);
   if (!x || x.tenantId !== t!.id) throw notFound('Catatan kondisi tidak ditemukan.');
@@ -1639,7 +1630,7 @@ on('GET', '/penghuni/invoices/:id/receipt.pdf', async ({ params, tenant: t }, lo
   return pdfOut(bytes, `kuitansi-${fileSafe(inv.periodLabel)}.pdf`);
 });
 
-// ---------------------------------------------------------------- publik: cek keaslian kartu/kuitansi, daftar tunggu
+// Publik: cek keaslian kartu/kuitansi, daftar tunggu
 on('GET', '/public/verify/:code', async ({ params }) => {
   const code = str(params.code, 20).toLowerCase();
   if (!/^[a-z0-9]{8,16}$/.test(code)) throw notFound('Kode tidak dikenal.');
@@ -1698,7 +1689,7 @@ on('POST', '/waitlist', async ({ body: b }, log) => {
   return created({ ok: true, id: rec.id, available: !!match });
 });
 
-// ================================================================ ADMIN — akun login, detail, foto & kartu penghuni
+// Admin: akun login, detail, foto & kartu penghuni
 on('POST', '/admin/tenants/:id/account', async ({ body: b, params }, log) => {
   const t = await one('tenants', params.id); if (!t) throw notFound('Penghuni tidak ditemukan.');
   const out = await setAccount(t, b);
@@ -1779,7 +1770,7 @@ on('POST', '/admin/upload-private', async ({ req, url }) => {
   return created({ path, url: await signedUrl(path) });
 }, { raw: true });
 
-// ================================================================ ADMIN — kontrak
+// Admin: kontrak
 async function contractDocData(c: Row) {
   const [t, room, s] = await Promise.all([one('tenants', c.tenantId), c.roomId ? one('rooms', c.roomId) : null, getSettings()]);
   const prop = c.propertyId ? await one('properties', c.propertyId) : null;
@@ -1922,7 +1913,7 @@ on('GET', '/admin/contracts/:id/pdf', async ({ params }, log) => {
   return pdfOut(await contractBytes(c), `kontrak-${fileSafe(c.number)}.pdf`);
 });
 
-// ================================================================ ADMIN — kondisi kamar
+// Admin: kondisi kamar
 const CONDITIONS = ['baik', 'kurang', 'rusak', 'tidak_ada'];
 const MAX_INSPECTION_ITEMS = 100;
 const MAX_INSPECTION_PHOTOS = 12;
@@ -1957,7 +1948,7 @@ on('DELETE', '/admin/inspections/:id', async ({ params }, log) => {
   return { ok: true };
 });
 
-// ================================================================ ADMIN — kuitansi, daftar tunggu
+// Admin: kuitansi, daftar tunggu
 on('GET', '/admin/invoices/:id/receipt.pdf', async ({ params }, log) => {
   const inv = await one('invoices', params.id); if (!inv) throw notFound('Tagihan tidak ditemukan.');
   const bytes = await receiptFor(inv);
@@ -2020,7 +2011,7 @@ on('DELETE', '/admin/waitlist/:id', async ({ params }, log) => {
 });
 const WAITLIST_LABEL: Record<string, string> = { menunggu: 'Menunggu', perlu_dikabari: 'Perlu dikabari', dikabari: 'Sudah dikabari', selesai: 'Selesai', batal: 'Batal' };
 
-// ================================================================ ADMIN — pengumuman
+// Admin: pengumuman
 on('GET', '/admin/announcements', async ({ url }) => {
   // Satu halaman 20 pengumuman; 'before' mengambil yang lebih lama. Pembacaan hanya diambil untuk
   // pengumuman di halaman ini, bukan seluruh riwayat pengumuman + seluruh catatan pembacaan.
@@ -2087,7 +2078,7 @@ on('DELETE', '/admin/announcements/:id', async ({ params }, log) => {
   return out;
 });
 
-// ================================================================ ADMIN — piket
+// Admin: piket
 on('GET', '/admin/chores', async () => {
   const today = todayStr();
   const from = fmt(new Date(parse(today).getTime() - 21 * DAY)); const to = fmt(new Date(parse(today).getTime() + 21 * DAY));
@@ -2130,9 +2121,8 @@ on('POST', '/admin/chores', async ({ body: b }, log) => {
 on('PUT', '/admin/chores/:id', async ({ params, body: b }, log) => {
   const cur = await one('chore_tasks', params.id); if (!cur) throw notFound('Jadwal piket tidak ditemukan.');
   const c = choreFromBody(b); delete c.propertyId;
-  // Mengubah tanggal mulai atau frekuensi memindahkan tanggal giliran, sehingga laporan yang sudah
-  // dikirim (foto bukti) tidak lagi punya jadwal. Perubahan ditahan dengan pesan jelas kecuali admin
-  // mengirim force: true.
+  // Mengubah tanggal mulai atau frekuensi memindahkan tanggal giliran, sehingga laporan yang sudah dikirim tidak punya jadwal lagi.
+  // Perubahan ditahan dengan pesan jelas kecuali admin mengirim force: true.
   const shifting = (c.startDate && c.startDate !== cur.startDate) || (c.frequency && c.frequency !== cur.frequency);
   if (shifting && b.force !== true && b.force !== 'true') {
     const reports = await pages<Row>((from, to) => sb.from('chore_reports').select('due_date').eq('task_id', cur.id).range(from, to));
@@ -2154,7 +2144,7 @@ on('DELETE', '/admin/chores/:id', async ({ params }, log) => {
   return out;
 });
 
-// ================================================================ KOS SEKITAR (market.ts)
+// Kos Sekitar (market.ts)
 const market = createMarket({
   sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
   all, pages, rowsIn,
@@ -2164,14 +2154,14 @@ const market = createMarket({
   mail, emailField,
 });
 
-// ================================================================ TITIP JUALAN & TEMPAT SEKITAR (community.ts)
+// Titip jualan & tempat sekitar (community.ts)
 const community = createCommunity({
   sb, q, one, insert, update, str, num, isDate, pick, toCamel, bad, notFound, HttpError, on, created, readImage, putFile, randomToken, clientInfo,
   all, pages, rowsIn,
   normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL,
 });
 
-// ---------------------------------------------------------------- server
+// Server
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',

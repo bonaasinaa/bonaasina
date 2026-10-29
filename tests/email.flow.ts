@@ -54,13 +54,13 @@ const bona = await ok('POST', '/admin/properties', { name: 'Kos Bona', kind: 'se
 const b01 = await ok('POST', '/admin/rooms', { propertyId: bona.id, code: 'B-01', priceMonthly: 600000 }, A);
 await take();
 
-// ---------- email tidak valid ditolak, kosong boleh
+// Email tidak valid ditolak, kosong boleh
 assert((await call('POST', '/surveys', { name: 'Rina', phone: '081234567890', email: 'rina@', propertyId: bona.id, date: plus(1) })).status === 400, 'invalid email rejected');
 await ok('POST', '/surveys', { name: 'Tanpa Email', phone: '081234567891', propertyId: bona.id, date: plus(1) });
 let m = await take();
 assert(m.length === 1 && m[0].to[0] === 'bonaasinaa@gmail.com', 'survey without email → only admin');
 
-// ---------- survei: konfirmasi ke pengunjung + admin, lalu status dikonfirmasi
+// Survei: konfirmasi ke pengunjung + admin, lalu status dikonfirmasi
 const sv = await ok('POST', '/surveys', { name: 'Rina', phone: '081234567890', email: 'Rina@Example.com', propertyId: bona.id, roomId: b01.id, date: plus(1), time: '10.00' });
 m = await take();
 assert(m.length === 2, 'survey → 2 emails');
@@ -72,12 +72,12 @@ await ok('PUT', `/admin/surveys/${sv.id}`, { ownerNote: 'sampai jumpa' }, A);
 m = await take();
 assert(m.length === 1 && /dikonfirmasi/.test(m[0].subject), 'survey confirmed email once');
 
-// ---------- HTML aman dari isian pengguna
+// HTML aman dari isian pengguna
 await ok('POST', '/surveys', { name: '<script>x</script>', phone: '081234567892', email: 'x@example.com', propertyId: bona.id, date: plus(1) });
 m = await take();
 assert(m.every((x) => !x.html.includes('<script>x')), 'html escaped');
 
-// ---------- penghuni: sambutan, tagihan baru, bukti, lunas, tolak bukti
+// Penghuni: sambutan, tagihan baru, bukti, lunas, tolak bukti
 const tn = await ok('POST', '/admin/tenants', { name: 'Maria', email: 'maria@example.com', roomId: b01.id, startDate: plus(2), rentCycle: 'bulanan', username: 'maria', password: 'rahasia-maria' }, A);
 m = await take();
 assert(m.some((x) => /Selamat datang/.test(x.subject)) && m.some((x) => /Tagihan sewa/.test(x.subject)), 'welcome + invoice email');
@@ -97,7 +97,7 @@ await ok('GET', `/admin/invoices/${inv.id}/reminder`, undefined, A);
 m = await take();
 assert(m.length === 1, 'reminder email deduped per day');
 
-// ---------- kerusakan, kontrak, pengumuman, ganti email
+// Kerusakan, kontrak, pengumuman, ganti email
 const iss = await ok('POST', '/penghuni/issues', { title: 'Lampu mati', category: 'Listrik' }, T);
 await ok('PUT', `/admin/issues/${iss.id}`, { status: 'dikerjakan' }, A);
 m = await take();
@@ -117,7 +117,7 @@ m = await take();
 assert(m.length === 1 && m[0].to[0] === 'maria.baru@example.com', 'email.set confirmation');
 assert((await ok('GET', '/penghuni/me', undefined, T)).tenant.email === 'maria.baru@example.com', 'me returns email');
 
-// ---------- reservasi (Kos Sekitar): notifikasi dashboard ikut terkirim ke email
+// Reservasi (Kos Sekitar): notifikasi dashboard ikut terkirim ke email
 const b02 = await ok('POST', '/admin/rooms', { propertyId: bona.id, code: 'B-02', priceMonthly: 700000 }, A);
 await take();
 const lead = await ok('POST', '/leads', { propertyId: bona.id, roomId: b02.id, period: 'bulanan', duration: 1, moveDate: plus(3), name: 'Sari', phone: '082111222333', email: 'sari@example.com' });
@@ -131,13 +131,13 @@ await ok('POST', `/admin/leads/${L}/confirm`, { roomId: b02.id, dpAmount: 200000
 m = await take();
 assert(m.some((x) => x.to[0] === 'sari@example.com' && /lanjutkan pembayaran DP/.test(x.subject)), 'confirm → customer');
 
-// ---------- gagal kirim tidak menggagalkan aksi; dicatat di email_log
+// Gagal kirim tidak menggagalkan aksi; dicatat di email_log
 failNext = 1;
 await ok('POST', '/surveys', { name: 'Gagal', phone: '081234567899', email: 'gagal@example.com', propertyId: bona.id, date: plus(1) });
 await take();
 assert(db.email_log.some((r) => r.status === 'gagal' && r.error.includes('403')), 'failure logged');
 
-// ---------- mitra
+// Mitra
 await ok('POST', '/mitra/daftar', { name: 'Pak Ucok', phone: '081300001111', email: 'ucok@example.com', kosName: 'Anggrek', city: 'Medan' });
 m = await take();
 assert(m.some((x) => x.to[0] === 'ucok@example.com') && m.some((x) => x.to[0] === 'bonaasinaa@gmail.com'), 'partner apply → applicant + admin');
@@ -147,7 +147,7 @@ m = await take();
 assert(m.length === 1 && m[0].to[0] === 'ucok@example.com' && !m[0].text.includes(appr.password), 'approve email without password');
 assert(db.owners.find((o) => o.id === appr.owner.id)?.email === 'ucok@example.com', 'owner email copied');
 
-// ---------- email admin bisa diarahkan ke alamat lain
+// Email admin bisa diarahkan ke alamat lain
 await ok('PUT', '/admin/settings', { notifyEmail: 'Admin1@example.com, admin2@example.com' }, A);
 assert((await call('PUT', '/admin/settings', { notifyEmail: 'bukan' }, A)).status === 400, 'notifyEmail validated');
 await ok('POST', '/surveys', { name: 'Rudi', phone: '081234567893', propertyId: bona.id, date: plus(1) });

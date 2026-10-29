@@ -1,4 +1,4 @@
-/* Bonaasina — komponen bersama Kos Sekitar untuk dashboard admin, pemilik, dan customer:
+/* Bonaasina: komponen bersama Kos Sekitar untuk dashboard admin, pemilik, dan customer:
    label status, linimasa, chat (diperbarui otomatis), daftar notifikasi, dan detail reservasi beserta aksinya. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -71,9 +71,8 @@
     return `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
   }
 
-  // ---------------------------------------------------------------- chat (diperbarui tiap beberapa detik)
-  // Draf pesan yang belum terkirim disimpan per judul chat: panel ini digambar ulang setiap status
-  // reservasi berubah, dan tanpa ini teks yang sedang diketik ikut terhapus.
+  // Chat, diperbarui tiap beberapa detik. Draf pesan disimpan per judul chat karena panel digambar ulang
+  // setiap status reservasi berubah, dan tanpa ini teks yang sedang diketik ikut terhapus.
   const chatDrafts = new Map();
   function chat(el, { load, send, me, enabled = true, offText = '', title = 'Chat', who = {} }) {
     const NAMES = { customer: 'Penyewa', pemilik: 'Pemilik', admin: 'Admin Bonaasina', sistem: 'Bonaasina', ...who };
@@ -146,7 +145,7 @@
     return bare ? rows : `<div class="notifs">${rows}</div>`;
   }
 
-  // ---------------------------------------------------------------- detail reservasi untuk pemilik & admin
+  // Detail reservasi untuk pemilik & admin
   // ctx: { role, api(method, path, body, raw), base: '/leads/<id>', openDialog, askConfirm, toast, reload(), rooms[], shrink(file), saveBlob, waMe }
   function leadPanel(l, ctx) {
     const a = []; const role = ctx.role; const admin = role === 'admin';
@@ -170,14 +169,14 @@
     else if (l.status === 'dp_dikirim') next = `<div class="next next--act"><h3>Periksa bukti DP</h3><p>Cocokkan nominal <strong>${rp(l.dpAmount)}</strong> dengan mutasi rekening sebelum menerima.</p>${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP"></a>` : ''}<div class="btn-row"><button class="btn btn--green" data-a="dp-ok">DP sudah masuk</button><button class="btn btn--ghost" data-a="dp-no">Belum masuk</button></div></div>`;
     else if (l.status === 'dp_diterima' && mitra) {
       if (admin) {
-        next = `<div class="next ${l.feeStatus === 'dikirim' || l.feeStatus === 'bebas' ? 'next--act' : 'next--wait'}"><h3>${l.feeStatus === 'dikirim' ? 'Periksa bukti fee lalu setujui' : l.feeStatus === 'bebas' ? 'Tanpa fee — siap disetujui' : 'Menunggu pemilik membayar fee'}</h3>
+        next = `<div class="next ${l.feeStatus === 'dikirim' || l.feeStatus === 'bebas' ? 'next--act' : 'next--wait'}"><h3>${l.feeStatus === 'dikirim' ? 'Periksa bukti fee lalu setujui' : l.feeStatus === 'bebas' ? 'Tanpa fee, siap disetujui' : 'Menunggu pemilik membayar fee'}</h3>
           <p>DP ${rp(l.dpAmount)} sudah diterima pemilik ${waktu(l.dpConfirmedAt)}. Fee ${rp(l.feeAmount)} (${esc(l.feeRule)})${l.feeDue ? `, batas ${tgl(l.feeDue)}` : ''}.</p>
           <div class="split2">${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener" title="Bukti DP penyewa"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP penyewa"></a>` : ''}${l.feeProofUrl ? `<a class="proof-img" href="${esc(l.feeProofUrl)}" target="_blank" rel="noopener" title="Bukti fee pemilik"><img src="${esc(l.feeProofUrl)}" alt="Bukti fee pemilik"></a>` : ''}</div>
           <div class="btn-row"><button class="btn btn--green" data-a="approve">Setujui &amp; terbitkan bukti booking</button>${l.feeStatus === 'dikirim' ? '<button class="btn btn--ghost" data-a="fee-reject">Tolak bukti fee</button>' : ''}</div></div>`;
       } else if (['belum', 'ditolak'].includes(l.feeStatus)) {
         next = `<div class="next next--act"><h3>Transfer biaya layanan Bonaasina</h3>${l.feeStatus === 'ditolak' ? `<p class="err">Bukti sebelumnya ditolak: ${esc(l.feeNote)}</p>` : ''}
           <p>Pesanan ini datang lewat Bonaasina. Transfer biaya layanan <strong>${rp(l.feeAmount)}</strong> (${esc(l.feeRule)})${l.feeDue ? ` paling lambat ${tgl(l.feeDue)}` : ''} ke:</p>
-          <div class="bank">${esc(l.bonaBankInfo || 'Rekening Bonaasina belum diatur — tanyakan ke admin.')}</div>
+          <div class="bank">${esc(l.bonaBankInfo || 'Rekening Bonaasina belum diatur, tanyakan ke admin.')}</div>
           <label class="btn btn--red">Unggah bukti transfer<input type="file" accept="image/*" data-up="fee-proof" hidden></label></div>`;
       } else next = `<div class="next next--wait"><h3>Menunggu persetujuan admin</h3><p>Bukti sudah terkirim. Admin mengecek lalu menerbitkan bukti booking untuk Anda dan penyewa.</p></div>`;
     } else if (l.status === 'berhasil') next = `<div class="next next--ok"><h3>Booking berhasil</h3><p>Bukti booking ${esc(l.invoiceNo)}. Sisa ${rp(l.remaining)} dibayar penyewa langsung ke pemilik. Ubah status kamar menjadi <strong>Terisi</strong> saat penyewa mulai tinggal.</p></div>`;
@@ -251,7 +250,7 @@
       const b = e.target.closest('[data-a]'); if (!b) return;
       const k = b.dataset.a;
       if (k === 'confirm') {
-        const opts = rooms.map((r) => `<option value="${r.id}" data-q="${quote(r)}" ${r.id === l.roomId ? 'selected' : ''} ${['terisi', 'perbaikan'].includes(r.effectiveStatus || r.status) ? 'disabled' : ''}>${esc(r.code)}${r.type ? `, ${esc(r.type)}` : ''} — ${rp(priceOf(r))}/${PER[l.period]}${(r.effectiveStatus || r.status) !== 'kosong' ? ` (${esc(r.effectiveStatus || r.status)})` : ''}${l.people === 2 && Number(r.capacity) < 2 ? ' — hanya 1 orang' : ''}</option>`).join('');
+        const opts = rooms.map((r) => `<option value="${r.id}" data-q="${quote(r)}" ${r.id === l.roomId ? 'selected' : ''} ${['terisi', 'perbaikan'].includes(r.effectiveStatus || r.status) ? 'disabled' : ''}>${esc(r.code)}${r.type ? `, ${esc(r.type)}` : ''}, ${rp(priceOf(r))}/${PER[l.period]}${(r.effectiveStatus || r.status) !== 'kosong' ? ` (${esc(r.effectiveStatus || r.status)})` : ''}${l.people === 2 && Number(r.capacity) < 2 ? ', hanya 1 orang' : ''}</option>`).join('');
         const minDp = ctx.minBooking?.(l) || 0;
         openDialog({
           title: `Konfirmasi kamar untuk ${l.name}`, ok: 'Kirim & minta DP', okClass: 'btn--green',
