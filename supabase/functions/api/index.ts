@@ -730,6 +730,12 @@ on('PUT', '/admin/rooms/:id', async ({ params, body }, log) => {
 });
 on('DELETE', '/admin/rooms/:id', async ({ params }, log) => {
   const cur = await one('rooms', params.id);
+  if (!cur) throw notFound('Kamar tidak ditemukan.');
+  // Reservasi yang sedang berjalan akan kehilangan kamarnya bila baris ini dihapus.
+  const used = await sb.from('leads').select('id', { count: 'exact', head: true }).eq('room_id', cur.id)
+    .in('status', ['baru', 'menunggu_dp', 'dp_dikirim', 'dp_diterima', 'berhasil']);
+  if ((used.count ?? 0) > 0) throw bad('Kamar ini masih punya reservasi berjalan. Sembunyikan saja dari website.');
+  if (await activeInRoom(cur.id)) throw bad('Kamar ini masih ditempati penghuni aktif.');
   const out = await remove('rooms', params.id);
   log({ action: 'room.delete', summary: `Menghapus kamar ${cur?.code || ''}`, target: cur?.code });
   return out;

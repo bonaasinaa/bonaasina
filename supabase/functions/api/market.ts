@@ -79,6 +79,9 @@ export function createMarket(H: Record<string, any>) {
     return raw.replace(/[^a-z]/g, '').slice(0, 12) || 'kos';
   }
   const digits5 = () => String(10000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90000));
+  // Nomor disimpan dalam satu bentuk (08…) supaya "0812-3456-7890" dan "+62 812 3456 7890" tidak
+  // lolos dari cek duplikat lalu membuat dua reservasi di kos yang sama.
+  const phoneOf = (v: unknown) => { const n = normalizePhone(String(v ?? '')); return n.startsWith('62') ? `0${n.slice(2)}` : n; };
   // Kata sandi sementara acak (10 huruf/angka tanpa yang mirip, mis. "k7mpq-x4rtw"), tidak bisa ditebak dari username.
   const ownerPassword = () => { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; const s = [...crypto.getRandomValues(new Uint8Array(10))].map((x) => a[x % a.length]).join(''); return `${s.slice(0, 5)}-${s.slice(5)}`; };
   const defaultPassword = () => ownerPassword();
@@ -321,7 +324,7 @@ export function createMarket(H: Record<string, any>) {
   // ================================================================ PUBLIK: kirim reservasi
   on('POST', '/leads', async ({ req, body: b }: Row, log: (e: Row) => void) => {
     if (b.website) return { ok: true }; // honeypot
-    const name = str(b.name, 80), phone = str(b.phone, 20), email = emailField(b.email);
+    const name = str(b.name, 80), phone = phoneOf(b.phone), email = emailField(b.email);
     if (!name) throw bad('Isi nama Anda.');
     if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp belum benar. Contoh: 0812 3456 7890.');
     const p = await one('properties', str(b.propertyId, 60));
@@ -339,7 +342,8 @@ export function createMarket(H: Record<string, any>) {
       room = await one('rooms', str(b.roomId, 40));
       if (!room || room.propertyId !== p.id || room.hidden) throw bad('Kamar yang dipilih tidak ditemukan.');
       if (people > Number(room.capacity || 1)) throw bad(`Kamar ${room.code} hanya untuk 1 orang. Pilih kamar lain atau ubah jumlah orang.`);
-      if (!roomPrice(room, period)) throw bad(`Kamar ${room.code} belum punya harga ${PERIOD_LABEL[period].toLowerCase()}.`);
+      // Harga boleh belum diisi: formulir memang menjanjikan pemilik mengonfirmasi harganya, dan
+      // total sewa diisi pemilik saat konfirmasi (doConfirm menolak bila tetap kosong).
     }
     const wantVisit = b.visit === true || b.visit === 'on' || b.visit === 'ya';
     if (wantVisit && (!isDate(b.visitDate) || b.visitDate < today)) throw bad('Pilih tanggal kunjungan hari ini atau setelahnya.');

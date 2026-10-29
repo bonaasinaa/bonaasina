@@ -396,8 +396,15 @@
         ${a.body ? `<p class="ann__body">${esc(a.body)}</p>` : ''}</article>`).join('') : '<section class="panel empty">Belum ada pengumuman.</section>');
     // Dibuka = dibaca. Tanda "Baru" tetap tampil sampai menu ini ditinggalkan.
     if (unread.length) {
-      Promise.all(unread.map((a) => api('POST', `/announcements/${a.id}/read`).then(() => { a.read = true; }).catch(() => {})))
-        .then(() => { badges(); data.notifications = data.notifications.filter((n) => n.kind !== 'pengumuman'); });
+      // Pemberitahuan hanya dihapus bila semua penandaan berhasil; kalau gagal, sisa pengumuman yang
+      // belum tercatat dibaca tetap terlihat supaya penghuni tahu masih ada yang belum terbaca.
+      Promise.allSettled(unread.map((a) => api('POST', `/announcements/${a.id}/read`).then(() => { a.read = true; })))
+        .then((res) => {
+          const failed = res.filter((r) => r.status === 'rejected').length;
+          badges();
+          if (failed) { toast('Sebagian pengumuman belum tercatat dibaca. Muat ulang halaman ini.', true); return; }
+          data.notifications = data.notifications.filter((n) => n.kind !== 'pengumuman');
+        });
     }
   }
 

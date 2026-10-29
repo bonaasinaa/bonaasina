@@ -82,6 +82,9 @@
       ${enabled ? `<form class="chat__form"><textarea rows="1" maxlength="1000" placeholder="Tulis pesan…" aria-label="Tulis pesan"></textarea><button class="btn btn--red" type="submit">Kirim</button></form>`
         : `<p class="chat__off">${esc(offText || 'Chat sedang dimatikan.')}</p>`}</div>`;
     const list = $('.chat__list', el); let last = 0; let timer = 0; let stopped = false; let first = true;
+    // Id pesan tidak selalu datang berurutan (balasan pemilik bisa terbit sebelum pesan kita), jadi
+    // penanda "sudah dilihat" disimpan per id dan polling memakai sedikit tumpang tindih.
+    const seen = new Set(); const OVERLAP = 50;
     const isMine = (m) => m.sender === me;
     const add = (msgs) => {
       if (!msgs.length) { if (first) list.innerHTML = '<p class="chat__empty">Belum ada pesan. Tanyakan apa saja soal kamar, aturan, atau jadwal kunjungan.</p>'; first = false; return; }
@@ -89,7 +92,8 @@
       first = false;
       const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
       for (const m of msgs) {
-        if (m.id <= last) continue; last = m.id;
+        if (seen.has(m.id)) continue;
+        seen.add(m.id); last = Math.max(last, m.id);
         const div = document.createElement('div');
         div.className = `msg ${m.sender === 'sistem' ? 'msg--sys' : isMine(m) ? 'msg--me' : 'msg--other'}`;
         div.innerHTML = `${m.sender !== 'sistem' ? `<span class="msg__who">${esc(NAMES[m.sender] || m.sender)}</span>` : ''}${esc(m.body)}<small>${jam(m.createdAt)}, ${tgl(m.createdAt.slice(0, 10))}</small>`;
@@ -100,7 +104,18 @@
     async function poll() {
       if (stopped) return;
       if (!document.body.contains(el)) { stopped = true; return; }
-      try { const out = await load(last); add(out.messages || []); $('.chat__live', el).hidden = false; } catch { $('.chat__live', el).hidden = true; }
+      try {
+        const out = await load(Math.max(0, last - OVERLAP));
+        add(out.messages || []);
+        $('.chat__live', el).hidden = false;
+      } catch {
+        $('.chat__live', el).hidden = true;
+        // Jangan biarkan panel terus menulis "Memuat pesan…" saat muatannya gagal.
+        if (first && list.querySelector('.chat__empty')) {
+          first = false;
+          list.innerHTML = '<p class="chat__empty">Pesan belum bisa dimuat. Periksa koneksi lalu muat ulang halaman.</p>';
+        }
+      }
       // Lebih jarang saat tab tidak dilihat.
       timer = setTimeout(poll, document.hidden ? 30000 : 5000);
     }
