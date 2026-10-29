@@ -7,6 +7,7 @@ type Row = Record<string, any>;
 
 export function createCommunity(H: Record<string, any>) {
   const { sb, q, one, insert, update, str, num, isDate, pick, toCamel, bad, notFound, HttpError, on, created, readImage, putFile, randomToken, clientInfo, normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL } = H;
+  const pages = H.pages as (make: (from: number, to: number) => any) => Promise<Row[]>;
 
   const LISTING_CATS: Record<string, string[]> = {
     jual: ['Makanan & minuman', 'Pakaian & aksesori', 'Buku & alat tulis', 'Elektronik', 'Perabot kos', 'Kerajinan', 'Lainnya'],
@@ -36,8 +37,13 @@ export function createCommunity(H: Record<string, any>) {
     waUrl: waUrl(r.sellerPhone, `Halo ${r.sellerName}, saya lihat "${r.title}" di Titip Jualan Bonaasina. Apakah masih tersedia?`),
   });
   async function activeListings() {
-    const rows = ((await q(sb.from('listings').select('*').eq('status', 'aktif').order('created_at', { ascending: false }).limit(300))) as Row[] || []).map((x: Row) => toCamel(x) as Row);
     const today = todayStr();
+    // Masa tayang disaring di server: iklan aktif yang sudah kedaluwarsa tidak lagi memenuhi jendela
+    // hasil terbaru sehingga iklan yang benar-benar tayang tetap tampil semua.
+    const rows = (await pages((from: number, to: number) => sb.from('listings').select('*')
+      .eq('status', 'aktif').or(`expires_on.is.null,expires_on.gte.${today}`)
+      .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to)))
+      .map((x: Row) => toCamel(x) as Row);
     return rows.filter((r) => !r.expiresOn || r.expiresOn >= today).sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
   }
   on('GET', '/titip', async () => ({ categories: LISTING_CATS, listings: (await activeListings()).map(publicListing) }));
@@ -84,11 +90,20 @@ export function createCommunity(H: Record<string, any>) {
     return created({ ok: true, id: rec.id });
   });
 
-  on('GET', '/admin/listings', async () => ({
-    categories: LISTING_CATS,
-    listings: ((await q(sb.from('listings').select('*').order('created_at', { ascending: false }).limit(500))) as Row[] || []).map((x: Row) => toCamel(x) as Row)
-      .map((r: Row) => ({ ...r, waSeller: normalizePhone(r.sellerPhone) })),
-  }));
+  on('GET', '/admin/listings', async ({ url }: Row) => {
+    const status = str(url?.searchParams?.get('status'), 20);
+    const listings = (await pages((from: number, to: number) => {
+      let b = sb.from('listings').select('*');
+      if (['baru', 'aktif', 'ditolak', 'selesai'].includes(status)) b = b.eq('status', status);
+      return b.order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to);
+    })).map((x: Row) => toCamel(x) as Row).map((r: Row) => ({ ...r, waSeller: normalizePhone(r.sellerPhone) }));
+    // Angka tiap segmen dihitung terpisah, jadi lencana tidak lagi berbeda dari daftar yang tampil.
+    const [jumlahBaru, jumlahAktif] = await Promise.all([
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'baru'),
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'aktif'),
+    ]);
+    return { categories: LISTING_CATS, listings, counts: { baru: jumlahBaru.count ?? 0, aktif: jumlahAktif.count ?? 0 } };
+  });
   on('POST', '/admin/listings', async ({ body: b }: Row, log: (e: Row) => void) => {
     const sellerName = str(b.sellerName, 80), sellerPhone = str(b.sellerPhone, 20);
     if (!sellerName) throw bad('Isi nama penjual.');

@@ -49,6 +49,9 @@ class Query {
   or(_s: string) { return this; }
   order(k: string, o?: Row) { this.orderBy.push([k, o?.ascending !== false]); return this; }
   limit(n: number) { this.lim = n; return this; }
+  // PostgREST membatasi jumlah baris per permintaan; tes meniru .range() supaya paginasi ikut teruji.
+  from_ = 0; to_ = -1;
+  range(a: number, b: number) { this.from_ = a; this.to_ = b; return this; }
   single() { this.one = 'single'; return this; }
   maybeSingle() { this.one = 'maybe'; return this; }
   match(r: Row) { return this.filters.every((f) => f(r)); }
@@ -79,6 +82,7 @@ class Query {
     for (const [k, asc] of [...this.orderBy].reverse()) hit = [...hit].sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * (asc ? 1 : -1));
     const count = hit.length;
     if (this.lim) hit = hit.slice(0, this.lim);
+    if (this.to_ >= 0) hit = hit.slice(this.from_, this.to_ + 1);
     if (this.head) return { data: null, error: null, count };
     const data = structuredClone(hit);
     if (this.one) { if (this.one === 'single' && data.length !== 1) return { data: null, error: { code: 'PGRST116', message: 'not single' } }; return { data: data[0] ?? null, error: null, count }; }

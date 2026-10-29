@@ -67,9 +67,15 @@
   });
   function askConfirm(title, text, ok = 'Ya, lanjutkan') {
     return new Promise((resolve) => {
-      let done = false;
-      openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { done = true; resolve(true); } });
-      dlg.addEventListener('close', () => { if (!done) resolve(false); }, { once: true });
+      let settled = false;
+      const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const show = () => {
+        openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { finish(true); } });
+        dlg.addEventListener('close', () => finish(false), { once: true });
+      };
+      // Event 'close' dari dialog yang baru ditutup dikirim tertunda; pendengar baru dipasang setelah
+      // event itu lewat, supaya konfirmasi tidak langsung dibatalkan sendiri.
+      if (dlg.open) { dlg.close(); setTimeout(show, 0); } else show();
     });
   }
 

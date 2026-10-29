@@ -19,6 +19,7 @@ type Role = 'pemilik' | 'admin';
 export function createMarket(H: Record<string, any>) {
   const {
     sb, q, one, insert, update, str, num, strList, isDate, pick, toCamel, bad, notFound, HttpError, on, created,
+    all, pages, rowsIn,
     readImage, putFile, signedUrl, signMany, readPrivate, pdfOut, fileSafe, sha256, randomToken, bcrypt, writeLog, clientInfo,
     background, getSettings, normalizePhone, rupiah, tanggal, todayStr, addMonths, DAY, roomFromBody, propertyPatch,
     PUBLIC_PROPERTY_FIELDS, PUBLIC_ROOM_FIELDS, PHOTO_PREFIX, SITE_URL, matchWaitlist, routes, CYCLES, roomPrice, extraFee, waLink, byCode, bySort, createProperty,
@@ -239,10 +240,12 @@ export function createMarket(H: Record<string, any>) {
 
   // ------------------------------------------------------------ data bersama
   async function activeRoomIds() {
-    return new Set(((await q(sb.from('tenants').select('room_id').eq('status', 'aktif'))) as Row[] || []).map((t) => t.room_id));
+    const rows = (await pages((from: number, to: number) => sb.from('tenants').select('room_id').eq('status', 'aktif').range(from, to))) as Row[];
+    return new Set<string>(rows.map((t: Row) => t.room_id as string));
   }
+  // Daftar id dipotong per 100 supaya permintaan tidak melewati batas panjang URL ketika kos mitra banyak.
   const roomsOf = async (propertyIds: string[]) => propertyIds.length
-    ? ((await q(sb.from('rooms').select('*').in('property_id', propertyIds))) as Row[] || []).map((r) => toCamel(r)) as Row[]
+    ? (await rowsIn('rooms', 'property_id', propertyIds, '*') as Row[]).map((r: Row) => toCamel(r)) as Row[]
     : [];
   function roomPublic(r: Row, occ: Set<string>) { return { ...pick(r, PUBLIC_ROOM_FIELDS), status: occ.has(r.id) ? 'terisi' : r.status }; }
   // Harga mulai dari per periode yang dibuka (untuk kartu kos).
@@ -274,7 +277,11 @@ export function createMarket(H: Record<string, any>) {
 
   // ================================================================ PUBLIK: daftar & detail kos
   on('GET', '/kos-sekitar', async () => {
-    const [s, props] = await Promise.all([getSettings(), q(sb.from('properties').select('*').eq('kind', 'mitra').eq('status', 'aktif'))]);
+    // Seluruh kos mitra yang aktif, diambil per halaman (tidak terpotong 1000 baris).
+    const [s, props] = await Promise.all([
+      getSettings(),
+      pages((from: number, to: number) => sb.from('properties').select('*').eq('kind', 'mitra').eq('status', 'aktif').order('id').range(from, to)) as Promise<Row[]>,
+    ]);
     const list = ((props as Row[]) || []).map((p) => toCamel(p)) as Row[];
     const [rooms, occ] = await Promise.all([roomsOf(list.map((p) => p.id)), activeRoomIds()]);
     const st = { ...DEFAULTS, ...s };
@@ -771,7 +778,17 @@ export function createMarket(H: Record<string, any>) {
     const l = await myLead(lead);
     need(l, 'menunggu_dp');
     const path = await storeProof(req, l, 'dp');
-    await save(l, { status: 'dp_dikirim', dpProofPath: path, dpUploadedAt: nowIso(), dpRejectNote: '' });
+    // Perubahan status dicek ulang di database: bila reservasi dibatalkan/kedaluwarsa saat berkas
+    // sedang diunggah, status tidak boleh ditimpa menjadi "DP dikirim".
+    const { data: updated, error } = await sb.from('leads')
+      .update({ status: 'dp_dikirim', dp_proof_path: path, dp_uploaded_at: nowIso(), dp_reject_note: '' })
+      .eq('id', l.id).eq('status', 'menunggu_dp').select('*').maybeSingle();
+    if (error) { console.error(error); throw new HttpError(500, 'Gagal menyimpan bukti DP.'); }
+    if (!updated) {
+      await sb.storage.from('private').remove([path]).catch(() => {});
+      throw bad('Reservasi ini sudah berubah status (mungkin dibatalkan atau kedaluwarsa), jadi bukti DP tidak disimpan. Muat ulang halaman reservasi Anda.');
+    }
+    Object.assign(l, toCamel(updated));
     const p = await one('properties', l.propertyId);
     await sysMsg(l, `Penyewa mengunggah bukti transfer DP ${rupiah(l.dpAmount)}. Pemilik: periksa mutasi rekening lalu konfirmasi.`);
     await notifyOwner(p, l, 'dp', `Bukti DP dari ${l.name}`, `Periksa transfer ${rupiah(l.dpAmount)} di rekening Anda, lalu konfirmasi di menu Reservasi.`);
@@ -881,9 +898,11 @@ export function createMarket(H: Record<string, any>) {
     if (!props.length) return [];
     await expireLeads();
     const s = await setting();
+    const ids = props.map((p) => p.id);
+    // Id kos dipotong per 100: ratusan kos mitra tidak lagi membuat permintaan gagal.
     const [rows, rooms] = await Promise.all([
-      q(sb.from('leads').select('*').in('property_id', props.map((p) => p.id)).order('created_at', { ascending: false }).limit(1000)),
-      roomsOf(props.map((p) => p.id)),
+      rowsIn('leads', 'property_id', ids, '*', (b: any) => b.order('created_at', { ascending: false })) as Promise<Row[]>,
+      roomsOf(ids),
     ]);
     const leads = ((rows as Row[]) || []).map((r) => toCamel(r)) as Row[];
     const pm = new Map(props.map((p) => [p.id, p])); const rm = new Map(rooms.map((r) => [r.id, r]));
@@ -1113,9 +1132,12 @@ export function createMarket(H: Record<string, any>) {
   });
   on('GET', '/admin/partners', async () => {
     const s = await setting();
-    const [props, owners] = await Promise.all([q(sb.from('properties').select('*').eq('kind', 'mitra')), q(sb.from('owners').select('id, name, phone, username, status'))]);
+    const [props, owners] = await Promise.all([
+      pages((from: number, to: number) => sb.from('properties').select('*').eq('kind', 'mitra').order('id').range(from, to)) as Promise<Row[]>,
+      pages((from: number, to: number) => sb.from('owners').select('id, name, phone, username, status').order('id').range(from, to)) as Promise<Row[]>,
+    ]);
     const list = ((props as Row[]) || []).map((p) => toCamel(p)) as Row[];
-    const [rooms, occ, leads] = await Promise.all([roomsOf(list.map((p) => p.id)), activeRoomIds(), list.length ? q(sb.from('leads').select('property_id, status, fee_amount, fee_status').in('property_id', list.map((p) => p.id))) : []]);
+    const [rooms, occ, leads] = await Promise.all([roomsOf(list.map((p) => p.id)), activeRoomIds(), list.length ? rowsIn('leads', 'property_id', list.map((p) => p.id), 'property_id, status, fee_amount, fee_status') : []]);
     const om = new Map(((owners as Row[]) || []).map((o) => [o.id, o]));
     return list.sort(bySort).map((p) => {
       const rs = rooms.filter((r) => r.propertyId === p.id); const ls = ((leads as Row[]) || []).filter((l) => l.property_id === p.id);
@@ -1130,7 +1152,7 @@ export function createMarket(H: Record<string, any>) {
     });
   });
   on('GET', '/admin/leads', async () => {
-    const props = ((await q(sb.from('properties').select('*'))) as Row[] || []).map((p) => toCamel(p)) as Row[];
+    const props = await all('properties') as Row[];
     const owners = ((await q(sb.from('owners').select('id, name'))) as Row[]) || [];
     const om = new Map(owners.map((o) => [o.id, o.name]));
     return (await leadList(props, 'admin')).map((l: Row) => ({ ...l, ownerName: l.ownerId ? om.get(l.ownerId) || '-' : 'Bonaasina' }));
