@@ -1007,13 +1007,22 @@ on('GET', '/admin/file', async ({ url }, log) => {
 });
 
 // ================================================================ ADMIN — survei, kerusakan, pengeluaran
-on('GET', '/admin/surveys', async () => {
-  const [list, props, rooms] = await Promise.all([all('surveys'), all('properties'), all('rooms')]);
+on('GET', '/admin/surveys', async ({ url }) => {
+  // Maksimal 50 per halaman (bisa diminta lebih banyak oleh tombol "Muat lebih banyak", dibatasi 500).
+  const limit = Math.min(500, Math.max(20, Number(url.searchParams.get('limit')) || 50));
+  const rows = ((await q<Row[]>(sb.from('surveys').select('*').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1))) || []);
+  const list = rows.slice(0, limit).map((r) => toCamel(r)!);
+  // Nama kos & kode kamar hanya diambil untuk baris yang ditampilkan.
+  const [props, rooms] = await Promise.all([
+    rowsIn('properties', 'id', [...new Set(list.map((x) => x.propertyId).filter(Boolean))] as string[], 'id, name'),
+    rowsIn('rooms', 'id', [...new Set(list.map((x) => x.roomId).filter(Boolean))] as string[], 'id, code'),
+  ]);
   const pm = new Map(props.map((p) => [p.id, p.name])); const rm = new Map(rooms.map((r) => [r.id, r.code]));
-  return list.map((s) => ({
+  const items = list.map((s) => ({
     ...s, propertyName: pm.get(s.propertyId) || '-', roomCode: s.roomId ? rm.get(s.roomId) : null,
     waUrl: waLink(s.phone, `Horas ${s.name}, terima kasih sudah mendaftar survei di ${pm.get(s.propertyId) || 'Bonaasina'} untuk ${tanggal(s.date)}${s.time ? ' ' + s.time : ''}. `),
-  })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }));
+  return { items, hasMore: rows.length > limit };
 });
 on('PUT', '/admin/surveys/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
@@ -1960,17 +1969,36 @@ function priceText(r: Row) {
   const parts = CYCLES.filter((c) => roomPrice(r, c)).map((c) => `${rupiah(roomPrice(r, c))} per ${CYCLE_WORD[c]}`);
   return parts.length ? `Harga ${parts.join(' atau ')}.` : '';
 }
-on('GET', '/admin/waitlist', async () => {
-  const [list, props, rooms] = await Promise.all([all('waitlist'), all('properties'), all('rooms')]);
-  const pm = new Map(props.map((p) => [p.id, p.name])); const rm = new Map(rooms.map((r) => [r.id, r]));
+on('GET', '/admin/waitlist', async ({ url }) => {
+  const status = ['perlu_dikabari', 'menunggu', 'dikabari', 'selesai', 'batal', 'semua'].includes(str(url.searchParams.get('status'), 20))
+    ? str(url.searchParams.get('status'), 20) : 'semua';
+  const limit = 100;
+  // Hitungan tiap segmen diambil terpisah (bukan dari satu unduhan penuh), dan hanya status yang
+  // dipilih yang dikirim isinya.
+  const segKeys = ['perlu_dikabari', 'menunggu', 'dikabari', 'semua'];
+  const counts = Object.fromEntries(await Promise.all(segKeys.map(async (k) => {
+    const head = k === 'semua' ? sb.from('waitlist').select('id', { count: 'exact', head: true }) : sb.from('waitlist').select('id', { count: 'exact', head: true }).eq('status', k);
+    const { count } = await head;
+    return [k, count ?? 0];
+  })));
+  let wq = sb.from('waitlist').select('*').order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit + 1);
+  if (status !== 'semua') wq = wq.eq('status', status);
+  const fetched = ((await q<Row[]>(wq)) || []);
+  const list = fetched.slice(0, limit).map((r) => toCamel(r)!);
+  const [props, rooms] = await Promise.all([
+    rowsIn('properties', 'id', [...new Set(list.map((x) => x.propertyId).filter(Boolean))] as string[], 'id, name'),
+    rowsIn('rooms', 'id', [...new Set(list.map((x) => x.matchedRoomId).filter(Boolean))] as string[], 'id, code, type, status, property_id, price_daily, price_monthly, price_semester, price_yearly'),
+  ]);
+  const pm = new Map(props.map((p) => [p.id, p.name])); const rm = new Map(rooms.map((r) => [r.id, toCamel(r)!]));
   const s = await getSettings();
-  return list.map((w) => {
+  const items = list.map((w) => {
     const r = w.matchedRoomId ? rm.get(w.matchedRoomId) : null;
     const msg = r
       ? `Horas ${w.name}, kabar baik dari ${pm.get(r.propertyId) || 'Bonaasina'}: kamar ${r.code}${r.type ? ` (${r.type})` : ''} sekarang kosong. ${priceText(r)} Masih berminat? Balas pesan ini untuk atur jadwal survei.`
       : `Horas ${w.name}, terima kasih sudah mendaftar di daftar tunggu ${w.propertyId ? pm.get(w.propertyId) : 'Bonaasina'}. `;
     return { ...w, propertyName: w.propertyId ? pm.get(w.propertyId) || '-' : 'Kos mana saja', matchedRoom: r ? { code: r.code, propertyName: pm.get(r.propertyId), status: r.status } : null, waUrl: waLink(w.phone, msg), ownerName: s.ownerName };
-  }).sort((a, b) => (a.status === 'perlu_dikabari') === (b.status === 'perlu_dikabari') ? a.createdAt.localeCompare(b.createdAt) : a.status === 'perlu_dikabari' ? -1 : 1);
+  }).sort((a, b) => (a.status === 'perlu_dikabari') === (b.status === 'perlu_dikabari') ? String(a.createdAt).localeCompare(String(b.createdAt)) : a.status === 'perlu_dikabari' ? -1 : 1);
+  return { items, counts, hasMore: fetched.length > limit };
 });
 on('PUT', '/admin/waitlist/:id', async ({ params, body: b }, log) => {
   const w = await one('waitlist', params.id); if (!w) throw notFound('Data tidak ditemukan.');
