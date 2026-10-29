@@ -1,0 +1,31 @@
+/* Penyesuaian saat Bonaasina dipasang sebagai aplikasi (PWA).
+   Semua nilai env() bernilai 0 di tab browser biasa, jadi berkas ini tidak mengubah tampilan web. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Baris pertama halaman turun sejauh status bar HP. */
+body { padding-top: var(--safe-top); }
+
+/* Pita setinggi status bar: isi yang digulir tidak lewat di balik jam & baterai.
+   Warnanya mengikuti latar halaman, jadi cocok di website maupun dashboard. */
+body::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-top);
+  background: inherit; z-index: 49; pointer-events: none;
+}
+
+/* Permukaan yang menempel di atas ikut turun. */
+.nav, .topbar, .cust__bar, .progress { top: var(--safe-top); }
+.tabs-mini { top: calc(59px + var(--safe-top)); }
+.form-actions { bottom: var(--safe-bottom); }
+
+/* Sidebar dashboard: menempel di layar lebar, laci geser di tablet & HP. */
+.side { top: var(--safe-top); height: calc(100dvh - var(--safe-top)); }
+@media (max-width: 1023px) {
+  .side { inset: var(--safe-top) auto 0 0; height: auto; }
+}
+
+/* Wadah setinggi layar dikurangi status bar, supaya halaman berisi satu kartu tidak bergulir 47px. */
+.login, .verify { min-height: calc(100dvh - var(--safe-top)); }
+.app, .nf { min-height: calc(100vh - var(--safe-top)); }

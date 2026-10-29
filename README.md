@@ -103,6 +103,26 @@ Setiap `git push` ke `main` otomatis tayang. Setelah mengubah file JS/CSS, naikk
 node scripts/api-check.mjs https://<project-ref>.supabase.co/functions/v1/api
 ```
 
+## Dipasang sebagai aplikasi (PWA)
+Situs bisa dipasang ke layar utama Android/iPhone dan dibuka tanpa bilah alamat.
+
+| Berkas | Isi |
+| --- | --- |
+| `web/manifest.webmanifest` | nama, ikon 192/512 + maskable, `display: standalone`, pintasan Kamar / Reservasi / Kos sekitar |
+| `web/sw.js` | service worker: hanya mengurus perpindahan halaman dan halaman offline; aset situs tidak di-cache |
+| `web/offline.html` | halaman "Tidak ada koneksi", gayanya ditulis di dalam berkas |
+| `web/js/pwa.js` | mendaftarkan service worker setelah halaman selesai dimuat |
+| `web/css/pwa.css` | jarak aman status bar saat mode aplikasi, dimuat paling akhir di setiap halaman |
+| `web/assets/img/icon-192.png`, `icon-maskable-512.png` | ikon tambahan; ikon 512 memakai `icon-512.png` yang sudah ada |
+
+- Semua halaman memasang `<link rel="manifest">`, meta `apple-mobile-web-app-*`, `viewport-fit=cover`, `css/pwa.css`, dan `js/pwa.js`. **Halaman baru wajib menyalin blok itu**, kalau tidak halaman tersebut tidak ikut terpasang sebagai aplikasi.
+- `web/_headers` mengatur `/sw.js` dan `/offline.html` agar tidak di-cache, dan mengirim manifest sebagai `application/manifest+json`.
+- Nilai di `css/pwa.css` memakai `env(safe-area-inset-*)` yang bernilai 0 di tab browser biasa, jadi tampilan web tidak berubah; yang terpengaruh hanya aplikasi terpasang.
+- Service worker sengaja tidak menyimpan aset, dan `sw.js` dikirim `no-cache`, jadi setiap deploy langsung terpakai. Bila nanti aset ikut di-cache, naikkan `SHELL` di `sw.js` pada setiap perubahan.
+- Yang disimpan hanya `offline.html` dan logonya. Bila browser menghapus Cache Storage, halaman itu disimpan ulang otomatis pada navigasi berikutnya yang berhasil; bila cache dan jaringan sama-sama tidak ada, worker menjawab dengan halaman teks sederhana, bukan galat browser.
+- Memasang: Android Chrome ⋮ → *Instal aplikasi*; iPhone Safari Bagikan → *Tambahkan ke Layar Utama*.
+- Memeriksa lokal: buka `http://127.0.0.1:<port>/` (bukan `file://`), lalu DevTools → Application: Manifest, Service Workers, Cache Storage.
+
 ## Pengembangan lokal (opsional)
 Butuh [Supabase CLI](https://supabase.com/docs/guides/local-development) dan Docker:
 ```bash
