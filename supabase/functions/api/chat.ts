@@ -1,11 +1,5 @@
-// Bonaasina — live chat di website, alternatif selain WhatsApp.
-//   Pengunjung: tanpa akun. Bot sambutan menjawab lebih dulu (pilihan topik + pertanyaan bebas, lihat chatbot.ts).
-//   Saat pengunjung ingin bicara dengan admin, server memberi token acak yang disimpan browser (localStorage)
-//   dan dikirim di header X-Chat-Session; database hanya menyimpan hash SHA-256-nya.
-//   Admin: menu Live chat (kotak masuk, balas, tandai selesai, kamus bot) + widget di Ringkasan.
-//   Pengaturan (aktif, tampil, jam layanan, sapaan, bot, kamus) di settings.data.liveChat.
-// Pembaruan memakai polling ringan lewat fungsi api, jadi tidak perlu koneksi langsung dari browser ke
-// database dan tetap sesuai CSP (connect-src hanya ke alamat Supabase).
+// Live chat website tanpa akun; token acak di header X-Chat-Session, hanya hash SHA-256 yang disimpan.
+// Pembaruan lewat polling ke fungsi api, jadi sesuai CSP. Pengaturan ada di settings.data.liveChat.
 import { ADMIN_TOPIC, DEFAULT_KAMUS, PLACEHOLDERS, botReply, menuOptions, sanitizeKamus, type BotData, type KamusEntry } from './chatbot.ts';
 type Row = Record<string, any>;
 
@@ -149,7 +143,7 @@ export function createChat(H: Record<string, any>) {
     return out;
   }
 
-  // ------------------------------------------------------------ PENGUNJUNG
+  // Pengunjung
   on('GET', '/chat/config', async () => publicConfig(await chatSettings()));
 
   // Bot sebelum terhubung ke admin: tanpa menyimpan apa pun (belum ada percakapan).
@@ -247,7 +241,7 @@ export function createChat(H: Record<string, any>) {
     return created({ messages: await askInThread(t, c, { text: str(b.body, 1000) }, false) });
   });
 
-  // ------------------------------------------------------------ ADMIN
+  // Admin
   on('GET', '/admin/chats', async ({ url }: Row) => {
     const status = url.searchParams.get('status') || 'semua';
     let lq = sb.from('chat_threads').select('*').order('last_message_at', { ascending: false }).limit(200);

@@ -45,16 +45,16 @@ seed();
 // Kos Bona milik sendiri lewat API admin (seperti seed)
 const bona = await ok('POST', '/admin/properties', { name: 'Kos Bona', kind: 'sendiri', gender: 'Putra', periods: ['harian', 'bulanan', 'tahunan'], address: 'Jl. Bona' }, A);
 assert(bona.kind === 'sendiri' && bona.status === 'aktif', 'kos sendiri aktif');
-await ok('PUT', `/admin/properties/${bona.id}`, { shortName: 'Bona' }, A); // diabaikan (tidak ada di patch) — prefix dari slug
+await ok('PUT', `/admin/properties/${bona.id}`, { shortName: 'Bona' }, A); // diabaikan (tidak ada di patch), prefix dari slug
 const b01 = await ok('POST', '/admin/rooms', { propertyId: bona.id, code: 'B-01', priceMonthly: 600000, priceYearly: 6600000, priceDaily: 80000, capacity: 2, extraPersonFee: 100000 }, A);
 assert(b01.capacity === 2 && b01.priceDaily === 80000, 'room new fields');
 
-// ---------- public main page
+// Public main page
 const pub = await ok('GET', '/public');
 assert(pub.properties.length === 1 && pub.properties[0].periods.includes('harian'), 'public periods');
 assert(pub.rooms[0].capacity === 2 && pub.partnersCount === 0, 'public rooms capacity');
 
-// ---------- admin membuat pemilik + kos mitra
+// Admin membuat pemilik + kos mitra
 const owner = await ok('POST', '/admin/owners', { name: 'Pak Sitorus', phone: '081311112222', username: 'sitorus' }, A);
 assert(owner.password && owner.mustChange, 'owner default password');
 await fail(400, 'POST', '/admin/owners', { name: 'X', username: 'sitorus' }, A);
@@ -94,7 +94,7 @@ const det = await ok('GET', `/kos/${mitra.slug}`);
 assert(det.property.whatsapp === '6281311112222' && det.rooms.length === 1 && !('bankInfo' in det.property), 'detail without bank');
 assert((await ok('GET', '/public')).properties.length === 1, 'main page only own kos');
 
-// ---------- customer reservasi
+// Customer reservasi
 await fail(400, 'POST', '/leads', { propertyId: mitra.id, period: 'harian', duration: 1, moveDate: plus(3), name: 'Rina', phone: '081234567890' });
 await fail(400, 'POST', '/leads', { propertyId: mitra.id, roomId: m1.id, people: 2, period: 'bulanan', duration: 1, moveDate: plus(3), name: 'Rina', phone: '081234567890' });
 const lead = await ok('POST', '/leads', { propertyId: mitra.id, roomId: m1.id, period: 'bulanan', duration: 3, moveDate: plus(5), name: 'Rina', phone: '081234567890', visit: true, visitDate: plus(1), visitTime: '10.00' });
@@ -175,7 +175,7 @@ sum = await ok('GET', '/admin/summary', undefined, A);
 assert(sum.market.feeToReturn === 1, 'fee to return');
 await ok('POST', `/admin/leads/${L}/fee-returned`, {}, A);
 
-// ---------- kos sendiri: admin = pemilik, tanpa fee, langsung berhasil
+// Kos sendiri: admin = pemilik, tanpa fee, langsung berhasil
 const own = await ok('POST', '/leads', { propertyId: bona.id, roomId: b01.id, people: 2, period: 'harian', duration: 3, moveDate: plus(2), name: 'Tono', phone: '081999888777' });
 assert(/^bona\d{5}$/.test(own.username), 'bona prefix ' + own.username);
 const OL = db.leads.find((l) => l.username === own.username).id;
@@ -195,7 +195,7 @@ assert(db.leads.find((l) => l.id === OL).tenant_id === tn.id, 'lead linked to te
 const inv = db.invoices.find((i) => i.tenant_id === tn.id);
 assert(inv && inv.amount === 240000 && inv.cycle === 'harian', 'harian invoice 3 nights ' + JSON.stringify(inv));
 
-// ---------- kedaluwarsa
+// Kedaluwarsa
 const l3 = await ok('POST', '/leads', { propertyId: mitra.id, period: 'semesteran', duration: 1, moveDate: plus(10), name: 'Sari', phone: '082111222333' });
 const L3 = db.leads.find((l) => l.username === l3.username).id;
 await ok('POST', `/pemilik/leads/${L3}/confirm`, { roomId: m1.id, dpAmount: 250000 }, O);
@@ -211,7 +211,7 @@ await ok('POST', '/akun/password', { newPassword: 'sari-sandi-baru' }, C3);
 await ok('POST', '/akun/cancel', { reason: 'Dapat kos lain' }, C3);
 assert(db.leads.find((l) => l.id === L3).status === 'batal', 'cancelled');
 
-// ---------- akses silang ditolak
+// Akses silang ditolak
 await fail(404, 'GET', `/pemilik/leads/${OL}`, undefined, O);
 await fail(401, 'GET', '/akun/me', undefined, { 'x-lead-session': 'x'.repeat(40) });
 // login penghuni lewat /masuk tetap jalan (username tidak dikenal → 401 penghuni)
@@ -226,7 +226,7 @@ assert(parts[0].feeRule.startsWith('15%') && parts[0].feeReceived === 0, 'partne
 const logTypes = new Set(db.activity_log.map((x) => x.actor_type));
 await new Promise((r) => setTimeout(r, 200));
 console.log('log actor types:', [...new Set(db.activity_log.map((x) => x.actor_type))].join(','), 'files:', files.size);
-// ---------- pendaftaran mitra
+// Pendaftaran mitra
 db.partner_applications = [];
 await fail(400, 'POST', '/mitra/daftar', { name: 'Bu Rina', phone: '0812', kosName: 'Anggrek', city: 'Balige' });
 await ok('POST', '/mitra/daftar', { name: 'Bu Rina', phone: '081377778888', kosName: 'Kos Anggrek', city: 'Balige', roomCount: 10, periods: ['bulanan', 'tahunan'], gender: 'Putri' });
@@ -240,7 +240,7 @@ assert(np.kind === 'mitra' && np.status === 'draf' && np.owner_id === appr.owner
 await fail(400, 'POST', `/admin/applications/${apps[0].id}/approve`, {}, A);
 const s2 = await ok('POST', '/masuk', { username: 'anggrek', password: appr.password });
 assert(s2.kind === 'pemilik' && s2.mustChange, 'new owner login');
-// ---------- tambahan berdua per tahun (Kos Bona: Rp3.500.000/tahun)
+// Tambahan berdua per tahun (Kos Bona: Rp3.500.000/tahun)
 const b09 = await ok('POST', '/admin/rooms', { propertyId: bona.id, code: 'B-09', priceMonthly: 300000, priceYearly: 3000000, capacity: 2, extraPersonFee: 3500000, extraPersonPeriod: 'tahunan' }, A);
 assert(b09.extraPersonPeriod === 'tahunan', 'extra period saved');
 const yl = await ok('POST', '/leads', { propertyId: bona.id, roomId: b09.id, people: 2, period: 'tahunan', duration: 1, moveDate: plus(4), name: 'Sari', phone: '081277766655' });

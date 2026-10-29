@@ -1,9 +1,5 @@
-/* Google Analytics 4 untuk semua halaman Bonaasina.
-   - Page view dikirim manual dengan alamat bersih (tanpa #hash dan ?query), supaya token portal
-     penghuni dan isian lain tidak pernah terkirim ke Google.
-   - Admin & dashboard penghuni memakai menu berbasis #hash: skripnya memanggil bonaTrack('/admin/<menu>')
-     atau bonaTrack('/penghuni/<menu>') saat pindah menu.
-   - Tidak aktif di localhost. */
+/* Google Analytics 4 untuk semua halaman. Page view dikirim manual dengan alamat bersih (tanpa #hash dan ?query)
+   supaya token portal tidak terkirim ke Google; admin & dashboard memanggil bonaTrack('/admin/<menu>') saat pindah menu. Tidak aktif di localhost. */
 (() => {
   const id = window.BONA_CONFIG?.ga4Id;
   const noop = () => {};

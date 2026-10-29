@@ -1,4 +1,4 @@
-/* Bonaasina — cek keaslian kartu, kuitansi, dan bukti booking (dipindah dari skrip inline supaya CSP bisa ketat). */
+/* Bonaasina: cek keaslian kartu, kuitansi, dan bukti booking (dipindah dari skrip inline supaya CSP bisa ketat). */
 (() => {
   const out = document.getElementById('out');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -8,7 +8,11 @@
   const logo = '<img class="logo" src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="220" height="194">';
   const code = new URLSearchParams(location.search).get('k') || '';
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
-  const fail = (msg) => { out.innerHTML = `${logo}<span class="verify__badge no">Tidak terdaftar</span><h1>Kode tidak dikenal</h1><p class="muted">${esc(msg)}</p><a class="btn btn--ghost" href="/">Ke website Bonaasina</a>`; };
+  const panel = (badge, title, msg) => { out.innerHTML = `${logo}<span class="verify__badge no">${esc(badge)}</span><h1>${esc(title)}</h1><p class="muted">${esc(msg)}</p><a class="btn btn--ghost" href="/">Ke website Bonaasina</a>`; };
+  // Kode tidak dikenal (404) dibedakan dari gagal memeriksa (server mati / koneksi putus), supaya kartu
+  // dan kuitansi yang asli tidak tampil sebagai "tidak terdaftar" hanya karena pemeriksaan gagal.
+  const fail = (msg) => panel('Tidak terdaftar', 'Kode tidak dikenal', msg);
+  const cannotCheck = (msg) => panel('Tidak bisa diperiksa', 'Pemeriksaan gagal', msg);
   if (!/^[a-z0-9]{8,16}$/i.test(code)) return fail('Pindai ulang QR pada kartu, kuitansi, atau bukti booking.');
   fetch(`${API}/public/verify/${encodeURIComponent(code.toLowerCase())}`).then(async (r) => {
     const d = await r.json().catch(() => ({}));
@@ -27,5 +31,5 @@
         <dl class="kv"><dt>Diterima dari</dt><dd>${esc(d.name)}</dd><dt>Kamar</dt><dd>${esc(d.roomCode)}</dd><dt>Untuk</dt><dd>Sewa ${esc(d.periodLabel)}</dd><dt>Jumlah</dt><dd>${rp(d.amount)}</dd><dt>Tanggal bayar</dt><dd>${tgl(d.paidAt)}</dd></dl>
         <p class="hint">${d.valid ? 'Pembayaran ini tercatat lunas di sistem pengelola.' : 'Status lunas kuitansi ini sudah dibatalkan pengelola.'}</p>`;
     }
-  }).catch(() => fail('Tidak bisa terhubung. Periksa koneksi internet lalu coba lagi.'));
+  }).catch(() => cannotCheck('Tidak bisa terhubung ke server. Periksa koneksi internet lalu coba lagi.'));
 })();

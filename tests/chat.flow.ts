@@ -50,7 +50,7 @@ db.rooms.push(
 );
 db.tenants.push({ id: 't1', room_id: 'r1', status: 'aktif', name: 'Penghuni' }); // A-01 terisi
 
-// ---------- pemahaman teks (kamus)
+// Pemahaman teks (kamus)
 const d = { site: db.settings[0].data, properties: [], rooms: [], siteUrl: 'https://x', hoursText: 'Setiap hari', whatsapp: '' };
 const topic = (t: string) => botReply({ text: t }, DEFAULT_KAMUS, d as any).topic;
 assert(normalize('Brp hrg kmr perbulan kak?') === 'berapa harga kamar bulanan', 'slang: ' + normalize('Brp hrg kmr perbulan kak?'));
@@ -68,7 +68,7 @@ const k2 = sanitizeKamus([{ id: 'Laundry!', label: 'Laundry', keywords: 'laundry
 assert(k2.some((e) => e.id === 'admin') && k2[0].id === 'laundry' && k2[0].keywords.length === 2, 'sanitize kamus');
 assert(botReply({ text: 'ada tempat cuci baju?' }, k2, d as any).topic === 'laundry', 'kamus kustom');
 
-// ---------- jam layanan (WIB)
+// Jam layanan (wib)
 const wib = (iso: string) => Date.parse(iso) - 7 * 3600e3;
 const cfg = { days: [1, 2, 3, 4, 5], opens: '09:00', closes: '18:00' };
 assert(chatOnline(cfg, wib('2026-10-26T09:00:00Z')), 'Senin 09:00 buka');
@@ -77,7 +77,7 @@ assert(!chatOnline(cfg, wib('2026-10-25T12:00:00Z')), 'Minggu tutup');
 assert(chatOnline({ days: [5], opens: '20:00', closes: '02:00' }, wib('2026-10-31T01:00:00Z')), 'Jumat malam lewat tengah malam (Sabtu 01:00)');
 assert(chatHoursText(cfg) === 'Senin–Jumat, 09.00–18.00 WIB', chatHoursText(cfg));
 
-// ---------- API pengunjung
+// Api pengunjung
 const conf = await ok('GET', '/chat/config');
 assert(conf.enabled && conf.visible && conf.botEnabled && conf.menu.length >= 5 && conf.whatsapp === '6282245276374', 'config publik');
 assert(conf.menu.some((m: any) => m.id === 'admin'), 'menu punya admin');

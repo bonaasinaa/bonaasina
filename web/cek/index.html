@@ -2,14 +2,14 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#F7EDE3">
-  <title>Cek kartu & kuitansi — Bonaasina</title>
+  <title>Cek kartu & kuitansi | Bonaasina</title>
   <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
   <link rel="stylesheet" href="/css/fonts.css?v=20261024a">
-  <link rel="stylesheet" href="/admin/admin.css?v=20261024a">
+  <link rel="stylesheet" href="/admin/admin.css?v=20261029z">
   <style>
     .verify { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 20px; }
     .verify__card { width: min(440px, 100%); background: var(--paper); border: 1px solid var(--line); border-radius: 28px; padding: clamp(24px, 6vw, 32px); display: grid; gap: 14px; text-align: center; justify-items: center; }
@@ -22,6 +22,13 @@
     .verify__photo img { width: 100%; height: 100%; object-fit: cover; }
     .verify .kv { text-align: left; width: 100%; }
   </style>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Bonaasina">
+  <link rel="stylesheet" href="/css/pwa.css?v=20261029k">
+  <script src="/js/pwa.js?v=20261029k" defer></script>
 </head>
 <body>
   <main class="verify"><section class="verify__card" id="out" aria-live="polite">
@@ -29,7 +36,7 @@
     <p class="muted">Memeriksa…</p>
   </section></main>
   <script src="/js/config.js?v=20261024a"></script>
-  <script src="/cek/cek.js?v=20261024a" defer></script>
+  <script src="/cek/cek.js?v=20261029c" defer></script>
   <script src="/js/analytics.js?v=20261024a" defer></script>
 </body>
 </html>

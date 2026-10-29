@@ -1,6 +1,4 @@
-/* Live chat Bonaasina — tombol & panel chat di halaman publik (lihat /js/livechat.js).
-   Warna mengikuti logo: merah ulos, krem, hitam gorga. Variabel diberi cadangan supaya bisa dipakai
-   di halaman yang tidak memuat site.css. */
+/* Live chat publik (lihat /js/livechat.js). Variabel punya cadangan untuk halaman tanpa site.css. */
 .lc {
   --lc-red: var(--red, #8E1B1B); --lc-red-deep: var(--red-deep, #6E1212); --lc-ink: var(--ink, #24160F); --lc-cream: var(--cream, #F7EDE3);
   --lc-paper: var(--paper, #FFFBF6); --lc-ijuk: var(--ijuk, #6B4B3A); --lc-line: var(--line, rgba(36, 22, 15, .14)); --lc-green: var(--green, #2F6B3F);

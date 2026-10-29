@@ -1,10 +1,5 @@
-/* Live chat Bonaasina — tombol chat di pojok kanan bawah halaman publik, alternatif selain WhatsApp.
-   1. Bot sambutan menyapa, menawarkan pilihan topik, dan menjawab pertanyaan dari data website (tanpa menyimpan apa pun).
-   2. Bila pengunjung ingin bicara dengan admin (atau bot tidak paham), pengunjung menulis nama panggilan →
-      percakapan tersimpan dan admin membalas dari dashboard. Token percakapan disimpan di localStorage
-      perangkat ini (bukan cookie), dikirim di header X-Chat-Session.
-   Pembaruan: polling ringan (lebih sering saat panel terbuka, berhenti saat tab disembunyikan).
-   Tidak ada skrip/gaya inline, jadi tetap sesuai Content-Security-Policy di _headers. */
+// Live chat publik: bot sambutan lebih dulu, lalu percakapan dengan admin lewat polling.
+// Tanpa skrip atau gaya inline, sesuai CSP di _headers.
 (() => {
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
   const TOKEN_KEY = 'bonaasina-chat';
@@ -35,7 +30,7 @@
     return data;
   }
 
-  // ---------------------------------------------------------------- tampilan
+  // Tampilan
   const root = document.createElement('div');
   root.className = 'lc';
   root.innerHTML = `
@@ -147,7 +142,7 @@
     if (!msgs.length) list.innerHTML = '<p class="lc-empty">Belum ada pesan.</p>';
   }
 
-  // ---------------------------------------------------------------- alur
+  // Alur
   async function askBot(payload, shown) {
     retireChips();
     const mine = { sender: 'pengunjung', body: shown, topic: payload.topic || null, text: payload.text || null };
@@ -266,7 +261,7 @@
     else { pending = text; const mine = { sender: 'pengunjung', body: text }; botLog.push(mine); saveBotLog(); addBubbles([mine]); showNameCard(); }
   });
 
-  // ---------------------------------------------------------------- mulai
+  // Mulai
   async function init() {
     let out;
     try { out = await call('GET', '/chat'); } catch { return; } // API tidak terjangkau: tombol WhatsApp tetap ada

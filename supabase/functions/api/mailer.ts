@@ -1,9 +1,5 @@
-// Bonaasina — notifikasi email lewat Resend (https://resend.com).
-// Secret fungsi: RESEND_API_KEY (wajib; tanpa ini email dilewati diam-diam), EMAIL_FROM (bawaan
-// "Bonaasina <notifikasi@kabar.bonaasina.my.id>", domainnya harus sudah diverifikasi di Resend), EMAIL_REPLY_TO (opsional).
-// Email selalu dikirim di latar belakang: kegagalan kirim tidak pernah menggagalkan aksi pengguna.
-// Setiap email punya dedupeKey (unik di tabel email_log, juga dipakai sebagai Idempotency-Key Resend),
-// jadi satu kejadian tidak terkirim dua kali walau kodenya terpanggil ulang.
+// Bonaasina, notifikasi email lewat Resend. Secret: RESEND_API_KEY (wajib, tanpa ini email dilewati diam-diam), EMAIL_FROM (domain terverifikasi), EMAIL_REPLY_TO.
+// Dikirim di latar belakang, jadi gagal kirim tidak menggagalkan aksi pengguna; dedupeKey unik di email_log sekaligus Idempotency-Key Resend.
 type Row = Record<string, any>;
 
 export type Mail = {
@@ -43,7 +39,7 @@ ${m.cta ? `<p style="margin:20px 0 4px"><a href="${esc(m.cta.url)}" style="displ
 </table></td></tr></table></body></html>`;
   const text = [
     m.title, '', m.intro || '', ...(rows.length ? ['', ...rows.map(([k, v]) => `${k}: ${v}`)] : []), m.note ? `\n${m.note}` : '',
-    m.cta ? `\n${m.cta.label}: ${m.cta.url}` : '', '', '— Bonaasina', site,
+    m.cta ? `\n${m.cta.label}: ${m.cta.url}` : '', '', 'Bonaasina', site,
   ].filter((x, i, a) => !(x === '' && a[i - 1] === '')).join('\n').trim();
   return { html, text };
 }

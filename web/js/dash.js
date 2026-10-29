@@ -1,4 +1,4 @@
-/* Bonaasina — perilaku bersama dashboard: navigasi bawah di HP, grup menu yang bisa dilipat,
+/* Bonaasina: perilaku bersama dashboard: navigasi bawah di HP, grup menu yang bisa dilipat,
    animasi masuk sekali per menu, angka yang berhitung, dan pembantu grafik kecil (donut, batang). */
 (() => {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;

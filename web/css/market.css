@@ -1,6 +1,6 @@
 /* Bonaasina — komponen Kos Sekitar untuk dashboard (admin, pemilik, customer). Dipakai bersama admin.css. */
 
-/* ---------- linimasa status ---------- */
+/* Linimasa status */
 .tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .tl li { position: relative; display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding-bottom: 14px; }
 .tl li::before { content: ""; position: absolute; left: 13px; top: 24px; bottom: 0; width: 2px; background: var(--line); }
@@ -12,7 +12,7 @@
 .tl strong { display: block; font-size: 14px; font-weight: 650; line-height: 28px; }
 .tl small { display: block; color: var(--ijuk); font-size: 12px; margin-top: -4px; }
 
-/* ---------- kartu langkah berikutnya ---------- */
+/* Kartu langkah berikutnya */
 .next { border-radius: var(--r-lg); padding: 18px 20px; background: var(--paper); border: 1.5px solid var(--line); display: grid; gap: 10px; }
 .next--act { border-color: var(--red); background: #FFF6F2; }
 .next--ok { border-color: rgba(47, 107, 63, .4); background: var(--green-bg); }
@@ -24,7 +24,7 @@
 .bank { white-space: pre-line; font-weight: 600; background: var(--paper); border: 1px dashed var(--line-strong); border-radius: var(--r-sm); padding: 10px 12px; }
 .countdown { font-weight: 700; color: var(--red); }
 
-/* ---------- detail reservasi (pemilik & admin) ---------- */
+/* Detail reservasi (pemilik & admin) */
 .lead-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr); gap: 14px; align-items: start; }
 @media (max-width: 1100px) { .lead-grid { grid-template-columns: minmax(0, 1fr); } }
 .lead-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -36,7 +36,7 @@
 .pill--draf { background: rgba(36, 22, 15, .08); color: var(--ink); }
 .unread { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; margin-left: 6px; }
 
-/* ---------- chat ---------- */
+/* Chat */
 .chat { display: flex; flex-direction: column; height: min(70vh, 620px); min-height: 380px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
 .chat__head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .chat__head strong { font-size: 15px; }
@@ -57,7 +57,7 @@
 .chat__off { padding: 14px 16px; border-top: 1px solid var(--line); color: var(--ijuk); font-size: 14px; }
 .chat__empty { margin: auto; text-align: center; color: var(--ijuk); font-size: 14px; max-width: 30ch; }
 
-/* ---------- notifikasi ---------- */
+/* Notifikasi */
 .notifs { display: grid; gap: 0; }
 .notifs button { display: grid; grid-template-columns: 10px 1fr; gap: 10px; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: none; padding: 12px 4px; cursor: pointer; font: inherit; color: inherit; }
 .notifs button:last-child { border-bottom: 0; }
@@ -71,19 +71,19 @@
 .bell { padding-right: 18px; }
 .bell .badge { position: absolute; top: -7px; right: -9px; margin: 0; }
 
-/* ---------- kredensial ---------- */
+/* Kredensial */
 .cred { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; background: var(--paper); border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: 14px 16px; }
 .cred dt { color: var(--ijuk); font-size: 13px; }
 .cred dd { margin: 0; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 
-/* ---------- panduan ---------- */
+/* Panduan */
 .guide { counter-reset: g; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .guide li { counter-increment: g; display: grid; grid-template-columns: 30px 1fr; gap: 10px; }
 .guide li::before { content: counter(g); width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
 .guide strong { display: block; }
 .guide span { color: var(--ijuk); font-size: 14px; }
 
-/* ---------- dashboard customer (satu kolom, tanpa sidebar) ---------- */
+/* Dashboard customer (satu kolom, tanpa sidebar) */
 .cust { max-width: 1120px; margin: 0 auto; padding: 0 var(--pad-x) 80px; }
 .cust__bar { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 12px; padding: 10px var(--pad-x); background: rgba(247, 237, 227, .94); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .cust__bar a.brand { display: flex; align-items: center; gap: 8px; text-decoration: none; font-family: var(--serif); font-size: 20px; }

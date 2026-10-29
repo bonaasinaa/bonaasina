@@ -1,7 +1,5 @@
--- Bonaasina — Kos Sekitar (kos mitra), reservasi dengan konfirmasi pemilik, akun pemilik & customer,
--- chat, notifikasi, fee booking, refund, periode sewa harian/bulanan/semesteran/tahunan, dan 2 penghuni per kamar.
--- Semua perubahan bersifat tambahan: data lama tetap utuh.
--- Sama seperti tabel lain: RLS aktif tanpa policy; hanya Edge Function "api" (kunci rahasia) yang mengakses.
+-- Bonaasina, Kos Sekitar: kos mitra, reservasi dengan konfirmasi pemilik, akun pemilik & customer, chat, notifikasi,
+-- fee booking, refund, periode harian/bulanan/semesteran/tahunan, 2 penghuni per kamar. Semua tambahan, data lama utuh; RLS aktif tanpa policy.
 
 -- Periode sewa ------------------------------------------------------------------------
 alter table public.tenants drop constraint tenants_rent_cycle_check;

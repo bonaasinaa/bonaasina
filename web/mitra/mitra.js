@@ -1,4 +1,4 @@
-/* Bonaasina — halaman Jadi Mitra: contoh dashboard interaktif, kalkulator biaya, dan formulir pendaftaran 2 langkah. */
+/* Bonaasina: halaman Jadi Mitra: contoh dashboard interaktif, kalkulator biaya, dan formulir pendaftaran 2 langkah. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -8,7 +8,7 @@
   $('#year').textContent = new Date().getFullYear();
   let fee = { type: 'persen', value: 10 }; let adminWa = '';
 
-  // ---------- contoh dashboard di ponsel ----------
+  // Contoh dashboard di ponsel
   const STEPS = [
     { label: 'Pesanan masuk', html: `<span class="dm__tag">Reservasi baru</span>
       <div class="dm__card"><strong>Rina Simanjuntak</strong><span>Kamar A-2, sewa 3 bulan</span><span>Mulai 1 November, 1 orang</span></div>
@@ -39,7 +39,7 @@
   });
   show(0); tick();
 
-  // ---------- kalkulator ----------
+  // Kalkulator
   const range = $('#dpRange');
   function calc() {
     const dp = Number(range.value);
@@ -49,16 +49,19 @@
   }
   range.addEventListener('input', calc); calc();
 
-  fetch(API + '/kos-sekitar').then((r) => r.json()).then((d) => {
+  fetch(API + '/kos-sekitar').then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
     if (d.fee) { fee = d.fee; $('#feeRate').textContent = fee.type === 'nominal' ? `${rp(fee.value)} per booking` : `${Number(fee.value).toLocaleString('id-ID')}% dari DP`; calc(); }
     adminWa = d.whatsapp || '';
     if (adminWa) {
       const url = `https://wa.me/${adminWa}?text=${encodeURIComponent('Horas admin Bonaasina, saya punya kos dan ingin bergabung sebagai mitra.')}`;
       $('#adminWa').href = url; $('#joinDoneWa').href = url;
     } else { $('.join__wa').hidden = true; $('#joinDoneWa').hidden = true; }
-  }).catch(() => {});
+  }).catch(() => {
+    // Tanpa pesan, kalkulator fee tampak memakai persentase bawaan padahal angkanya tidak termuat.
+    $('#feeRate').textContent = 'belum bisa dimuat, coba muat ulang halaman';
+  });
 
-  // ---------- formulir 2 langkah ----------
+  // Formulir 2 langkah
   const form = $('#joinForm'); const err = $('.form__error', form);
   const step = (n) => {
     $$('.join__step', form).forEach((s) => { s.hidden = s.dataset.step !== String(n); });

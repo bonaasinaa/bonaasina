@@ -1,4 +1,4 @@
-/* Dashboard penghuni Bonaasina — tagihan & kuitansi, kontrak, kondisi kamar, piket, pengumuman, kerusakan, profil & kartu. */
+/* Dashboard penghuni Bonaasina: tagihan & kuitansi, kontrak, kondisi kamar, piket, pengumuman, kerusakan, profil & kartu. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -18,7 +18,13 @@
   const setSession = (s) => { try { s ? localStorage.setItem(KEY, JSON.stringify(s)) : localStorage.removeItem(KEY); } catch { /* abaikan */ } };
   let data = null;
 
-  // ---------- API ----------
+  // API
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     const opt = { method, headers: {} };
     const s = getSession(); if (s?.token) opt.headers['X-Tenant-Session'] = s.token;
@@ -64,7 +70,7 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('is-on'), 3600);
   }
 
-  // ---------- dialog ----------
+  // Dialog
   const dlg = $('#dlg'); let dlgHandler = null;
   function openDialog({ title, body, ok = 'Simpan', okClass = 'btn--red', onOk, onOpen, wide = false }) {
     dlg.classList.toggle('dlg--wide', wide);
@@ -83,7 +89,7 @@
     finally { btn.disabled = false; }
   });
 
-  // ---------- masuk & keluar ----------
+  // Masuk & keluar
   function showLogin(msg) {
     BonaLoader.reset();
     $('#app').hidden = true; $('#login').hidden = false; dlg.open && dlg.close();
@@ -134,7 +140,7 @@
     route(true);
   }
 
-  // ---------- router ----------
+  // Router
   const views = { beranda, tagihan, kontrak, kondisi, piket, pengumuman, kerusakan, profil };
   const TITLES = { beranda: 'Beranda', tagihan: 'Tagihan & kuitansi', kontrak: 'Kontrak', kondisi: 'Kondisi kamar', piket: 'Piket', pengumuman: 'Pengumuman', kerusakan: 'Lapor kerusakan', profil: 'Profil & kartu' };
   let shown = null;
@@ -143,7 +149,7 @@
     const name = views[location.hash.slice(1)] ? location.hash.slice(1) : 'beranda';
     const isNew = shown !== name;
     $$('#sideNav a').forEach((a) => (a.dataset.view === name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
-    $('#topTitle').textContent = TITLES[name]; document.title = `${TITLES[name]} — Dashboard Penghuni Bonaasina`;
+    $('#topTitle').textContent = TITLES[name]; document.title = `${TITLES[name]} | Dashboard Penghuni Bonaasina`;
     closeNav(); badges();
     const y = scrollY;
     main.onclick = null; main.onchange = null;
@@ -188,7 +194,7 @@
     return { cls: 'belum', text: 'Belum dibayar' };
   }
 
-  // ========== BERANDA ==========
+  // Beranda
   function beranda() {
     const { tenant, room, property, invoices, contracts, chores, announcements, notifications, today } = data;
     const first = (tenant.name || '').split(' ')[0];
@@ -218,7 +224,7 @@
     D.sideWidget(unpaid[0] ? `<small>Tagihan berikutnya</small><strong style="font-size:1.4rem">${rp(unpaid[0].amount)}</strong><small>${late ? 'Sudah lewat jatuh tempo' : `Jatuh tempo ${tgl(unpaid[0].dueDate)}`}</small>` : '<small>Status bayar</small><strong style="font-size:1.4rem">Lunas</strong><small>Terima kasih sudah tepat waktu</small>');
   }
 
-  // ========== TAGIHAN ==========
+  // Tagihan
   let uploadFor = null;
   function tagihan() {
     const unpaid = data.invoices.filter((i) => i.status === 'belum').sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -254,11 +260,12 @@
     });
   }
 
-  // ========== KONTRAK ==========
+  // Kontrak
   function kontrak() {
     const list = data.contracts;
     const pending = list.find((c) => c.phase === 'menunggu');
-    const current = list.find((c) => ['aktif', 'akan_habis', 'akan_mulai'].includes(c.phase));
+    // Kontrak yang sedang berjalan didahulukan; kontrak perpanjangan yang belum mulai tidak menutupinya.
+    const current = list.find((c) => ['aktif', 'akan_habis'].includes(c.phase)) || list.find((c) => c.phase === 'akan_mulai');
     const canDecide = current && current.phase !== 'akan_mulai' && current.daysLeft !== null && current.daysLeft <= 60;
     main.innerHTML = head('Kontrak sewa', 'Baca dan setujui kontrak secara elektronik. Salinan PDF tersimpan dan bisa diunduh kapan saja.') + `
       ${pending ? `<section class="panel panel--focus"><h2>Kontrak baru menunggu persetujuan Anda</h2>
@@ -307,7 +314,7 @@
     });
   }
 
-  // ========== KONDISI KAMAR ==========
+  // Kondisi kamar
   function kondisi() {
     const list = data.inspections;
     const masuk = list.find((x) => x.kind === 'masuk');
@@ -332,7 +339,7 @@
     };
   }
 
-  // ========== PIKET ==========
+  // Piket
   function piket() {
     const { chores, today } = data;
     const mine = chores.filter((c) => c.mine);
@@ -379,7 +386,7 @@
   }
   const addDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 
-  // ========== PENGUMUMAN ==========
+  // Pengumuman
   function pengumuman() {
     const list = data.announcements;
     const unread = list.filter((a) => !a.read);
@@ -389,12 +396,19 @@
         ${a.body ? `<p class="ann__body">${esc(a.body)}</p>` : ''}</article>`).join('') : '<section class="panel empty">Belum ada pengumuman.</section>');
     // Dibuka = dibaca. Tanda "Baru" tetap tampil sampai menu ini ditinggalkan.
     if (unread.length) {
-      Promise.all(unread.map((a) => api('POST', `/announcements/${a.id}/read`).then(() => { a.read = true; }).catch(() => {})))
-        .then(() => { badges(); data.notifications = data.notifications.filter((n) => n.kind !== 'pengumuman'); });
+      // Pemberitahuan hanya dihapus bila semua penandaan berhasil; kalau gagal, sisa pengumuman yang
+      // belum tercatat dibaca tetap terlihat supaya penghuni tahu masih ada yang belum terbaca.
+      Promise.allSettled(unread.map((a) => api('POST', `/announcements/${a.id}/read`).then(() => { a.read = true; })))
+        .then((res) => {
+          const failed = res.filter((r) => r.status === 'rejected').length;
+          badges();
+          if (failed) { toast('Sebagian pengumuman belum tercatat dibaca. Muat ulang halaman ini.', true); return; }
+          data.notifications = data.notifications.filter((n) => n.kind !== 'pengumuman');
+        });
     }
   }
 
-  // ========== KERUSAKAN ==========
+  // Kerusakan
   const CATS = ['Listrik', 'Air & kamar mandi', 'Pintu & kunci', 'Perabot', 'WiFi', 'Kebersihan', 'Lainnya'];
   const ISSUE = { baru: 'Diterima', dikerjakan: 'Sedang dikerjakan', selesai: 'Selesai' };
   function kerusakan() {
@@ -414,21 +428,25 @@
             <span class="sub">${esc(i.category)}, dilaporkan ${tgl(i.createdAt)}${i.hasPhoto ? ', dengan foto' : ''}</span>${i.ownerNote ? `<span class="sub">Pengelola: ${esc(i.ownerNote)}</span>` : ''}</div></div>`).join('')}</div>` : '<p class="muted">Belum ada laporan.</p>'}</section>
       </div>`;
     $('#issueFile').addEventListener('change', (e) => { photo = e.target.files[0] || null; $('#issueFileName').textContent = photo ? photo.name : ''; });
+    // Menyimpan sementara id laporan yang sudah dibuat tetapi fotonya belum berhasil terkirim, supaya
+    // menekan "Kirim" lagi hanya mengulang unggahan foto (dulu membuat laporan kedua).
+    let createdId = null;
     $('#issueForm').addEventListener('submit', async (e) => {
       e.preventDefault(); const f = e.target; const err = $('#issueErr'); const body = Object.fromEntries(new FormData(f));
       if (!String(body.title || '').trim()) { err.textContent = 'Tulis singkat apa yang rusak.'; err.hidden = false; return; }
       err.hidden = true;
       try {
         await BonaLoader.during('Mengirim laporan…', async () => {
-          const rec = await api('POST', '/issues', body);
-          if (photo) await api('POST', `/issues/${rec.id}/photo`, undefined, await shrink(photo));
+          createdId ||= (await api('POST', '/issues', body)).id;
+          if (photo) await api('POST', `/issues/${createdId}/photo`, undefined, await shrink(photo));
         });
+        createdId = null;
         toast('Laporan terkirim. Pengelola akan menindaklanjuti.'); await refresh();
       } catch (ex) { err.textContent = ex.message; err.hidden = false; }
     });
   }
 
-  // ========== PROFIL & KARTU ==========
+  // Profil & kartu
   function profil() {
     const { tenant: t, room, property, card } = data;
     main.innerHTML = head('Profil & kartu penghuni', 'Data Anda yang tercatat di pengelola, kartu penghuni, dan kata sandi.') + `
@@ -483,6 +501,6 @@
         <div class="idcard__qr">${c.qrSvg || ''}<span>No. ${fmtCode(c.code)}</span></div></div></div>`;
   }
 
-  // ---------- mulai ----------
+  // Mulai
   if (getSession()?.token) start(); else showLogin();
 })();

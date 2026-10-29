@@ -1,12 +1,10 @@
-// Bonaasina — fitur komunitas sekitar kos:
-//   1. Titip jualan & jasa mahasiswa (/titip/). Siapa saja mengirim lewat formulir → admin menyetujui → tampil.
-//      Pembeli menghubungi penjual lewat WhatsApp; website tidak memproses pembayaran.
-//   2. Info tempat sekitar (/sekitar/): warung makan, toko, laundry, fotokopi, dll. Admin mengisi;
-//      pengunjung boleh mengusulkan tempat baru yang masuk ke admin untuk disetujui.
+// Bonaasina, fitur komunitas sekitar kos: titip jualan & jasa mahasiswa (/titip/) dan info tempat sekitar (/sekitar/).
+// Keduanya diisi lewat formulir (pengunjung boleh mengusulkan tempat), disetujui admin, lalu tampil; pembeli menghubungi penjual lewat WhatsApp dan website tidak memproses pembayaran.
 type Row = Record<string, any>;
 
 export function createCommunity(H: Record<string, any>) {
   const { sb, q, one, insert, update, str, num, isDate, pick, toCamel, bad, notFound, HttpError, on, created, readImage, putFile, randomToken, clientInfo, normalizePhone, todayStr, PHOTO_PREFIX, SITE_URL } = H;
+  const pages = H.pages as (make: (from: number, to: number) => any) => Promise<Row[]>;
 
   const LISTING_CATS: Record<string, string[]> = {
     jual: ['Makanan & minuman', 'Pakaian & aksesori', 'Buku & alat tulis', 'Elektronik', 'Perabot kos', 'Kerajinan', 'Lainnya'],
@@ -29,15 +27,20 @@ export function createCommunity(H: Record<string, any>) {
     list.push(now); uploadHits.set(ip, list); return true;
   }
 
-  // ------------------------------------------------------------ TITIP JUALAN & JASA
+  // Titip jualan & jasa
   const publicListing = (r: Row) => ({
     ...pick(r, ['id', 'kind', 'category', 'title', 'description', 'price', 'priceNote', 'photos', 'sellerInfo', 'area', 'featured', 'approvedAt']),
     sellerName: r.sellerName.split(/\s+/).slice(0, 2).join(' '),
     waUrl: waUrl(r.sellerPhone, `Halo ${r.sellerName}, saya lihat "${r.title}" di Titip Jualan Bonaasina. Apakah masih tersedia?`),
   });
   async function activeListings() {
-    const rows = ((await q(sb.from('listings').select('*').eq('status', 'aktif').order('created_at', { ascending: false }).limit(300))) as Row[] || []).map((x: Row) => toCamel(x) as Row);
     const today = todayStr();
+    // Masa tayang disaring di server: iklan aktif yang sudah kedaluwarsa tidak lagi memenuhi jendela
+    // hasil terbaru sehingga iklan yang benar-benar tayang tetap tampil semua.
+    const rows = (await pages((from: number, to: number) => sb.from('listings').select('*')
+      .eq('status', 'aktif').or(`expires_on.is.null,expires_on.gte.${today}`)
+      .order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to)))
+      .map((x: Row) => toCamel(x) as Row);
     return rows.filter((r) => !r.expiresOn || r.expiresOn >= today).sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
   }
   on('GET', '/titip', async () => ({ categories: LISTING_CATS, listings: (await activeListings()).map(publicListing) }));
@@ -58,7 +61,11 @@ export function createCommunity(H: Record<string, any>) {
       category: LISTING_CATS[kind].includes(b.category) ? b.category : 'Lainnya',
       price: b.price === '' || b.price === null || b.price === undefined ? null : num(b.price),
       priceNote: str(b.priceNote, 40), sellerInfo: str(b.sellerInfo, 80), area: str(b.area, 80),
-      photos: (Array.isArray(b.photos) ? b.photos : []).filter((u: unknown) => typeof u === 'string' && (u.startsWith(TITIP_PREFIX) || (admin && u.startsWith(PHOTO_PREFIX)))).slice(0, 4),
+      photos: (() => {
+        const list = (Array.isArray(b.photos) ? b.photos : []).filter((u: unknown) => typeof u === 'string' && (u.startsWith(TITIP_PREFIX) || (admin && u.startsWith(PHOTO_PREFIX))));
+        if (list.length > 4) throw bad('Maksimal 4 foto per iklan.');
+        return list;
+      })(),
     };
     if (!out.title) throw bad('Isi nama barang atau jasa.');
     return out;
@@ -79,16 +86,34 @@ export function createCommunity(H: Record<string, any>) {
     ]);
     if ((byPhone.count ?? 0) >= 5 || (ip && (byIp.count ?? 0) >= 8)) throw new HttpError(429, 'Iklan dari nomor ini sudah banyak hari ini. Coba lagi besok, atau hubungi admin lewat WhatsApp.');
     const rec = await insert('listings', { ...f, sellerName, sellerPhone, ip, status: 'baru' });
+    // Hitung ulang setelah insert: iklan yang dikirim bersamaan tidak boleh melewati batas.
+    const [againPhone, againIp] = await Promise.all([
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('seller_phone', sellerPhone).gte('created_at', dayAgo),
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', hourAgo),
+    ]);
+    if ((againPhone.count ?? 0) > 5 || (ip && (againIp.count ?? 0) > 8)) {
+      await q(sb.from('listings').delete().eq('id', rec.id));
+      throw new HttpError(429, 'Iklan dari nomor ini sudah banyak hari ini. Coba lagi besok, atau hubungi admin lewat WhatsApp.');
+    }
     await notifyAdmin('titip', `Titip ${f.kind === 'jasa' ? 'jasa' : 'jualan'} baru: ${f.title}`, `${sellerName} (${sellerPhone}). Periksa di menu Titip jualan.`);
     log({ action: 'listing.submit', summary: `Mengirim titip ${f.kind}: ${f.title}`, meta: { name: sellerName } });
     return created({ ok: true, id: rec.id });
   });
 
-  on('GET', '/admin/listings', async () => ({
-    categories: LISTING_CATS,
-    listings: ((await q(sb.from('listings').select('*').order('created_at', { ascending: false }).limit(500))) as Row[] || []).map((x: Row) => toCamel(x) as Row)
-      .map((r: Row) => ({ ...r, waSeller: normalizePhone(r.sellerPhone) })),
-  }));
+  on('GET', '/admin/listings', async ({ url }: Row) => {
+    const status = str(url?.searchParams?.get('status'), 20);
+    const listings = (await pages((from: number, to: number) => {
+      let b = sb.from('listings').select('*');
+      if (['baru', 'aktif', 'ditolak', 'selesai'].includes(status)) b = b.eq('status', status);
+      return b.order('created_at', { ascending: false }).order('id', { ascending: false }).range(from, to);
+    })).map((x: Row) => toCamel(x) as Row).map((r: Row) => ({ ...r, waSeller: normalizePhone(r.sellerPhone) }));
+    // Angka tiap segmen dihitung terpisah, jadi lencana tidak lagi berbeda dari daftar yang tampil.
+    const [jumlahBaru, jumlahAktif] = await Promise.all([
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'baru'),
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('status', 'aktif'),
+    ]);
+    return { categories: LISTING_CATS, listings, counts: { baru: jumlahBaru.count ?? 0, aktif: jumlahAktif.count ?? 0 } };
+  });
   on('POST', '/admin/listings', async ({ body: b }: Row, log: (e: Row) => void) => {
     const sellerName = str(b.sellerName, 80), sellerPhone = str(b.sellerPhone, 20);
     if (!sellerName) throw bad('Isi nama penjual.');
@@ -108,7 +133,12 @@ export function createCommunity(H: Record<string, any>) {
     const patch: Row = {};
     if (b.title !== undefined) Object.assign(patch, listingFields({ ...cur, ...b }, true));
     if (b.sellerName !== undefined) patch.sellerName = str(b.sellerName, 80) || cur.sellerName;
-    if (b.sellerPhone !== undefined && normalizePhone(b.sellerPhone).length >= 10) patch.sellerPhone = str(b.sellerPhone, 20);
+    if (b.sellerPhone !== undefined) {
+      const phone = str(b.sellerPhone, 20);
+      // Nomor pendek tidak boleh "tersimpan" tanpa perubahan: beri tahu admin.
+      if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp penjual belum benar. Contoh: 0812 3456 7890.');
+      patch.sellerPhone = phone;
+    }
     if (b.featured !== undefined) patch.featured = !!b.featured;
     if (b.adminNote !== undefined) patch.adminNote = str(b.adminNote, 300);
     if (b.expiresOn !== undefined) patch.expiresOn = isDate(b.expiresOn) ? b.expiresOn : null;
@@ -135,7 +165,7 @@ export function createCommunity(H: Record<string, any>) {
     return { ok: true };
   });
 
-  // ------------------------------------------------------------ TEMPAT SEKITAR
+  // Tempat sekitar
   const PLACE_FIELDS = ['id', 'name', 'category', 'description', 'address', 'mapsQuery', 'openHours', 'priceNote', 'distanceNote', 'photo'];
   function placeFields(b: Row) {
     const out: Row = {

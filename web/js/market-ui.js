@@ -1,4 +1,4 @@
-/* Bonaasina — komponen bersama Kos Sekitar untuk dashboard admin, pemilik, dan customer:
+/* Bonaasina: komponen bersama Kos Sekitar untuk dashboard admin, pemilik, dan customer:
    label status, linimasa, chat (diperbarui otomatis), daftar notifikasi, dan detail reservasi beserta aksinya. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -71,7 +71,9 @@
     return `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
   }
 
-  // ---------------------------------------------------------------- chat (diperbarui tiap beberapa detik)
+  // Chat, diperbarui tiap beberapa detik. Draf pesan disimpan per judul chat karena panel digambar ulang
+  // setiap status reservasi berubah, dan tanpa ini teks yang sedang diketik ikut terhapus.
+  const chatDrafts = new Map();
   function chat(el, { load, send, me, enabled = true, offText = '', title = 'Chat', who = {} }) {
     const NAMES = { customer: 'Penyewa', pemilik: 'Pemilik', admin: 'Admin Bonaasina', sistem: 'Bonaasina', ...who };
     el.innerHTML = `<div class="chat"><div class="chat__head"><strong>${esc(title)}</strong><span class="chat__live" hidden>Langsung</span></div>
@@ -79,6 +81,9 @@
       ${enabled ? `<form class="chat__form"><textarea rows="1" maxlength="1000" placeholder="Tulis pesan…" aria-label="Tulis pesan"></textarea><button class="btn btn--red" type="submit">Kirim</button></form>`
         : `<p class="chat__off">${esc(offText || 'Chat sedang dimatikan.')}</p>`}</div>`;
     const list = $('.chat__list', el); let last = 0; let timer = 0; let stopped = false; let first = true;
+    // Id pesan tidak selalu datang berurutan (balasan pemilik bisa terbit sebelum pesan kita), jadi
+    // penanda "sudah dilihat" disimpan per id dan polling memakai sedikit tumpang tindih.
+    const seen = new Set(); const OVERLAP = 50;
     const isMine = (m) => m.sender === me;
     const add = (msgs) => {
       if (!msgs.length) { if (first) list.innerHTML = '<p class="chat__empty">Belum ada pesan. Tanyakan apa saja soal kamar, aturan, atau jadwal kunjungan.</p>'; first = false; return; }
@@ -86,7 +91,8 @@
       first = false;
       const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
       for (const m of msgs) {
-        if (m.id <= last) continue; last = m.id;
+        if (seen.has(m.id)) continue;
+        seen.add(m.id); last = Math.max(last, m.id);
         const div = document.createElement('div');
         div.className = `msg ${m.sender === 'sistem' ? 'msg--sys' : isMine(m) ? 'msg--me' : 'msg--other'}`;
         div.innerHTML = `${m.sender !== 'sistem' ? `<span class="msg__who">${esc(NAMES[m.sender] || m.sender)}</span>` : ''}${esc(m.body)}<small>${jam(m.createdAt)}, ${tgl(m.createdAt.slice(0, 10))}</small>`;
@@ -97,7 +103,18 @@
     async function poll() {
       if (stopped) return;
       if (!document.body.contains(el)) { stopped = true; return; }
-      try { const out = await load(last); add(out.messages || []); $('.chat__live', el).hidden = false; } catch { $('.chat__live', el).hidden = true; }
+      try {
+        const out = await load(Math.max(0, last - OVERLAP));
+        add(out.messages || []);
+        $('.chat__live', el).hidden = false;
+      } catch {
+        $('.chat__live', el).hidden = true;
+        // Jangan biarkan panel terus menulis "Memuat pesan…" saat muatannya gagal.
+        if (first && list.querySelector('.chat__empty')) {
+          first = false;
+          list.innerHTML = '<p class="chat__empty">Pesan belum bisa dimuat. Periksa koneksi lalu muat ulang halaman.</p>';
+        }
+      }
       // Lebih jarang saat tab tidak dilihat.
       timer = setTimeout(poll, document.hidden ? 30000 : 5000);
     }
@@ -105,12 +122,16 @@
     const form = $('.chat__form', el);
     if (form) {
       const ta = $('textarea', form);
-      ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px'; });
+      if (chatDrafts.get(title)) ta.value = chatDrafts.get(title);
+      ta.addEventListener('input', () => {
+        chatDrafts.set(title, ta.value);
+        ta.style.height = 'auto'; ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
+      });
       ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer:fine)').matches) { e.preventDefault(); form.requestSubmit(); } });
       form.addEventListener('submit', async (e) => {
         e.preventDefault(); const text = ta.value.trim(); if (!text) return;
         const btn = $('button', form); btn.disabled = true;
-        try { const m = await send(text); ta.value = ''; ta.style.height = ''; add([m]); }
+        try { const m = await send(text); ta.value = ''; chatDrafts.delete(title); ta.style.height = ''; add([m]); }
         catch (ex) { window.BonaMarket.onError?.(ex); }
         finally { btn.disabled = false; ta.focus(); }
       });
@@ -118,12 +139,13 @@
     return { stop() { stopped = true; clearTimeout(timer); }, refresh() { clearTimeout(timer); poll(); } };
   }
 
-  function notifs(items) {
-    if (!items.length) return '<p class="empty">Belum ada notifikasi.</p>';
-    return `<div class="notifs">${items.map((n) => `<button type="button" data-notif="${n.id}" data-lead="${esc(n.leadId || '')}" class="${n.readAt ? '' : 'is-unread'}"><i></i><div><strong>${esc(n.title)}</strong>${n.body ? `<span>${esc(n.body)}</span>` : ''}<time>${relTime(n.createdAt)}</time></div></button>`).join('')}</div>`;
+  function notifs(items, bare = false) {
+    if (!items.length) return bare ? '' : '<p class="empty">Belum ada notifikasi.</p>';
+    const rows = items.map((n) => `<button type="button" data-notif="${n.id}" data-lead="${esc(n.leadId || '')}" class="${n.readAt ? '' : 'is-unread'}"><i></i><div><strong>${esc(n.title)}</strong>${n.body ? `<span>${esc(n.body)}</span>` : ''}<time>${relTime(n.createdAt)}</time></div></button>`).join('');
+    return bare ? rows : `<div class="notifs">${rows}</div>`;
   }
 
-  // ---------------------------------------------------------------- detail reservasi untuk pemilik & admin
+  // Detail reservasi untuk pemilik & admin
   // ctx: { role, api(method, path, body, raw), base: '/leads/<id>', openDialog, askConfirm, toast, reload(), rooms[], shrink(file), saveBlob, waMe }
   function leadPanel(l, ctx) {
     const a = []; const role = ctx.role; const admin = role === 'admin';
@@ -147,14 +169,14 @@
     else if (l.status === 'dp_dikirim') next = `<div class="next next--act"><h3>Periksa bukti DP</h3><p>Cocokkan nominal <strong>${rp(l.dpAmount)}</strong> dengan mutasi rekening sebelum menerima.</p>${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP"></a>` : ''}<div class="btn-row"><button class="btn btn--green" data-a="dp-ok">DP sudah masuk</button><button class="btn btn--ghost" data-a="dp-no">Belum masuk</button></div></div>`;
     else if (l.status === 'dp_diterima' && mitra) {
       if (admin) {
-        next = `<div class="next ${l.feeStatus === 'dikirim' || l.feeStatus === 'bebas' ? 'next--act' : 'next--wait'}"><h3>${l.feeStatus === 'dikirim' ? 'Periksa bukti fee lalu setujui' : l.feeStatus === 'bebas' ? 'Tanpa fee — siap disetujui' : 'Menunggu pemilik membayar fee'}</h3>
+        next = `<div class="next ${l.feeStatus === 'dikirim' || l.feeStatus === 'bebas' ? 'next--act' : 'next--wait'}"><h3>${l.feeStatus === 'dikirim' ? 'Periksa bukti fee lalu setujui' : l.feeStatus === 'bebas' ? 'Tanpa fee, siap disetujui' : 'Menunggu pemilik membayar fee'}</h3>
           <p>DP ${rp(l.dpAmount)} sudah diterima pemilik ${waktu(l.dpConfirmedAt)}. Fee ${rp(l.feeAmount)} (${esc(l.feeRule)})${l.feeDue ? `, batas ${tgl(l.feeDue)}` : ''}.</p>
           <div class="split2">${l.dpProofUrl ? `<a class="proof-img" href="${esc(l.dpProofUrl)}" target="_blank" rel="noopener" title="Bukti DP penyewa"><img src="${esc(l.dpProofUrl)}" alt="Bukti DP penyewa"></a>` : ''}${l.feeProofUrl ? `<a class="proof-img" href="${esc(l.feeProofUrl)}" target="_blank" rel="noopener" title="Bukti fee pemilik"><img src="${esc(l.feeProofUrl)}" alt="Bukti fee pemilik"></a>` : ''}</div>
           <div class="btn-row"><button class="btn btn--green" data-a="approve">Setujui &amp; terbitkan bukti booking</button>${l.feeStatus === 'dikirim' ? '<button class="btn btn--ghost" data-a="fee-reject">Tolak bukti fee</button>' : ''}</div></div>`;
       } else if (['belum', 'ditolak'].includes(l.feeStatus)) {
         next = `<div class="next next--act"><h3>Transfer biaya layanan Bonaasina</h3>${l.feeStatus === 'ditolak' ? `<p class="err">Bukti sebelumnya ditolak: ${esc(l.feeNote)}</p>` : ''}
           <p>Pesanan ini datang lewat Bonaasina. Transfer biaya layanan <strong>${rp(l.feeAmount)}</strong> (${esc(l.feeRule)})${l.feeDue ? ` paling lambat ${tgl(l.feeDue)}` : ''} ke:</p>
-          <div class="bank">${esc(l.bonaBankInfo || 'Rekening Bonaasina belum diatur — tanyakan ke admin.')}</div>
+          <div class="bank">${esc(l.bonaBankInfo || 'Rekening Bonaasina belum diatur, tanyakan ke admin.')}</div>
           <label class="btn btn--red">Unggah bukti transfer<input type="file" accept="image/*" data-up="fee-proof" hidden></label></div>`;
       } else next = `<div class="next next--wait"><h3>Menunggu persetujuan admin</h3><p>Bukti sudah terkirim. Admin mengecek lalu menerbitkan bukti booking untuk Anda dan penyewa.</p></div>`;
     } else if (l.status === 'berhasil') next = `<div class="next next--ok"><h3>Booking berhasil</h3><p>Bukti booking ${esc(l.invoiceNo)}. Sisa ${rp(l.remaining)} dibayar penyewa langsung ke pemilik. Ubah status kamar menjadi <strong>Terisi</strong> saat penyewa mulai tinggal.</p></div>`;
@@ -228,7 +250,7 @@
       const b = e.target.closest('[data-a]'); if (!b) return;
       const k = b.dataset.a;
       if (k === 'confirm') {
-        const opts = rooms.map((r) => `<option value="${r.id}" data-q="${quote(r)}" ${r.id === l.roomId ? 'selected' : ''} ${['terisi', 'perbaikan'].includes(r.effectiveStatus || r.status) ? 'disabled' : ''}>${esc(r.code)}${r.type ? `, ${esc(r.type)}` : ''} — ${rp(priceOf(r))}/${PER[l.period]}${(r.effectiveStatus || r.status) !== 'kosong' ? ` (${esc(r.effectiveStatus || r.status)})` : ''}${l.people === 2 && Number(r.capacity) < 2 ? ' — hanya 1 orang' : ''}</option>`).join('');
+        const opts = rooms.map((r) => `<option value="${r.id}" data-q="${quote(r)}" ${r.id === l.roomId ? 'selected' : ''} ${['terisi', 'perbaikan'].includes(r.effectiveStatus || r.status) ? 'disabled' : ''}>${esc(r.code)}${r.type ? `, ${esc(r.type)}` : ''}, ${rp(priceOf(r))}/${PER[l.period]}${(r.effectiveStatus || r.status) !== 'kosong' ? ` (${esc(r.effectiveStatus || r.status)})` : ''}${l.people === 2 && Number(r.capacity) < 2 ? ', hanya 1 orang' : ''}</option>`).join('');
         const minDp = ctx.minBooking?.(l) || 0;
         openDialog({
           title: `Konfirmasi kamar untuk ${l.name}`, ok: 'Kirim & minta DP', okClass: 'btn--green',

@@ -1,6 +1,5 @@
--- Log aktivitas: siapa melakukan apa, kapan, dari mana.
--- Ditulis hanya oleh Edge Function "api" (RLS aktif tanpa policy, sama seperti tabel lain).
--- Log lebih tua dari 180 hari dihapus otomatis oleh fungsi api.
+-- Log aktivitas: siapa melakukan apa, kapan, dari mana. Ditulis hanya oleh Edge Function "api"
+-- (RLS aktif tanpa policy, sama seperti tabel lain), dan log lebih tua dari 180 hari dihapus otomatis.
 
 create table public.activity_log (
   id bigint generated always as identity primary key,

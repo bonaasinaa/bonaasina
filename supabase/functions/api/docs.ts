@@ -12,7 +12,7 @@ const WHITE = rgb(1, 1, 1);
 
 const SITE = (Deno.env.get('SITE_URL') || 'https://bonaasina.my.id').replace(/\/$/, '');
 
-// ---------------------------------------------------------------- teks
+// Teks
 // Huruf bawaan PDF hanya mengenal set WinAnsi (Latin-1 + beberapa tanda baca). Karakter lain diganti.
 const CP1252 = new Set([0x20ac, 0x201a, 0x192, 0x201e, 0x2026, 0x2020, 0x2021, 0x2c6, 0x2030, 0x160, 0x2039, 0x152, 0x17d, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x2dc, 0x2122, 0x161, 0x203a, 0x153, 0x17e, 0x178]);
 export function win(s: unknown) {
@@ -75,7 +75,7 @@ export function terbilang(n: number): string {
   return `${s.charAt(0).toUpperCase()}${s.slice(1)} rupiah`;
 }
 
-// ---------------------------------------------------------------- QR
+// QR
 export function qrMatrix(text: string) {
   const q = QRCode.create(text, { errorCorrectionLevel: 'M' });
   const size: number = q.modules.size; const data: Uint8Array = q.modules.data;
@@ -95,7 +95,7 @@ function drawQr(page: PDFPage, text: string, x: number, y: number, size: number)
   }
 }
 
-// ---------------------------------------------------------------- gambar (logo dari website, disimpan di memori)
+// Gambar (logo dari website, disimpan di memori)
 const imgCache = new Map<string, Uint8Array | null>();
 async function siteImage(path: string) {
   if (imgCache.has(path)) return imgCache.get(path)!;
@@ -114,7 +114,7 @@ async function embedAny(doc: PDFDocument, bytes: Uint8Array | null): Promise<PDF
   return null;
 }
 
-// ---------------------------------------------------------------- KONTRAK (A4)
+// Kontrak (A4)
 export type ContractDoc = {
   number: string; body: string; status: string; ownerName: string; tenantName: string; propertyName: string; roomCode: string;
   startDate: string; endDate: string; acceptedAt?: string | null; acceptedName?: string | null; acceptedIp?: string | null; acceptedDevice?: string | null; createdAt?: string | null;
@@ -200,7 +200,7 @@ export async function contractPdf(c: ContractDoc) {
   return await doc.save();
 }
 
-// ---------------------------------------------------------------- KUITANSI (A5 mendatar)
+// Kuitansi (A5 mendatar)
 export type ReceiptDoc = {
   receiptNo: string; issuedAt: string; tenantName: string; amount: number; periodLabel: string; propertyName: string; roomCode: string;
   method: string; paidAt: string; ownerName: string; invoiceAmount: number; verifyCode?: string;
@@ -263,7 +263,7 @@ export async function receiptPdf(r: ReceiptDoc) {
   return await doc.save();
 }
 
-// ---------------------------------------------------------------- KARTU PENGHUNI (ukuran kartu 85,6 x 54 mm)
+// Kartu penghuni (ukuran kartu 85,6 x 54 mm)
 export type CardDoc = {
   name: string; propertyName: string; roomCode: string; since: string; validUntil?: string | null; cardCode: string; photo?: Uint8Array | null; status: string;
 };
@@ -325,7 +325,7 @@ export async function cardPdf(c: CardDoc) {
   return await doc.save();
 }
 
-// ---------------------------------------------------------------- templat kontrak bawaan
+// Templat kontrak bawaan
 export const DEFAULT_CONTRACT_TEMPLATE = `Pada {tanggal_kontrak}, yang bertanda tangan di bawah ini:
 
 1. {pemilik}, selaku pemilik/pengelola {kos}, selanjutnya disebut PIHAK PERTAMA.
@@ -372,7 +372,7 @@ Perselisihan diselesaikan secara musyawarah untuk mufakat.
 ## Pasal 9 - Persetujuan Elektronik
 Perjanjian ini disetujui PIHAK KEDUA secara elektronik melalui dashboard penghuni Bonaasina. Waktu persetujuan dan perangkat yang dipakai dicatat oleh sistem.`;
 
-// ---------------------------------------------------------------- BUKTI TRANSAKSI KOS SEKITAR (A4)
+// Bukti transaksi Kos Sekitar (A4)
 // Dipakai untuk bukti booking (customer & pemilik) dan invoice fee (pemilik & admin).
 export type TransactionDoc = {
   title: string;            // mis. "BUKTI BOOKING" / "INVOICE FEE"

@@ -1,4 +1,4 @@
-/* Bonaasina — formulir reservasi bersama (halaman utama Asina & Bona, dan halaman kos mitra).
+/* Bonaasina: formulir reservasi bersama (halaman utama Asina & Bona, dan halaman kos mitra).
    Tidak ada pembayaran di awal: pemilik memastikan ketersediaan dulu, baru customer diminta DP. */
 window.BonaBooking = (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -55,7 +55,7 @@ window.BonaBooking = (() => {
     f.moveDate.min = today(); f.moveDate.value = plusDays(today(), 7); f.visitDate.min = today(); f.visitDate.value = plusDays(today(), 1);
     function fillRooms() {
       const list = roomsOf();
-      f.roomId.innerHTML = '<option value="">Belum tahu, pilihkan yang cocok</option>' + list.map((r) => `<option value="${r.id}">${esc(r.code)}${r.type ? ` — ${esc(r.type)}` : ''}${Number(r.capacity) === 2 ? ' (bisa 2 orang)' : ''}</option>`).join('');
+      f.roomId.innerHTML = '<option value="">Belum tahu, pilihkan yang cocok</option>' + list.map((r) => `<option value="${r.id}">${esc(r.code)}${r.type ? `, ${esc(r.type)}` : ''}${Number(r.capacity) === 2 ? ' (bisa 2 orang)' : ''}</option>`).join('');
       if (!list.some((r) => r.id === st.roomId)) st.roomId = '';
       f.roomId.value = st.roomId;
     }

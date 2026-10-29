@@ -1,4 +1,4 @@
-/* Dashboard pemilik kos mitra Bonaasina — reservasi masuk, konfirmasi & DP, chat, kamar & harga, info kos, fee. */
+/* Dashboard pemilik kos mitra Bonaasina: reservasi masuk, konfirmasi & DP, chat, kamar & harga, info kos, fee. */
 (() => {
   const M = window.BonaMarket;
   const { esc, rp, tgl, waktu, relTime } = M;
@@ -12,9 +12,17 @@
   const PERIODS = [['harian', 'Harian', 'priceDaily', 'per malam'], ['bulanan', 'Bulanan', 'priceMonthly', 'per bulan'], ['semesteran', '6 bulanan', 'priceSemester', 'per 6 bulan'], ['tahunan', 'Tahunan', 'priceYearly', 'per tahun']];
   const STATUS_KAMAR = { kosong: 'Kosong', dipesan: 'Dipesan', terisi: 'Terisi', perbaikan: 'Perbaikan' };
   const PROP_STATUS = { draf: 'Belum tampil, masih dilengkapi', menunggu: 'Sedang dicek admin', aktif: 'Tampil di website', nonaktif: 'Disembunyikan' };
-  let data = null; let chatBox = null; let leadFilter = 'aktif'; let propSel = null;
+  let data = null; let chatBox = null; let propSel = null;
+  // Filter reservasi diingat selama tab ini hidup (dulu kembali ke "Berjalan" setiap muat ulang).
+  let leadFilter = (() => { try { return sessionStorage.getItem('bona.filter.ownerLeads') || 'aktif'; } catch { return 'aktif'; } })();
 
-  // ---------- API ----------
+  // API
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     const opt = { method, headers: {} };
     const s = getSession(); if (s?.token) opt.headers['X-Owner-Session'] = s.token;
@@ -68,13 +76,19 @@
   });
   function askConfirm(title, text, ok = 'Ya, lanjutkan') {
     return new Promise((resolve) => {
-      let done = false;
-      openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { done = true; resolve(true); } });
-      dlg.addEventListener('close', () => { if (!done) resolve(false); }, { once: true });
+      let settled = false;
+      const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+      const show = () => {
+        openDialog({ title, ok, body: `<p>${esc(text)}</p>`, onOk: async () => { finish(true); } });
+        dlg.addEventListener('close', () => finish(false), { once: true });
+      };
+      // Dialog yang masih terbuka ditutup lebih dulu, dan pendengar 'close' dipasang setelah event penutupan
+      // yang tertunda selesai; kalau tidak, event lama membatalkan konfirmasi sehingga "Hapus" tidak mengerjakan apa pun.
+      if (dlg.open) { dlg.close(); setTimeout(show, 0); } else show();
     });
   }
 
-  // ---------- masuk ----------
+  // Masuk
   function showLogin(msg) {
     BonaLoader.reset(); chatBox?.stop();
     $('#app').hidden = true; $('#changePw').hidden = true; $('#login').hidden = false; if (dlg.open) dlg.close();
@@ -105,7 +119,7 @@
     setSession(null); data = null; chatBox?.stop(); main.innerHTML = ''; showLogin();
   });
 
-  // ---------- data & router ----------
+  // Data & router
   async function load() { data = await api('GET', '/me'); propSel ||= data.properties[0]?.id || null; return data; }
   async function start() {
     $('#login').hidden = true; $('#changePw').hidden = true; $('#app').hidden = false;
@@ -124,7 +138,7 @@
     if (!data) return;
     const name = current(); const key = location.hash;
     $$('#sideNav a').forEach((a) => (a.dataset.view === name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
-    $('#topTitle').textContent = TITLES[name]; document.title = `${TITLES[name]} — Pemilik Kos Bonaasina`;
+    $('#topTitle').textContent = TITLES[name]; document.title = `${TITLES[name]} | Pemilik Kos Bonaasina`;
     closeNav(); chatBox?.stop(); chatBox = null;
     const y = keep && shown === key ? scrollY : 0;
     if (shown !== key) window.bonaTrack?.(`/pemilik/${name}`, `Pemilik: ${TITLES[name]}`);
@@ -190,7 +204,7 @@
       <ul class="setup__list">${items.map(([ok, t, h]) => `<li class="${ok ? 'is-done' : ''}"><a href="${h}">${esc(t)}</a></li>`).join('')}</ul>
       <div class="btn-row">${ready ? `<button class="btn btn--green" data-submit="${p.id}">Minta ditampilkan di website</button>` : `<a class="btn btn--red" href="${items.find((i) => i[3] && !i[0])[2]}">Lengkapi sekarang</a>`}</div></div>`;
   }
-  // ========== BERANDA ==========
+  // Beranda
   async function beranda() {
     const n = needs(); const props = data.properties;
     const todo = [
@@ -241,7 +255,7 @@
     <li><div><strong>Bayar biaya layanan</strong><span>Biaya layanan dihitung otomatis dari DP. Transfer ke rekening Bonaasina dan unggah buktinya.</span></div></li>
     <li><div><strong>Admin menyetujui</strong><span>Bukti booking terkirim ke penyewa, invoice ke Anda. Bila batal setelah DP, proses refund di halaman reservasi.</span></div></li></ol>`;
 
-  // ========== RESERVASI ==========
+  // Reservasi
   async function reservasi() {
     const id = hashParams().get('id');
     if (id) return reservasiDetail(id);
@@ -260,7 +274,7 @@
       <div class="toolbar"><div class="seg" id="ldSeg">${[['aktif', 'Berjalan'], ['berhasil', 'Berhasil'], ['selesai', 'Selesai/batal'], ['semua', 'Semua']].map(([k, t]) => `<button aria-pressed="${leadFilter === k}" data-k="${k}">${t}</button>`).join('')}</div></div>
       <div class="table-wrap" id="ldTable"></div>`;
     draw();
-    $('#ldSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; leadFilter = b.dataset.k; $$('#ldSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
+    $('#ldSeg').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; leadFilter = b.dataset.k; try { sessionStorage.setItem('bona.filter.ownerLeads', leadFilter); } catch { /* abaikan */ } $$('#ldSeg button').forEach((x) => x.setAttribute('aria-pressed', x === b)); draw(); };
   }
   async function reservasiDetail(id) {
     const l = await BonaLoader.during('Membuka reservasi…', () => api('GET', `/leads/${id}`));
@@ -280,7 +294,7 @@
     const cur = data.leads.find((x) => x.id === id); if (cur) cur.unread = 0; badges();
   }
 
-  // ========== KAMAR ==========
+  // Kamar
   const propOf = (id) => data.properties.find((p) => p.id === id);
   function propPicker() {
     if (data.properties.length < 2) return '';
@@ -297,12 +311,22 @@
         <td data-label="Kamar"><strong>${esc(r.code)}</strong><span class="sub">${esc(r.type || '')}${r.hidden ? ', disembunyikan' : ''}${(r.photos || []).length ? `, ${r.photos.length} foto` : ', belum ada foto'}</span></td>
         <td data-label="Kapasitas">${Number(r.capacity) === 2 ? `2 orang${r.extraPersonFee ? `<span class="sub">+${rp(r.extraPersonFee)}/${r.extraPersonPeriod === 'tahunan' ? 'tahun' : 'bln'} bila berdua</span>` : ''}` : '1 orang'}</td>
         ${per.map(([, t, key]) => `<td class="num" data-label="${t}">${r[key] ? rp(r[key]) : '<span class="muted">-</span>'}</td>`).join('')}
-        <td data-label="Status"><select class="inline" data-status="${r.id}" aria-label="Status ${esc(r.code)}">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+        <td data-label="Status"><select class="inline" data-status="${r.id}" data-saved="${r.status}" aria-label="Status ${esc(r.code)}">${Object.entries(STATUS_KAMAR).map(([k, t]) => `<option value="${k}" ${r.status === k ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
         <td class="actions"><button class="btn btn--ghost btn--sm" data-edit="${r.id}">Ubah</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada kamar. Tambahkan kamar beserta harga dan fotonya.</div>'}</div>`;
     $('#propSel')?.addEventListener('change', (e) => { propSel = e.target.value; route(); });
     main.onchange = async (e) => {
       const s = e.target.closest('[data-status]'); if (!s) return;
-      try { await api('PUT', `/rooms/${s.dataset.status}`, { status: s.value }); toast('Status kamar diperbarui di website.'); const r = data.rooms.find((x) => x.id === s.dataset.status); if (r) r.status = s.value; } catch (ex) { toast(ex.message, true); }
+      const saved = s.dataset.saved || s.value;
+      try {
+        await api('PUT', `/rooms/${s.dataset.status}`, { status: s.value });
+        s.dataset.saved = s.value;
+        const r = data.rooms.find((x) => x.id === s.dataset.status); if (r) r.status = s.value;
+        toast('Status kamar diperbarui di website.');
+      } catch (ex) {
+        // Server menolak: kembalikan pilihan ke status yang tersimpan supaya tampilan tidak menipu.
+        s.value = saved;
+        toast(ex.message, true);
+      }
     };
     main.onclick = async (e) => {
       if (e.target.closest('[data-add]')) roomDialog(null, p);
@@ -358,7 +382,8 @@
         bindPhotos(b, 'photos');
         const sync = () => { $('#rExtra', b).hidden = $('#rExtraPer', b).hidden = $('#rCap', b).value !== '2'; }; $('#rCap', b).onchange = sync; sync();
         $('#rDel', b)?.addEventListener('click', async () => {
-          dlg.close();
+          // askConfirm sendiri yang menutup dialog kamar lebih dulu; menutupnya di sini membuat
+          // event 'close' yang tertunda membatalkan konfirmasinya.
           if (!(await askConfirm('Hapus kamar', `Kamar ${r.code} akan dihapus dari website.`, 'Hapus'))) return;
           try { await api('DELETE', `/rooms/${r.id}`); toast('Kamar dihapus.'); reload(); } catch (ex) { toast(ex.message, true); }
         });
@@ -371,7 +396,7 @@
     });
   }
 
-  // ========== KOS SAYA ==========
+  // Kos saya
   async function kos() {
     if (!data.properties.length) { main.innerHTML = head('Kos saya', '') + '<div class="empty">Admin belum menghubungkan kos ke akun Anda.</div>'; return; }
     const p = propOf(propSel);
@@ -429,7 +454,7 @@
     });
   }
 
-  // ========== FEE ==========
+  // Fee
   async function fee() {
     const list = data.leads.filter((l) => l.feeAmount > 0);
     const open = list.filter((l) => ['belum', 'ditolak'].includes(l.feeStatus) && ['dp_diterima', 'berhasil'].includes(l.status));
@@ -447,10 +472,22 @@
         <td class="actions"><a class="btn btn--${['belum', 'ditolak'].includes(l.feeStatus) ? 'red' : 'ghost'} btn--sm" href="#reservasi?id=${l.id}">${['belum', 'ditolak'].includes(l.feeStatus) ? 'Bayar & unggah bukti' : 'Buka'}</a></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada tagihan. Biaya layanan muncul setelah Anda menerima DP dari penyewa.</div>'}</div>`;
   }
 
-  // ========== NOTIFIKASI ==========
+  // Notifikasi
   async function notifikasi() {
     const n = data.notifications;
-    main.innerHTML = head('Notifikasi', '', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel">${M.notifs(n.items)}</div>`;
+    main.innerHTML = head('Notifikasi', '', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel" id="notifPanel">${M.notifs(n.items)}</div>
+      ${n.hasMore ? '<div class="more mt"><button class="btn btn--ghost" id="notifMore">Muat lebih banyak</button></div>' : ''}`;
+    $('#notifMore')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true;
+      const lastId = Number($('#notifPanel .notifs [data-notif]')?.dataset.notif || 0);
+      const panel = $('#notifPanel .notifs');
+      try {
+        const more = await api('GET', `/notifications?before=${lastId}`);
+        if (panel) panel.insertAdjacentHTML('beforeend', M.notifs(more.items, true));
+        if (!more.hasMore) btn.parentElement.remove();
+      } catch (ex) { toast(ex.message, true); }
+      finally { btn.disabled = false; }
+    });
     $('#readAll')?.addEventListener('click', async () => { await api('POST', '/notifications/read', {}); reload(); });
     main.onclick = async (e) => {
       const b = e.target.closest('[data-notif]'); if (!b) return;
@@ -459,7 +496,7 @@
     };
   }
 
-  // ========== AKUN ==========
+  // Akun
   async function akun() {
     const o = data.owner;
     main.innerHTML = head('Akun & panduan', '') + `<div class="grid grid--2">

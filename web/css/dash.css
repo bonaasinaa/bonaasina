@@ -1,7 +1,5 @@
-/* Bonaasina — sistem tampilan dashboard v2 (admin, pemilik, penghuni, reservasi). Dimuat setelah admin.css & market.css.
-   Arah (terinspirasi dashboard bersih ala Cadra/Vessa): kanvas terang hangat, kartu putih tipis, menu samping terang
-   melayang dengan pil aktif gelap, kartu angka utama berwarna tinta, angka sans tabular, satu aksen merah ulos.
-   Skala: teks 12/13/14/15, judul 28–36 serif; jarak kelipatan 4; radius 10/14/18/24; kontrol 40 (kecil 34). */
+/* Bonaasina, sistem tampilan dashboard v2 (admin, pemilik, penghuni, reservasi), dimuat setelah admin.css & market.css.
+   Arah: kanvas terang hangat, kartu putih tipis, menu samping melayang dengan pil aktif gelap, satu aksen merah ulos; skala teks 12/13/14/15, judul 28–36 serif, jarak kelipatan 4, radius 10/14/18/24. */
 :root {
   --canvas: #F3EFE9; --paper: #FFFFFF; --soft: #FAF7F3; --cream: #F7EDE3; --field: #FFFFFF;
   --ink: #221510; --ink-2: #3A2A21; --ijuk: #6E5547; --mute: #8C7769;
@@ -16,7 +14,7 @@
 body { background: var(--canvas); font-size: 14px; line-height: 1.5; }
 ::selection { background: rgba(142, 27, 27, .16); }
 
-/* ---------------------------------------------------------------- kerangka */
+/* Kerangka */
 .app { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .side { margin: 12px 0 12px 12px; height: calc(100dvh - 24px); top: 12px; border-radius: var(--r-xl); padding: 16px 12px 12px;
   background: var(--paper); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-1); scrollbar-width: thin; scrollbar-color: rgba(34, 21, 16, .15) transparent; }
@@ -76,7 +74,7 @@ button.side__group[aria-expanded="false"]::after { transform: rotate(-45deg); }
   .form-actions { bottom: calc(82px + env(safe-area-inset-bottom)); }
 }
 
-/* ---------------------------------------------------------------- kepala halaman */
+/* Kepala halaman */
 .page-head { margin-bottom: 18px; align-items: flex-end; }
 .page-head h1 { font-size: clamp(1.8rem, 2.8vw, 2.4rem); letter-spacing: -.005em; line-height: 1.08; }
 .page-head p { font-size: 14px; margin-top: 6px; max-width: 72ch; }
@@ -100,7 +98,7 @@ button.side__group[aria-expanded="false"]::after { transform: rotate(-45deg); }
 .main > .next, .main > .notice { margin-bottom: 16px; }
 .info-box { border-radius: var(--r-md); }
 
-/* ---------------------------------------------------------------- panel, tabel */
+/* Panel, tabel */
 .panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-1); padding: 18px 20px; }
 .panel h2 { font: 650 15px/1.3 var(--sans); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .panel h2 a.small, .panel h2 > a { font-size: 12.5px; font-weight: 600; color: var(--red); text-decoration: none; }
@@ -129,7 +127,7 @@ tbody tr:hover td { background: var(--soft); }
 .who-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .who-cell > div { min-width: 0; }
 
-/* ---------------------------------------------------------------- kartu angka */
+/* Kartu angka */
 .grid { gap: 14px; }
 .grid--stats { gap: 14px; }
 .stat { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label ico" "value value" "sub sub"; align-items: start; gap: 0 10px; overflow: hidden; padding: 16px 18px; color: var(--ink); }
@@ -160,7 +158,7 @@ a.stat:hover, a.stat--link:hover { transform: translateY(-2px); box-shadow: var(
 .spark path.a { fill: var(--tone, var(--ink)); opacity: .08; }
 .grid--hero > .stat:first-child .spark path.l { stroke: #F2B8A8; } .grid--hero > .stat:first-child .spark path.a { fill: #F2B8A8; opacity: .12; }
 
-/* ---------------------------------------------------------------- grafik */
+/* Grafik */
 .meter { height: 8px; border-radius: 99px; background: rgba(34, 21, 16, .07); overflow: hidden; }
 .meter i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--tone, var(--ink)); transition: width .9s var(--ease); }
 .viz { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
@@ -213,7 +211,7 @@ a.stat:hover, a.stat--link:hover { transform: translateY(-2px); box-shadow: var(
 .pill { padding: 3px 10px 3px 8px; font-size: 11.5px; font-weight: 650; }
 .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; flex: none; }
 
-/* ---------------------------------------------------------------- tombol & isian */
+/* Tombol & isian */
 .btn { min-height: var(--ctl); border-radius: 12px; font: 650 13.5px/1 var(--sans); padding: 0 16px; transition: background-color .2s, border-color .2s, transform .15s, box-shadow .2s; vertical-align: middle; }
 .btn--sm { min-height: var(--ctl-sm); border-radius: 10px; padding: 0 12px; font-size: 12.5px; }
 .btn--block { min-height: 46px; }
@@ -280,12 +278,12 @@ input:disabled, select:disabled { background-color: var(--soft); }
 .logo-pick__img { width: 96px; height: 96px; border-radius: 18px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; }
 .logo-pick__img img { width: 86%; height: 86%; object-fit: contain; }
 
-/* ---------------------------------------------------------------- gerak */
+/* Gerak */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 .main.is-enter > *, .main.is-enter .grid > * { animation: rise .45s var(--ease) both; animation-delay: calc(var(--i, 0) * 40ms); }
 @media (prefers-reduced-motion: reduce) { .main.is-enter > *, .main.is-enter .grid > * { animation: none; } }
 
-/* ---------------------------------------------------------------- halaman reservasi (penyewa) & login */
+/* Halaman reservasi (penyewa) & login */
 .cust__bar { background: rgba(243, 239, 233, .9); border-bottom: 1px solid var(--line); }
 .next { border-radius: var(--r-lg); box-shadow: var(--shadow-1); border-width: 1px; background: var(--paper); }
 .next h2, .next h3 { font-size: 1.35rem; }

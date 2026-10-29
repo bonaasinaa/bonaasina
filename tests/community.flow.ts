@@ -38,7 +38,7 @@ db.admins = [{ email: 'bonaasinaa@gmail.com' }];
 db.settings = [{ id: 1, data: { whatsapp: '081200000000', siteName: 'Bonaasina' } }];
 for (const t of ['properties', 'rooms', 'tenants', 'invoices', 'leads', 'owners', 'messages', 'notifications', 'activity_log', 'listings', 'places', 'surveys', 'expenses', 'issues', 'contracts', 'waitlist']) db[t] = [];
 
-// ---------- titip jualan
+// Titip jualan
 const foto = await ok('POST', '/titip/foto', undefined, {}, JPG);
 assert(foto.url.includes('/photos/titip/'), 'foto titip tersimpan di folder titip');
 await fail(400, 'POST', '/titip', { sellerName: 'Dina', sellerPhone: '123', title: 'Kue', description: 'Kue kering enak sekali' });
@@ -68,7 +68,7 @@ await fail(401, 'GET', '/admin/listings');
 const adm = await ok('POST', '/admin/listings', { kind: 'jasa', category: 'Les & bimbel', title: 'Les matematika', description: 'Les SMA', sellerName: 'Budi', sellerPhone: '081211113333', price: '' }, A);
 assert(adm.status === 'aktif' && adm.price === null && adm.expiresOn, 'admin tambah iklan langsung tampil');
 assert((await ok('GET', '/titip')).listings.length === 1, 'iklan admin tampil');
-// ---------- tempat sekitar
+// Tempat sekitar
 const pl = await ok('POST', '/admin/places', { name: 'Warung Bu Tiur', category: 'makan', distanceNote: '2 menit dari Kos Asina', whatsapp: '081299990000', openHours: '07.00–21.00' }, A);
 assert(pl.status === 'aktif', 'tempat admin langsung aktif');
 await ok('POST', '/sekitar/usul', { name: 'Laundry Kilat', category: 'laundry', suggestedBy: 'Rina, 0812' });
@@ -85,7 +85,7 @@ await ok('PUT', `/admin/places/${pl.id}`, { name: 'Warung Bu Tiur', category: 'm
 assert(db.places.find((p) => p.id === pl.id).price_note === 'Mulai Rp12.000', 'ubah tempat');
 await ok('DELETE', `/admin/places/${pl.id}`, undefined, A);
 
-// ---------- logo
+// Logo
 await ok('PUT', '/admin/settings', { brandLogo: 'https://evil.example/logo.png' }, A);
 assert(!(await ok('GET', '/public')).site.brandLogo, 'logo asing ditolak');
 await ok('PUT', '/admin/settings', { brandLogo: '/assets/img/logo-bonaasina.webp' }, A);

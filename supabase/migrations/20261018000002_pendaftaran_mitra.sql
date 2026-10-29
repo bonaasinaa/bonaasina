@@ -1,6 +1,5 @@
--- Bonaasina — pendaftaran calon mitra Kos Sekitar dari website (/mitra/).
--- Calon mitra mengisi formulir singkat → admin meninjau → bila disetujui, akun pemilik & kos (draf) dibuat otomatis
--- dan admin mengirim info masuk lewat WhatsApp. Info kos & kamar selengkapnya diisi sendiri oleh pemilik.
+-- Bonaasina, pendaftaran calon mitra Kos Sekitar dari /mitra/: formulir singkat, ditinjau admin, lalu akun pemilik
+-- dan kos (draf) dibuat otomatis dan info masuk dikirim lewat WhatsApp. Info kos & kamar diisi sendiri oleh pemilik.
 create table public.partner_applications (
   id text primary key default ('mtr_' || replace(gen_random_uuid()::text, '-', '')),
   name text not null,                       -- nama pemilik

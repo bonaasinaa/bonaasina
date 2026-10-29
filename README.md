@@ -1,4 +1,4 @@
-# Bonaasina — Kos Asina & Kos Bona
+# Bonaasina: Kos Asina & Kos Bona
 
 Website untuk calon penyewa, admin untuk pemilik, dan dashboard untuk penghuni.
 
@@ -33,7 +33,7 @@ Supabase Auth: login admin
 - Browser **tidak pernah** membaca tabel langsung. Semua lewat fungsi `api`, yang memeriksa siapa pemanggilnya.
 - **Admin** masuk dengan email + kata sandi (Supabase Auth). Email harus terdaftar di tabel `admins`.
 - **Penghuni** masuk dengan username + kata sandi yang dibuat admin (menu Penghuni → Buat akun, atau saat menambah penghuni). Kata sandi disimpan sebagai hash bcrypt; sesi berupa token acak di header `X-Tenant-Session` (hash di tabel `tenant_sessions`, berlaku 30 hari, diperpanjang otomatis). Mengganti kata sandi, menonaktifkan akun, atau mencatat penghuni keluar langsung mengakhiri semua sesinya. Halaman login admin juga menerima username penghuni dan mengarahkannya ke `/penghuni/`. Login penghuni dibatasi 10 percobaan gagal per 15 menit per IP.
-- **Kontrak digital**: admin membuat kontrak dari templat (Pengaturan → Templat kontrak; tanda `{nama_penghuni}` dsb. diisi otomatis), penghuni menyetujui di dashboard (centang + ketik nama), lalu PDF final disimpan beserta waktu, perangkat, dan IP. 30 hari sebelum berakhir penghuni diminta memilih perpanjang/berhenti; admin melihatnya di Ringkasan & menu Kontrak. Templat bawaan adalah draf umum, **bukan nasihat hukum** — sebaiknya ditinjau sebelum dipakai.
+- **Kontrak digital**: admin membuat kontrak dari templat (Pengaturan → Templat kontrak; tanda `{nama_penghuni}` dsb. diisi otomatis), penghuni menyetujui di dashboard (centang + ketik nama), lalu PDF final disimpan beserta waktu, perangkat, dan IP. 30 hari sebelum berakhir penghuni diminta memilih perpanjang/berhenti; admin melihatnya di Ringkasan & menu Kontrak. Templat bawaan adalah draf umum, **bukan nasihat hukum**, jadi sebaiknya ditinjau sebelum dipakai.
 - **Kuitansi PDF** bernomor (`BNS/KW/tahun/urut`) terbit otomatis saat admin menandai tagihan lunas; berisi QR ke `/cek/`. Nomor kontrak `BNS/KTR/tahun/urut`.
 - **Daftar tunggu**: calon penyewa mendaftar di website; saat kamar kosong (penghuni keluar atau status kamar diubah ke Kosong) pendaftar otomatis ditandai *Perlu dikabari* dan admin mengabari lewat tombol WhatsApp.
 - **Piket**: tugas per kos (harian/mingguan/2 mingguan/bulanan), bergilir N orang per giliran atau bersama; penghuni mengirim foto bukti.
@@ -115,6 +115,26 @@ Setiap `git push` ke `main` otomatis tayang. Setelah mengubah file JS/CSS, naikk
 ```bash
 node scripts/api-check.mjs https://<project-ref>.supabase.co/functions/v1/api
 ```
+
+## Dipasang sebagai aplikasi (PWA)
+Situs bisa dipasang ke layar utama Android/iPhone dan dibuka tanpa bilah alamat.
+
+| Berkas | Isi |
+| --- | --- |
+| `web/manifest.webmanifest` | nama, ikon 192/512 + maskable, `display: standalone`, pintasan Kamar / Reservasi / Kos sekitar |
+| `web/sw.js` | service worker: hanya mengurus perpindahan halaman dan halaman offline; aset situs tidak di-cache |
+| `web/offline.html` | halaman "Tidak ada koneksi", gayanya ditulis di dalam berkas |
+| `web/js/pwa.js` | mendaftarkan service worker setelah halaman selesai dimuat |
+| `web/css/pwa.css` | jarak aman status bar saat mode aplikasi, dimuat paling akhir di setiap halaman |
+| `web/assets/img/icon-192.png`, `icon-maskable-512.png` | ikon tambahan; ikon 512 memakai `icon-512.png` yang sudah ada |
+
+- Semua halaman memasang `<link rel="manifest">`, meta `apple-mobile-web-app-*`, `viewport-fit=cover`, `css/pwa.css`, dan `js/pwa.js`. **Halaman baru wajib menyalin blok itu**, kalau tidak halaman tersebut tidak ikut terpasang sebagai aplikasi.
+- `web/_headers` mengatur `/sw.js` dan `/offline.html` agar tidak di-cache, dan mengirim manifest sebagai `application/manifest+json`.
+- Nilai di `css/pwa.css` memakai `env(safe-area-inset-*)` yang bernilai 0 di tab browser biasa, jadi tampilan web tidak berubah; yang terpengaruh hanya aplikasi terpasang.
+- Service worker sengaja tidak menyimpan aset, dan `sw.js` dikirim `no-cache`, jadi setiap deploy langsung terpakai. Bila nanti aset ikut di-cache, naikkan `SHELL` di `sw.js` pada setiap perubahan.
+- Yang disimpan hanya `offline.html` dan logonya. Bila browser menghapus Cache Storage, halaman itu disimpan ulang otomatis pada navigasi berikutnya yang berhasil; bila cache dan jaringan sama-sama tidak ada, worker menjawab dengan halaman teks sederhana, bukan galat browser.
+- Memasang: Android Chrome ⋮ → *Instal aplikasi*; iPhone Safari Bagikan → *Tambahkan ke Layar Utama*.
+- Memeriksa lokal: buka `http://127.0.0.1:<port>/` (bukan `file://`), lalu DevTools → Application: Manifest, Service Workers, Cache Storage.
 
 ## Pengembangan lokal (opsional)
 Butuh [Supabase CLI](https://supabase.com/docs/guides/local-development) dan Docker:

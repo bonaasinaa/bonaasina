@@ -1,9 +1,5 @@
-// Bonaasina — bot sambutan live chat ("kamus" tanya-jawab).
-// Bot menyapa pengunjung, menawarkan pilihan topik, dan menjawab pertanyaan yang ditulis bebas dengan
-// mencocokkan kata kunci (termasuk singkatan & salah ketik ringan). Jawaban memakai data asli website
-// lewat tanda seperti {harga} atau {kamar_kosong}, jadi selalu sama dengan yang tampil di halaman.
-// Kamus bisa diubah admin (menu Live chat → Kamus bot); bila belum diubah, dipakai DEFAULT_KAMUS.
-// Bot tidak pernah menjanjikan hal di luar data website; bila tidak paham, ia menawarkan admin.
+// Bot sambutan live chat: kamus kata kunci dengan jawaban dari data website ({harga}, {kamar_kosong}, dst).
+// Kamus bisa diubah admin; bila belum, dipakai DEFAULT_KAMUS.
 type Row = Record<string, any>;
 export type KamusEntry = { id: string; label: string; keywords: string[]; answer: string; chip: boolean; enabled: boolean };
 export type BotReply = { topic: string | null; text: string; options: { id: string; label: string }[]; handoff: boolean; score: number };
@@ -68,7 +64,7 @@ export const PLACEHOLDERS: Record<string, string> = {
   link_akun: 'Tautan reservasi saya', link_penghuni: 'Tautan dashboard penghuni', link_kos_sekitar: 'Tautan Kos Sekitar', link_mitra: 'Tautan jadi mitra',
 };
 
-// ------------------------------------------------------------ pemahaman teks
+// Pemahaman teks
 const SLANG: Record<string, string> = {
   brp: 'berapa', brapa: 'berapa', berapaan: 'berapa', hrg: 'harga', hrga: 'harga', kmr: 'kamar', kamr: 'kamar',
   kost: 'kos', kosan: 'kos', kostan: 'kos', ngekos: 'kos', ngekost: 'kos', gmn: 'bagaimana', gimana: 'bagaimana', bgmn: 'bagaimana', gmna: 'bagaimana',
@@ -132,7 +128,7 @@ export function sanitizeKamus(list: unknown): KamusEntry[] {
   return out;
 }
 
-// ------------------------------------------------------------ jawaban dari data website
+// Jawaban dari data website
 const rp = (n: number) => 'Rp' + Number(n || 0).toLocaleString('id-ID');
 const range = (xs: number[]) => { const v = xs.filter((x) => x > 0); if (!v.length) return ''; const lo = Math.min(...v), hi = Math.max(...v); return lo === hi ? rp(lo) : `${rp(lo)}–${rp(hi)}`; };
 const GENDER: Record<string, string> = { Putri: 'khusus putri', Putra: 'khusus putra', Campur: 'campur (putra & putri)', Pasutri: 'pasutri' };

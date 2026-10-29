@@ -1,4 +1,4 @@
-/* Bonaasina — interaksi halaman publik (tanpa framework).
+/* Bonaasina: interaksi halaman publik (tanpa framework).
    GSAP & Lenis dipakai bila berhasil dimuat; tanpa keduanya halaman tetap berfungsi. */
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -21,8 +21,11 @@
     return num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : '#survei';
   }
 
-  // ---------- muat data ----------
-  fetch(API + '/public').then((r) => r.json()).then((data) => {
+  // Muat data
+  // Jawaban error (5xx/4xx) berisi JSON juga; tanpa cek r.ok daftar kamar tampak kosong.
+  const getJson = (url) => fetch(url).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); });
+
+  getJson(API + '/public').then((data) => {
     state.data = data;
     state.activeTab = data.properties[0]?.id;
     // Periode yang dibuka oleh minimal satu kos; bulanan diutamakan bila ada.
@@ -32,7 +35,12 @@
     renderAll();
     initMotion();
   }).catch(() => {
-    $('#availabilityText').textContent = 'Data kamar belum bisa dimuat. Hubungi kami lewat WhatsApp.';
+    $('#availabilityText').textContent = 'Data kamar belum bisa dimuat. Chat WhatsApp pengelola kos.';
+    // Tanpa ini daftar kamar tetap kosong dan formulir pesan menggantung di "Memuat formulir…".
+    const roomList = $('#roomList');
+    if (roomList) roomList.innerHTML = '<li class="room-empty">Data kamar belum bisa dimuat. Muat ulang halaman ini atau chat WhatsApp pengelola kos.</li>';
+    const booking = $('#bookingBox');
+    if (booking) booking.innerHTML = '<p class="muted">Formulir pemesanan belum bisa dimuat karena data kamar gagal diambil. Muat ulang halaman ini.</p>';
     initMotion();
   });
 
@@ -55,7 +63,7 @@
     $('#heroWa').href = wa(hello);
     $('#waFloat').href = wa(hello);
 
-    // Fakta hero — diambil dari data, bukan angka hiasan
+    // Fakta hero diambil dari data, bukan angka hiasan.
     const facts = [];
     // Harga termurah dihitung per bulan dari semua periode yang dibuka (mis. kos yang hanya sewa tahunan).
     const MONTHS = { bulanan: 1, semesteran: 6, tahunan: 12 };
@@ -97,7 +105,7 @@
     if (pay) $('#stepPay').textContent = `Transfer DP, unggah buktinya di dashboard, dan terima bukti booking resmi. ${pay}`;
   }
 
-  // ---------- tab dua rumah ----------
+  // Tab dua rumah
   function renderTabs() {
     const { properties, rooms } = state.data;
     const tabs = $('#propTabs');
@@ -157,7 +165,7 @@
     ind.style.transform = `translateX(${tab.offsetLeft}px)`;
   }
 
-  // ---------- kamar & harga ----------
+  // Kamar & harga
   function renderChips() {
     const opts = [['semua', 'Semua kos'], ...state.data.properties.map((p) => [p.id, p.name])];
     $('#propChips').innerHTML = opts.map(([id, label]) => `<button class="chip" aria-pressed="${state.prop === id}" data-id="${id}">${esc(label)}</button>`).join('');
@@ -279,7 +287,7 @@
     if (s && booking) { if (s.dataset.room) booking.setRoom(s.dataset.room); else booking.setProperty(s.dataset.survey); }
   });
 
-  // ---------- lokasi (aturan kos hanya tampil di dashboard penghuni) ----------
+  // Lokasi (aturan kos hanya tampil di dashboard penghuni)
   function renderLokasi() {
     // Kos yang berada di titik peta yang sama digabung dalam satu kartu, supaya tidak ada dua peta yang identik.
     const groups = [];
@@ -304,13 +312,13 @@
       </article>`).join('');
   }
 
-  // ---------- formulir reservasi (menggantikan formulir survei) ----------
+  // Formulir reservasi (menggantikan formulir survei)
   function renderForm() {
     if (!window.BonaBooking || !$('#bookingBox')) return;
     booking = BonaBooking.mount($('#bookingBox'), { properties: state.data.properties, rooms: state.data.rooms, period: state.cycle });
   }
 
-  // ---------- formulir daftar tunggu ----------
+  // Formulir daftar tunggu
   function renderWaitForm() {
     $('#wProperty').innerHTML = '<option value="">Kos mana saja</option>' + state.data.properties.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
     const d = new Date(); const pad = (n) => String(n).padStart(2, '0');
@@ -339,11 +347,11 @@
       window.bonaEvent?.('generate_lead', { form: 'daftar_tunggu', kos });
       form.hidden = true; const done = $('#waitDone'); done.hidden = false; done.focus();
     } catch (ex) {
-      err.textContent = ex.message + ' Atau hubungi kami langsung lewat WhatsApp.'; err.hidden = false;
+      err.textContent = ex.message + ' Atau chat langsung ke WhatsApp pengelola kos.'; err.hidden = false;
     } finally { btn.disabled = false; btn.textContent = 'Masuk daftar tunggu'; }
   });
 
-  // ---------- tanya jawab (akordeon dengan tinggi teranimasi) ----------
+  // Tanya jawab (akordeon dengan tinggi teranimasi)
   function renderFaq() {
     const faq = state.data.site.faq || [];
     $('#faq').innerHTML = faq.map((f) => `<details><summary>${esc(f.q)}</summary><div class="faq__a"><p>${esc(f.a)}</p></div></details>`).join('');
@@ -377,12 +385,12 @@
       `<div><strong>Hubungi pemilik</strong><a href="${esc(wa('Horas, saya mau tanya soal kos.'))}" target="_blank" rel="noopener">WhatsApp ${esc(site.whatsapp || '')}</a></div>`;
   }
 
-  // ---------- sekitar kos: tempat penting & titip jualan (data dari halaman /sekitar dan /titip) ----------
+  // Sekitar kos: tempat penting & titip jualan (data dari halaman /sekitar dan /titip)
   const PLACE_ICON = { makan: '🍛', toko: '🛒', laundry: '🧺', fotokopi: '🖨️', kesehatan: '💊', transport: '🛵', ibadah: '⛪', lainnya: '📍' };
   async function renderSekitar() {
     const box = $('#sekitarList'); if (!box) return;
     try {
-      const [pl, tj] = await Promise.all([fetch(API + '/sekitar').then((r) => r.json()), fetch(API + '/titip').then((r) => r.json())]);
+      const [pl, tj] = await Promise.all([getJson(API + '/sekitar'), getJson(API + '/titip')]);
       const places = (pl.places || []).slice(0, 6);
       // Bagian yang belum ada isinya disembunyikan dari beranda (halamannya tetap bisa dibuka dari menu).
       box.closest('.near__card').hidden = !places.length;
@@ -393,10 +401,15 @@
       $('.near__card--titip').hidden = !n;
       $('.near').hidden = !places.length && !n;
       $('.near').classList.toggle('is-single', !places.length !== !n);
-    } catch { box.innerHTML = '<li class="near__empty">Info sekitar belum bisa dimuat.</li>'; }
+    } catch {
+      // Tampilkan pesan gagal, bukan teks "sedang kami lengkapi" yang membuat kesan datanya kosong.
+      box.closest('.near__card').hidden = false;
+      $('.near').hidden = false;
+      box.innerHTML = '<li class="near__empty">Info sekitar belum bisa dimuat. Muat ulang halaman ini.</li>';
+    }
   }
 
-  // ---------- gerak ----------
+  // Gerak
   function initMotion() {
     // Nav berubah saat discroll + tombol WA muncul setelah hero
     const nav = $('#nav'), float = $('#waFloat');
@@ -465,7 +478,7 @@
     }, 2600);
   }
 
-  // ---------- lightbox foto (kos & kamar) ----------
+  // Lightbox foto (kos & kamar)
   const lb = document.createElement('dialog');
   lb.className = 'lightbox';
   lb.innerHTML = `<figure><img alt=""><figcaption></figcaption></figure>
@@ -476,7 +489,7 @@
   let lbList = [], lbIdx = 0, lbTitle = '';
   const lbShow = () => {
     const img = $('img', lb); img.src = lbList[lbIdx]; img.alt = `${lbTitle}, foto ${lbIdx + 1}`;
-    $('figcaption', lb).textContent = `${lbTitle} — ${lbIdx + 1} dari ${lbList.length}`;
+    $('figcaption', lb).textContent = `${lbTitle} (${lbIdx + 1} dari ${lbList.length})`;
     $$('.lightbox__nav', lb).forEach((b) => { b.hidden = lbList.length < 2; });
   };
   document.addEventListener('click', (e) => {
@@ -496,7 +509,7 @@
     if (e.key === 'ArrowRight') $('.lightbox__next', lb).click();
   });
 
-  // ---------- menu di HP ----------
+  // Menu di HP
   const menuBtn = $('#menuBtn'), menu = $('#mobileMenu');
   if (menuBtn && menu) {
     const setMenu = (open) => { menu.hidden = !open; menuBtn.setAttribute('aria-expanded', open); menuBtn.textContent = open ? 'Tutup' : 'Menu'; document.body.classList.toggle('menu-open', open); };
