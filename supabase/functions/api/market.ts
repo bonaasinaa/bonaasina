@@ -711,12 +711,16 @@ export function createMarket(H: Record<string, any>) {
   }
 
   // Notifikasi
-  async function notifList(type: string, id: string | null) {
-    let lq = sb.from('notifications').select('*').eq('recipient_type', type).order('id', { ascending: false }).limit(60);
+  async function notifList(type: string, id: string | null, before = 0) {
+    // Satu halaman = 60 baris; 'before' meminta baris yang lebih lama (dulu 60 terbaru tidak bisa dilewati).
+    const limit = 60;
+    let lq = sb.from('notifications').select('*').eq('recipient_type', type).order('id', { ascending: false }).limit(limit + 1);
+    if (before) lq = lq.lt('id', before);
     let cq = sb.from('notifications').select('id', { count: 'exact', head: true }).eq('recipient_type', type).is('read_at', null);
     if (id) { lq = lq.eq('recipient_id', id); cq = cq.eq('recipient_id', id); }
     const [rows, unread] = await Promise.all([q(lq), cq]);
-    return { items: ((rows as Row[]) || []).map((r) => pick(toCamel(r), ['id', 'leadId', 'kind', 'title', 'body', 'readAt', 'createdAt'])), unread: unread.count ?? 0 };
+    const list = ((rows as Row[]) || []).map((r) => pick(toCamel(r), ['id', 'leadId', 'kind', 'title', 'body', 'readAt', 'createdAt']));
+    return { items: list.slice(0, limit), hasMore: list.length > limit, unread: unread.count ?? 0 };
   }
   async function notifRead(type: string, id: string | null, b: Row) {
     let uq = sb.from('notifications').update({ read_at: nowIso() }).eq('recipient_type', type).is('read_at', null);
@@ -1060,7 +1064,16 @@ export function createMarket(H: Record<string, any>) {
     const { l, p } = await ownerLead(o, params.id);
     if (!['dp_diterima', 'berhasil'].includes(l.status) || !['belum', 'ditolak'].includes(l.feeStatus)) throw bad('Fee untuk reservasi ini tidak sedang menunggu pembayaran.');
     const path = await storeProof(req, l, 'fee');
-    await save(l, { feeStatus: 'dikirim', feeProofPath: path, feeUploadedAt: nowIso(), feeNote: '' });
+    // Bersyarat: bila admin menyetujui fee saat berkas sedang diunggah, status "diterima" tidak boleh
+    // dikembalikan menjadi "dikirim" (dulu update hanya memakai id).
+    const { data: updated } = await sb.from('leads')
+      .update({ fee_status: 'dikirim', fee_proof_path: path, fee_uploaded_at: nowIso(), fee_note: '' })
+      .eq('id', l.id).in('fee_status', ['belum', 'ditolak']).select('*').maybeSingle();
+    if (!updated) {
+      await sb.storage.from('private').remove([path]).catch(() => {});
+      throw bad('Fee booking ini sudah diproses admin. Muat ulang halaman untuk melihat status terbaru.');
+    }
+    Object.assign(l, toCamel(updated));
     await notifyAdmin(l, 'approval', `Bukti fee ${rupiah(l.feeAmount)} dari ${o.name}`, `Booking ${l.name} di ${p.name} siap diperiksa dan disetujui.`);
     log({ action: 'owner.fee_proof', summary: `Mengunggah bukti fee ${rupiah(l.feeAmount)} untuk booking ${l.name}` });
     return { ok: true };
@@ -1096,7 +1109,7 @@ export function createMarket(H: Record<string, any>) {
     const { l } = await ownerLead(o, params.id);
     return pdfOut(await feeDoc(l), `invoice-fee-${fileSafe(l.feeInvoiceNo || l.code)}.pdf`);
   });
-  on('GET', '/pemilik/notifications', async ({ owner: o }: Row) => notifList('pemilik', o.id));
+  on('GET', '/pemilik/notifications', async ({ url, owner: o }: Row) => notifList('pemilik', o.id, Number(url.searchParams.get('before')) || 0));
   on('POST', '/pemilik/notifications/read', async ({ body: b, owner: o }: Row) => notifRead('pemilik', o.id, b));
 
   // ================================================================ ADMIN — Kos Sekitar
@@ -1225,7 +1238,7 @@ export function createMarket(H: Record<string, any>) {
     const l = await one('leads', str(params.id, 40)); if (!l) throw notFound('Reservasi tidak ditemukan.');
     return pdfOut(await feeDoc(l), `invoice-fee-${fileSafe(l.feeInvoiceNo || l.code)}.pdf`);
   });
-  on('GET', '/admin/notifications', async () => notifList('admin', null));
+  on('GET', '/admin/notifications', async ({ url }: Row) => notifList('admin', null, Number(url.searchParams.get('before')) || 0));
   on('POST', '/admin/notifications/read', async ({ body: b }: Row) => notifRead('admin', null, b));
 
   // ================================================================ PENDAFTARAN MITRA (/mitra/)

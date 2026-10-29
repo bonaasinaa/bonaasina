@@ -140,9 +140,10 @@
     return { stop() { stopped = true; clearTimeout(timer); }, refresh() { clearTimeout(timer); poll(); } };
   }
 
-  function notifs(items) {
-    if (!items.length) return '<p class="empty">Belum ada notifikasi.</p>';
-    return `<div class="notifs">${items.map((n) => `<button type="button" data-notif="${n.id}" data-lead="${esc(n.leadId || '')}" class="${n.readAt ? '' : 'is-unread'}"><i></i><div><strong>${esc(n.title)}</strong>${n.body ? `<span>${esc(n.body)}</span>` : ''}<time>${relTime(n.createdAt)}</time></div></button>`).join('')}</div>`;
+  function notifs(items, bare = false) {
+    if (!items.length) return bare ? '' : '<p class="empty">Belum ada notifikasi.</p>';
+    const rows = items.map((n) => `<button type="button" data-notif="${n.id}" data-lead="${esc(n.leadId || '')}" class="${n.readAt ? '' : 'is-unread'}"><i></i><div><strong>${esc(n.title)}</strong>${n.body ? `<span>${esc(n.body)}</span>` : ''}<time>${relTime(n.createdAt)}</time></div></button>`).join('');
+    return bare ? rows : `<div class="notifs">${rows}</div>`;
   }
 
   // ---------------------------------------------------------------- detail reservasi untuk pemilik & admin

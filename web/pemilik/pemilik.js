@@ -474,7 +474,19 @@
   // ========== NOTIFIKASI ==========
   async function notifikasi() {
     const n = data.notifications;
-    main.innerHTML = head('Notifikasi', '', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel">${M.notifs(n.items)}</div>`;
+    main.innerHTML = head('Notifikasi', '', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel" id="notifPanel">${M.notifs(n.items)}</div>
+      ${n.hasMore ? '<div class="more mt"><button class="btn btn--ghost" id="notifMore">Muat lebih banyak</button></div>' : ''}`;
+    $('#notifMore')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true;
+      const lastId = Number($('#notifPanel .notifs [data-notif]')?.dataset.notif || 0);
+      const panel = $('#notifPanel .notifs');
+      try {
+        const more = await api('GET', `/notifications?before=${lastId}`);
+        if (panel) panel.insertAdjacentHTML('beforeend', M.notifs(more.items, true));
+        if (!more.hasMore) btn.parentElement.remove();
+      } catch (ex) { toast(ex.message, true); }
+      finally { btn.disabled = false; }
+    });
     $('#readAll')?.addEventListener('click', async () => { await api('POST', '/notifications/read', {}); reload(); });
     main.onclick = async (e) => {
       const b = e.target.closest('[data-notif]'); if (!b) return;

@@ -1957,8 +1957,21 @@
   // ---------- notifikasi ----------
   async function notifikasi() {
     const n = await get('/notifications');
-    main.innerHTML = head('Notifikasi', 'Kabar terbaru dari reservasi, pemilik kos, dan penyewa.', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel">${MK.notifs(n.items)}</div>`;
+    main.innerHTML = head('Notifikasi', 'Kabar terbaru dari reservasi, pemilik kos, dan penyewa.', n.unread ? '<button class="btn btn--ghost" id="readAll">Tandai semua dibaca</button>' : '') + `<div class="panel" id="notifPanel">${MK.notifs(n.items)}</div>
+      ${n.hasMore ? '<div class="more mt"><button class="btn btn--ghost" id="notifMore">Muat lebih banyak</button></div>' : ''}`;
     $('#readAll')?.addEventListener('click', async () => { await api('POST', '/notifications/read', {}); route(); });
+    // Notifikasi lebih lama dari 60 terbaru kini bisa dimuat (sebelumnya tidak terjangkau sama sekali).
+    $('#notifMore')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true;
+      const lastId = Number($('#notifPanel .notifs [data-notif]')?.dataset.notif || 0);
+      const panel = $('#notifPanel .notifs');
+      try {
+        const more = await api('GET', `/notifications?before=${lastId}`);
+        if (panel) panel.insertAdjacentHTML('beforeend', MK.notifs(more.items, true));
+        if (!more.hasMore) btn.parentElement.remove();
+      } catch (ex) { toast(ex.message, true); }
+      finally { btn.disabled = false; }
+    });
     main.onclick = async (e) => {
       const b = e.target.closest('[data-notif]'); if (!b) return;
       try { await api('POST', '/notifications/read', { ids: [Number(b.dataset.notif)] }); } catch { /* abaikan */ }
