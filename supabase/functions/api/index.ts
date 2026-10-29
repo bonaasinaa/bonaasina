@@ -1099,7 +1099,8 @@ on('PUT', '/admin/settings', async ({ body: b }, log) => {
   if (patch.notifyEmail !== undefined) {
     const list = patch.notifyEmail.toLowerCase().split(/[\s,;]+/).filter(Boolean);
     if (list.some((e: string) => !isEmail(e))) throw bad('Email notifikasi admin belum benar. Pisahkan beberapa alamat dengan koma.');
-    patch.notifyEmail = list.slice(0, 5).join(', ');
+    if (list.length > 5) throw bad('Email notifikasi admin maksimal 5 alamat.');
+    patch.notifyEmail = list.join(', ');
   }
   for (const [k, [lo, hi]] of Object.entries(SETTING_NUMBERS)) if (b[k] !== undefined && b[k] !== '') patch[k] = Math.max(lo, Math.min(num(b[k]), hi));
   if (b.feeDefaultType !== undefined) patch.feeDefaultType = b.feeDefaultType === 'nominal' ? 'nominal' : 'persen';

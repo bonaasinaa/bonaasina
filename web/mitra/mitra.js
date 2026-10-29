@@ -49,14 +49,17 @@
   }
   range.addEventListener('input', calc); calc();
 
-  fetch(API + '/kos-sekitar').then((r) => r.json()).then((d) => {
+  fetch(API + '/kos-sekitar').then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }).then((d) => {
     if (d.fee) { fee = d.fee; $('#feeRate').textContent = fee.type === 'nominal' ? `${rp(fee.value)} per booking` : `${Number(fee.value).toLocaleString('id-ID')}% dari DP`; calc(); }
     adminWa = d.whatsapp || '';
     if (adminWa) {
       const url = `https://wa.me/${adminWa}?text=${encodeURIComponent('Horas admin Bonaasina, saya punya kos dan ingin bergabung sebagai mitra.')}`;
       $('#adminWa').href = url; $('#joinDoneWa').href = url;
     } else { $('.join__wa').hidden = true; $('#joinDoneWa').hidden = true; }
-  }).catch(() => {});
+  }).catch(() => {
+    // Tanpa pesan, kalkulator fee tampak memakai persentase bawaan padahal angkanya tidak termuat.
+    $('#feeRate').textContent = 'belum bisa dimuat — coba muat ulang halaman';
+  });
 
   // ---------- formulir 2 langkah ----------
   const form = $('#joinForm'); const err = $('.form__error', form);

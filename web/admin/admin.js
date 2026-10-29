@@ -1968,5 +1968,11 @@
 
   // ---------- mulai ----------
   // Ada sesi tersimpan → langsung masuk (api() akan memperpanjang atau mengarahkan ke login bila sesi sudah mati).
-  if (getSession()?.refreshToken) start().catch(() => {}); else showLogin();
+  if (getSession()?.refreshToken) {
+    start().catch((ex) => {
+      // Sesi ada tetapi data gagal dimuat: tampilkan alasannya, jangan layar kosong.
+      showLogin();
+      toast(ex?.message || 'Data admin belum bisa dimuat. Periksa koneksi lalu masuk lagi.', true);
+    });
+  } else showLogin();
 })();

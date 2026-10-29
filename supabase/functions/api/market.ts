@@ -418,12 +418,18 @@ export function createMarket(H: Record<string, any>) {
   async function unreadFor(leads: Row[], side: 'pemilik' | 'customer') {
     const out = new Map<string, number>();
     if (!leads.length) return out;
-    const minRead = Math.min(...leads.map((l) => Number(side === 'pemilik' ? l.ownerReadMsg : l.customerReadMsg) || 0));
-    const rows = ((await q(sb.from('messages').select('lead_id, id, sender').in('lead_id', leads.map((l) => l.id)).gt('id', minRead).neq('sender', 'sistem').limit(5000))) as Row[]) || [];
-    const read = new Map(leads.map((l) => [l.id, Number(side === 'pemilik' ? l.ownerReadMsg : l.customerReadMsg) || 0]));
-    for (const m of rows) {
-      const mine = side === 'pemilik' ? ['pemilik', 'admin'].includes(m.sender) : m.sender === 'customer';
-      if (!mine && m.id > (read.get(m.lead_id) || 0)) out.set(m.lead_id, (out.get(m.lead_id) || 0) + 1);
+    const ptrOf = (l: Row) => Number(side === 'pemilik' ? l.ownerReadMsg : l.customerReadMsg) || 0;
+    const read = new Map(leads.map((l) => [l.id, ptrOf(l)]));
+    // Tiap reservasi dibaca hanya di atas penandanya sendiri. Dulu dipakai penanda TERKECIL di antara
+    // semua reservasi, sehingga satu reservasi yang belum pernah dibuka memaksa membaca seluruh pesan.
+    for (let i = 0; i < leads.length; i += 20) {
+      const part = leads.slice(i, i + 20);
+      const filter = part.map((l) => `and(lead_id.eq.${l.id},id.gt.${read.get(l.id) || 0})`).join(',');
+      const rows = ((await q(sb.from('messages').select('lead_id, id, sender').or(filter).neq('sender', 'sistem').limit(5000))) as Row[]) || [];
+      for (const m of rows) {
+        const mine = side === 'pemilik' ? ['pemilik', 'admin'].includes(m.sender) : m.sender === 'customer';
+        if (!mine && m.id > (read.get(m.lead_id) || 0)) out.set(m.lead_id, (out.get(m.lead_id) || 0) + 1);
+      }
     }
     return out;
   }
@@ -1255,7 +1261,8 @@ export function createMarket(H: Record<string, any>) {
     log({ action: 'partner.apply', summary: `Mendaftar sebagai mitra: ${rec.kosName}, ${city}`, meta: { name } });
     return created({ ok: true });
   });
-  on('GET', '/admin/applications', async () => ((await q(sb.from('partner_applications').select('*').order('created_at', { ascending: false }).limit(300))) as Row[] || []).map((r) => toCamel(r)));
+  // Seluruh pendaftaran (dulu dipotong 300 terbaru tanpa pemberitahuan).
+  on('GET', '/admin/applications', async () => ((await pages((from: number, to: number) => sb.from('partner_applications').select('*').order('created_at', { ascending: false }).order('id').range(from, to))) as Row[]).map((r) => toCamel(r)));
   const slugUser = (s: string) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^kos\s+/, '').replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'mitra';
   function accountMessage(o: Row, kosName: string, password: string) {
     return `Horas ${o.name}, selamat bergabung sebagai mitra Kos Sekitar Bonaasina! 🎉\n\n` +

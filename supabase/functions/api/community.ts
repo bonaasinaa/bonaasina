@@ -64,7 +64,11 @@ export function createCommunity(H: Record<string, any>) {
       category: LISTING_CATS[kind].includes(b.category) ? b.category : 'Lainnya',
       price: b.price === '' || b.price === null || b.price === undefined ? null : num(b.price),
       priceNote: str(b.priceNote, 40), sellerInfo: str(b.sellerInfo, 80), area: str(b.area, 80),
-      photos: (Array.isArray(b.photos) ? b.photos : []).filter((u: unknown) => typeof u === 'string' && (u.startsWith(TITIP_PREFIX) || (admin && u.startsWith(PHOTO_PREFIX)))).slice(0, 4),
+      photos: (() => {
+        const list = (Array.isArray(b.photos) ? b.photos : []).filter((u: unknown) => typeof u === 'string' && (u.startsWith(TITIP_PREFIX) || (admin && u.startsWith(PHOTO_PREFIX))));
+        if (list.length > 4) throw bad('Maksimal 4 foto per iklan.');
+        return list;
+      })(),
     };
     if (!out.title) throw bad('Isi nama barang atau jasa.');
     return out;
