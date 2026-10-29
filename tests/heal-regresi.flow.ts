@@ -63,4 +63,40 @@ const afterDelete = await ok('GET', '/admin/invoices', undefined, A) as any[];
 assert(!afterDelete.some((i) => i.periodStart === target.periodStart), 'tagihan yang dihapus tidak dibuat ulang');
 console.log('tagihan setelah dihapus:', afterDelete.length);
 
+// --- 4. Batas foto & potongan deposit dilaporkan, bukan dipotong/disimpan diam-diam ----------------
+const tooManyPhotos = Array.from({ length: 13 }, (_, i) => `https://test.supabase.co/storage/v1/object/public/photos/uji/${i}.jpg`);
+const photoRes = await call('POST', '/admin/rooms', { propertyId: 'kos_uji', code: 'B-1', photos: tooManyPhotos }, A);
+assert(photoRes.status === 400 && /Maksimal 12/.test(photoRes.data.error || ''), `foto ke-13 ditolak: ${photoRes.status} ${JSON.stringify(photoRes.data)}`);
+console.log('foto kamar ke-13:', photoRes.data.error);
+
+const negInsp = await call('POST', '/admin/inspections', { tenantId: 'tn_sewa', kind: 'keluar', date: '2026-10-01', items: [{ name: 'Kasur', condition: 'baik' }], depositDeduction: -50000 }, A);
+assert(negInsp.status === 400 && /negatif/.test(negInsp.data.error || ''), `potongan deposit negatif ditolak: ${negInsp.status} ${JSON.stringify(negInsp.data)}`);
+console.log('potongan deposit negatif:', negInsp.data.error);
+
+// --- 5. Tanggal keluar bisa dihapus lagi ---------------------------------------------------------
+const cleared = await ok('PUT', '/admin/tenants/tn_sewa', { endDate: null }, A) as any;
+assert(cleared.endDate == null, `tanggal keluar terhapus, dapat: ${JSON.stringify(cleared.endDate)}`);
+console.log('tanggal keluar setelah dikosongkan:', cleared.endDate);
+
+// --- 6. Username bertanda garis bawah tidak "mencuri" akun lain saat masuk -----------------------
+const bcrypt = (await import('npm:bcryptjs@2.4.3')).default;
+const hash = await bcrypt.hash('rahasia123', 10);
+(db.owners ||= []).push({ id: 'own_kosxu', name: 'Pemilik Lain', username: 'kosxu', password_hash: hash, status: 'aktif', must_change: false, created_at: stamp(0), updated_at: stamp(0) } as any);
+(db.tenants ||= []).push({ id: 'tn_us', name: 'Penghuni Garis Bawah', room_id: 'rm_uji', status: 'aktif', username: 'kos_u', password_hash: hash, login_enabled: true, rent_cycle: 'bulanan', rent_amount: 500000, start_date: '2026-01-01', created_at: stamp(0), updated_at: stamp(0) } as any);
+const login = await ok('POST', '/masuk', { username: 'kos_u', password: 'rahasia123' }) as any;
+assert(login.kind === 'penghuni', `masuk sebagai penghuni, dapat: ${login.kind}`);
+console.log('masuk username garis bawah:', login.kind);
+
+// --- 7. Bukti piket: kiriman kedua menambah foto (tidak terpotong di foto ke-8) -------------------
+const loginTok = (await ok('POST', '/penghuni/login', { username: 'kos_u', password: 'rahasia123' }) as any).token;
+const H1 = { 'x-tenant-session': loginTok };
+const task = await ok('POST', '/admin/chores', { propertyId: 'kos_uji', name: 'Sapu lorong', frequency: 'harian', mode: 'bersama', startDate: '2026-10-01' }, A) as any;
+const shots = (tag: string) => Array.from({ length: 5 }, (_, i) => `chores/tn_us/${tag}-${i}.jpg`);
+await ok('POST', '/penghuni/chores/report', { taskId: task.id, date: '2026-10-20', photos: shots('a'), note: 'bagian depan' }, H1);
+await ok('POST', '/penghuni/chores/report', { taskId: task.id, date: '2026-10-20', photos: shots('b'), note: 'bagian belakang' }, H1);
+const chores = await ok('GET', '/admin/chores', undefined, A) as any;
+const turn = chores.items.find((i: any) => i.taskId === task.id && i.date === '2026-10-20');
+assert(turn?.report?.photos?.length === 10, `foto piket tergabung: ${turn?.report?.photos?.length}`);
+console.log('foto piket setelah dua kiriman:', turn.report.photos.length);
+
 console.log('ALL HEAL REGRESSION TESTS PASSED');

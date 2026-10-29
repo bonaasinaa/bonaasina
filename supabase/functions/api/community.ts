@@ -123,7 +123,12 @@ export function createCommunity(H: Record<string, any>) {
     const patch: Row = {};
     if (b.title !== undefined) Object.assign(patch, listingFields({ ...cur, ...b }, true));
     if (b.sellerName !== undefined) patch.sellerName = str(b.sellerName, 80) || cur.sellerName;
-    if (b.sellerPhone !== undefined && normalizePhone(b.sellerPhone).length >= 10) patch.sellerPhone = str(b.sellerPhone, 20);
+    if (b.sellerPhone !== undefined) {
+      const phone = str(b.sellerPhone, 20);
+      // Nomor pendek tidak boleh "tersimpan" tanpa perubahan: beri tahu admin.
+      if (normalizePhone(phone).length < 10) throw bad('Nomor WhatsApp penjual belum benar. Contoh: 0812 3456 7890.');
+      patch.sellerPhone = phone;
+    }
     if (b.featured !== undefined) patch.featured = !!b.featured;
     if (b.adminNote !== undefined) patch.adminNote = str(b.adminNote, 300);
     if (b.expiresOn !== undefined) patch.expiresOn = isDate(b.expiresOn) ? b.expiresOn : null;

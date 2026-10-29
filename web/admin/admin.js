@@ -36,6 +36,12 @@
     else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers['Content-Type'] = 'application/json'; }
     return fetch(API + path, opt);
   }
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     // Perpanjang sesi sebelum habis (token login berlaku sekitar 1 jam).
     const s = getSession();
@@ -617,7 +623,8 @@
       },
       onOk: async (d) => {
         if (!d.billFrom) d.billFrom = '';
-        if (!d.endDate) delete d.endDate;
+        // Dikosongkan saat mengubah = hapus tanggalnya (null), bukan "tidak berubah".
+        if (isNew && !d.endDate) delete d.endDate; else d.endDate = d.endDate || null;
         if (pre.leadId) d.leadId = pre.leadId;
         if (isNew) {
           const withAcc = d.makeAccount === 'on'; delete d.makeAccount;

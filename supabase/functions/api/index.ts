@@ -36,8 +36,21 @@ const toSnake = (r: Row) => Object.fromEntries(Object.entries(r).map(([k, v]) =>
 
 const str = (v: unknown, max = 500) => String(v ?? '').trim().slice(0, max);
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0; };
+// Potongan deposit boleh 0, tetapi negatif atau bukan angka ditolak dengan pesan (dulu menjadi 0 diam-diam).
+function depositDeduction(v: unknown) {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) throw bad('Potongan deposit tidak boleh negatif atau bukan angka.');
+  return Math.round(n);
+}
 const strList = (v: unknown, max = 40) =>
   (Array.isArray(v) ? v : typeof v === 'string' ? v.split('\n') : []).map((x) => str(x, 200)).filter(Boolean).slice(0, max);
+// Daftar foto dengan batas eksplisit: kelebihan ditolak dengan pesan, bukan dipotong tanpa kabar.
+function photoList(v: unknown, max: number, label = 'foto') {
+  const list = strList(v, 200).filter(okPhoto);
+  if (list.length > max) throw bad(`Maksimal ${max} ${label}. Hapus sebagian dulu sebelum menyimpan.`);
+  return list;
+}
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const pick = (o: Row, f: string[]) => { const out: Row = {}; for (const k of f) if (o[k] !== undefined) out[k] = o[k]; return out; };
 const byCode = (a: Row, b: Row) => a.code.localeCompare(b.code, 'id', { numeric: true });
@@ -79,6 +92,20 @@ async function pages<T = Row>(make: (from: number, to: number) => any, max = ALL
   return out;
 }
 // Daftar penuh sebuah tabel, urut kolom yang diminta + id sebagai pemecah seri supaya halaman stabil.
+// Username dipakai bersama oleh penghuni, pemilik kos, dan customer reservasi; /masuk mencoba
+// ketiganya, jadi keunikan harus dicek di ketiga tabel juga — bukan hanya di tenants.
+async function usernameTakenAnywhere(username: string, except?: { table: string; id: string }) {
+  const tables: [string, string][] = [['owners', 'pemilik kos'], ['leads', 'customer reservasi'], ['tenants', 'penghuni']];
+  const rows = await Promise.all(tables.map(([t]) => q<Row | null>(sb.from(t).select('id').eq('username', username).maybeSingle())));
+  for (let i = 0; i < tables.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    if (except && except.table === tables[i][0] && row.id === except.id) continue;
+    return tables[i][1];
+  }
+  return null;
+}
+
 const all = async (table: string, order = 'created_at', opts: { ascending?: boolean; max?: number } = {}) => {
   const ascending = opts.ascending ?? true;
   const rows = await pages<Row>(
@@ -565,12 +592,13 @@ on('GET', '/admin/properties', async () => (await all('properties')).sort(bySort
 // Kolom kos yang boleh diubah pemilik (admin bisa semuanya, lihat propertyAdminPatch).
 export function propertyPatch(b: Row) {
   const patch: Row = pick(b, ['name', 'gender', 'tagline', 'description', 'address', 'mapsQuery', 'city', 'whatsapp', 'bankInfo', 'bookingPolicy', 'visitHours', 'logo']);
-  for (const k of Object.keys(patch)) patch[k] = str(patch[k], ['description', 'bookingPolicy'].includes(k) ? 1500 : 300);
+  const LONG_TEXT: Record<string, number> = { description: 6000, bookingPolicy: 4000, address: 500, bankInfo: 500, tagline: 400, note: 600 };
+  for (const k of Object.keys(patch)) patch[k] = str(patch[k], LONG_TEXT[k] ?? 300);
   if (patch.name !== undefined && !patch.name) throw bad('Isi nama kos.');
   if (patch.gender !== undefined && !['Putra', 'Putri', 'Campur', 'Pasutri'].includes(patch.gender)) patch.gender = 'Campur';
   if (patch.logo !== undefined && patch.logo && !okPhoto(patch.logo)) delete patch.logo;
   for (const k of ['facilities', 'rules', 'nearby']) if (b[k] !== undefined) patch[k] = strList(b[k]);
-  if (b.photos !== undefined) patch.photos = strList(b.photos, 12).filter(okPhoto);
+  if (b.photos !== undefined) patch.photos = photoList(b.photos, 12, 'foto kos');
   if (b.periods !== undefined) {
     const list = (Array.isArray(b.periods) ? b.periods : String(b.periods).split(',')).filter((x: string) => CYCLES.includes(x));
     if (!list.length) throw bad('Pilih minimal satu periode sewa yang dibuka.');
@@ -632,7 +660,7 @@ export function roomFromBody(b: Row) {
   if (b.capacity !== undefined) r.capacity = Number(b.capacity) === 2 ? 2 : 1;
   if (b.extraPersonPeriod !== undefined) r.extraPersonPeriod = b.extraPersonPeriod === 'tahunan' ? 'tahunan' : 'bulanan';
   if (b.facilities !== undefined) r.facilities = strList(b.facilities);
-  if (b.photos !== undefined) r.photos = strList(b.photos, 12).filter(okPhoto);
+  if (b.photos !== undefined) r.photos = photoList(b.photos, 12, 'foto kamar');
   if (b.hidden !== undefined) r.hidden = !!b.hidden;
   if (b.status !== undefined) { if (!STATUS_KAMAR.includes(b.status)) throw bad('Status kamar tidak dikenal.'); r.status = b.status; }
   return r;
@@ -715,7 +743,8 @@ on('POST', '/admin/tenants', async ({ body }, log) => {
   if (wantsAccount) {
     const u = str(body.username, 60).toLowerCase();
     if (!USERNAME_RE.test(u)) throw bad('Username 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda minus. Tanpa spasi.');
-    if (await q<Row | null>(sb.from('tenants').select('id').eq('username', u).maybeSingle())) throw bad(`Username "${u}" sudah dipakai penghuni lain.`);
+    const takenBy = await usernameTakenAnywhere(u);
+    if (takenBy) throw bad(`Username "${u}" sudah dipakai akun ${takenBy} lain. Pilih username lain.`);
     if (String(body.password || '').length < 8) throw bad('Kata sandi minimal 8 karakter.');
   }
   const rec = await insert('tenants', { status: 'aktif', ...t });
@@ -895,7 +924,7 @@ on('GET', '/admin/surveys', async () => {
 on('PUT', '/admin/surveys/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.status !== undefined) { if (!['baru', 'dikonfirmasi', 'selesai', 'batal'].includes(b.status)) throw bad('Status tidak dikenal.'); patch.status = b.status; }
-  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 600);
+  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 2000);
   const before = await one('surveys', params.id);
   const rec = await update('surveys', params.id, patch);
   if (rec.email && patch.status && patch.status !== before?.status && ['dikonfirmasi', 'batal'].includes(patch.status)) {
@@ -931,7 +960,7 @@ on('GET', '/admin/issues', async () => {
 on('PUT', '/admin/issues/:id', async ({ params, body: b }, log) => {
   const patch: Row = {};
   if (b.status !== undefined) { if (!['baru', 'dikerjakan', 'selesai'].includes(b.status)) throw bad('Status tidak dikenal.'); patch.status = b.status; }
-  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 600);
+  if (b.ownerNote !== undefined) patch.ownerNote = str(b.ownerNote, 2000);
   const before = await one('issues', params.id);
   const rec = await update('issues', params.id, patch);
   if (patch.status && patch.status !== before?.status) {
@@ -1020,7 +1049,12 @@ on('PUT', '/admin/settings', async ({ body: b }, log) => {
   if (b.isSample !== undefined) patch.isSample = !!b.isSample;
   if (b.faq !== undefined) {
     if (!Array.isArray(b.faq)) throw bad('Format tanya jawab tidak benar.');
-    patch.faq = b.faq.map((f: Row) => ({ q: str(f.q, 200), a: str(f.a, 1200) })).filter((f: Row) => f.q && f.a).slice(0, 20);
+    const faq = b.faq.map((f: Row) => ({ q: str(f.q, 200), a: str(f.a, 1200) }));
+    if (faq.length > 20) throw bad('Maksimal 20 tanya jawab.');
+    // Pertanyaan tanpa jawaban (dan sebaliknya) ditolak dengan pesan, bukan dibuang diam-diam.
+    const half = faq.find((f: Row) => !!f.q !== !!f.a);
+    if (half) throw bad(`Tanya jawab "${str(half.q || '(tanpa pertanyaan)', 60)}" harus diisi pertanyaan dan jawaban sekaligus.`);
+    patch.faq = faq.filter((f: Row) => f.q && f.a);
   }
   const data = { ...cur, ...patch };
   await q(sb.from('settings').upsert({ id: 1, data }));
@@ -1194,9 +1228,14 @@ async function choreSchedule(propertyId: string | null, from: string, to: string
   let tq = sb.from('chore_tasks').select('*').eq('active', true); if (propertyId) tq = tq.eq('property_id', propertyId);
   const tasks = ((await q<Row[]>(tq)) || []).map((r) => toCamel(r)!);
   if (!tasks.length) return { tasks: [], items: [] as Row[] };
-  const [tenants, rooms, reports] = await Promise.all([
-    q<Row[]>(sb.from('tenants').select('id, name, room_id').eq('status', 'aktif')),
-    all('rooms'),
+  // Kamar & penghuni hanya dibaca untuk kos yang diminta (dashboard penghuni tidak perlu seluruh marketplace).
+  const rooms = propertyId
+    ? (await rowsIn('rooms', 'property_id', [propertyId], '*')).map((r) => toCamel(r)!)
+    : await all('rooms');
+  const [tenants, reports] = await Promise.all([
+    propertyId && rooms.length
+      ? rowsIn('tenants', 'room_id', rooms.map((r) => r.id as string), 'id, name, room_id', (b: any) => b.eq('status', 'aktif'))
+      : pages<Row>((from, to) => sb.from('tenants').select('id, name, room_id').eq('status', 'aktif').range(from, to)),
     q<Row[]>(sb.from('chore_reports').select('*').in('task_id', tasks.map((t) => t.id)).gte('due_date', from).lte('due_date', to)),
   ]);
   const rm = new Map(rooms.map((r) => [r.id, r]));
@@ -1431,13 +1470,32 @@ on('POST', '/penghuni/chores/report', async ({ body: b, tenant: t }, log) => {
   const photos = (Array.isArray(b.photos) ? b.photos : []).map((p: unknown) => str(p, 200)).filter((p: string) => p.startsWith(`chores/${t!.id}/`));
   if (!photos.length) throw bad('Lampirkan minimal satu foto keadaan setelah piket.');
   const row = { task_id: task.id, due_date: b.date, tenant_id: t!.id, assigned: occ.assigned.map((p: Row) => p.name), photos, note: str(b.note, 600) };
-  const existing = toCamel(await q(sb.from('chore_reports').select('*').eq('task_id', task.id).eq('due_date', b.date).maybeSingle()));
-  const kept = (existing?.photos || []) as string[];
-  // Foto tambahan digabung tanpa dibuang diam-diam; batasnya jelas dan diberitahukan bila terlampaui.
-  const merged = [...new Set([...kept, ...photos])];
-  if (merged.length > MAX_CHORE_PHOTOS) throw bad(`Bukti piket maksimal ${MAX_CHORE_PHOTOS} foto (sudah ada ${kept.length}). Hapus foto lama dulu.`);
-  const rec = existing ? await update('chore_reports', existing.id, { photos: merged, note: row.note || existing.note, tenantId: existing.tenantId || t!.id })
-    : await insert('chore_reports', toCamel(row)!);
+  // Gabung laporan dengan aman untuk dua penghuni yang mengirim bersamaan: baca ulang data terbaru,
+  // tulis dengan syarat updated_at belum berubah, lalu ulangi sekali bila ada penulis lain.
+  const mergeReport = async (attempt = 0): Promise<Row> => {
+    const hdr = await q<Row | null>(sb.from('chore_reports').select('*').eq('task_id', task.id).eq('due_date', b.date).maybeSingle());
+    if (!hdr) {
+      const { data, error } = await sb.from('chore_reports').insert(toSnake(row)).select().single();
+      if (error?.code === '23505' && attempt < 3) return mergeReport(attempt + 1);
+      if (error) { console.error(error); throw new HttpError(500, 'Gagal menyimpan bukti piket.'); }
+      return toCamel(data)!;
+    }
+    const ex = toCamel(hdr)!;
+    const kept = (ex.photos || []) as string[];
+    const merged = [...new Set([...kept, ...photos])];
+    if (merged.length > MAX_CHORE_PHOTOS) throw bad(`Bukti piket maksimal ${MAX_CHORE_PHOTOS} foto (sudah ada ${kept.length}). Hapus foto lama dulu.`);
+    // Catatan penghuni kedua tidak menimpa catatan penghuni pertama dan tidak tampil atas namanya.
+    const noteText = ex.tenantId === t!.id ? (row.note || ex.note)
+      : row.note ? (ex.note ? `${ex.note}
+${t!.name}: ${row.note}` : `${t!.name}: ${row.note}`) : ex.note;
+    const { data: updated } = await sb.from('chore_reports')
+      .update({ photos: merged, note: noteText, tenant_id: ex.tenantId || t!.id })
+      .eq('id', ex.id).eq('updated_at', ex.updatedAt).select('*').maybeSingle();
+    if (updated) return toCamel(updated)!;
+    if (attempt >= 3) throw bad('Laporan piket ini sedang diperbarui penghuni lain. Coba kirim lagi.');
+    return mergeReport(attempt + 1);
+  };
+  const rec = await mergeReport();
   log({ action: 'chore.report', summary: `Mengirim bukti piket "${task.name}" ${tanggal(b.date)} (${photos.length} foto)` });
   return pick(rec, ['id']);
 });
@@ -1525,8 +1583,8 @@ on('POST', '/admin/tenants/:id/account', async ({ body: b, params }, log) => {
 async function setAccount(t: Row, b: Row) {
   const username = str(b.username ?? t.username, 60).toLowerCase();
   if (!USERNAME_RE.test(username)) throw bad('Username 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda minus. Tanpa spasi.');
-  const dup = await q<Row | null>(sb.from('tenants').select('id, name').eq('username', username).neq('id', t.id).maybeSingle());
-  if (dup) throw bad(`Username "${username}" sudah dipakai ${dup.name}.`);
+  const takenBy = await usernameTakenAnywhere(username, { table: 'tenants', id: t.id });
+  if (takenBy) throw bad(`Username "${username}" sudah dipakai akun ${takenBy} lain. Pilih username lain.`);
   const patch: Row = { username, login_enabled: b.enabled === undefined ? true : !!b.enabled };
   const pw = b.password === undefined || b.password === null ? '' : String(b.password);
   if (pw) {
@@ -1726,7 +1784,7 @@ on('POST', '/admin/inspections', async ({ body: b }, log) => {
       photos,
     };
   }).filter((it: Row) => it.name);
-  const patch = { tenantId: t.id, roomId: t.roomId, kind: b.kind, date: b.date, items, note: str(b.note, 1500), depositDeduction: num(b.depositDeduction), deductionNote: str(b.deductionNote, 600), tenantAckAt: null, tenantNote: '' };
+  const patch = { tenantId: t.id, roomId: t.roomId, kind: b.kind, date: b.date, items, note: str(b.note, 1500), depositDeduction: depositDeduction(b.depositDeduction), deductionNote: str(b.deductionNote, 600), tenantAckAt: null, tenantNote: '' };
   const existing = toCamel(await q(sb.from('room_inspections').select('id').eq('tenant_id', t.id).eq('kind', b.kind).maybeSingle()));
   const rec = existing ? await update('room_inspections', existing.id, patch) : await insert('room_inspections', patch);
   const bad_ = items.filter((i: Row) => i.condition !== 'baik').length;
@@ -1880,7 +1938,7 @@ on('POST', '/admin/chores', async ({ body: b }, log) => {
   if (!c.name) throw bad('Isi nama tugas piket.');
   const prop = await one('properties', c.propertyId); if (!prop) throw bad('Pilih kos.');
   if (!c.startDate) throw bad('Isi tanggal mulai piket.');
-  const rec = await insert('chore_tasks', { frequency: 'mingguan', mode: 'bergilir', peoplePerTurn: 1, ...c });
+  const rec = await insert('chore_tasks', { frequency: 'mingguan', mode: 'bergilir', peoplePerTurn: 1, active: true, ...c });
   log({ action: 'chore.create', summary: `Membuat jadwal piket "${rec.name}" di ${prop.name}` });
   return created(rec);
 });

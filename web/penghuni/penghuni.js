@@ -19,6 +19,12 @@
   let data = null;
 
   // ---------- API ----------
+  // Kegagalan yang tidak ditangani tetap diberitahukan ke pengguna (dulu beberapa tombol gagal tanpa pesan).
+  window.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e.reason);
+    toast(e.reason?.message || 'Terjadi kesalahan. Coba lagi.', true);
+  });
   async function api(method, path, body, raw) {
     const opt = { method, headers: {} };
     const s = getSession(); if (s?.token) opt.headers['X-Tenant-Session'] = s.token;
