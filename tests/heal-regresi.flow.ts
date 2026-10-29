@@ -120,4 +120,12 @@ const rmB = (db.rooms || []).find((r: any) => r.id === 'rm_b');
 assert(rmB.status === 'kosong', `kamar tujuan tetap kosong untuk penghuni keluar, dapat: ${rmB.status}`);
 console.log('kamar tujuan setelah pindah penghuni keluar:', rmB.status);
 
+// --- 9. Nomor WhatsApp dengan format berbeda tidak membuat reservasi kedua ------------------------
+(db.properties ||= []).push({ id: 'kos_lead', slug: 'lead', name: 'Kos Lead', kind: 'mitra', status: 'aktif', periods: ['bulanan'], min_booking: 0, city: '', whatsapp: '', chat_enabled: true, wa_enabled: true, note: '', created_at: stamp(0), updated_at: stamp(0) } as any);
+const lead1 = await call('POST', '/leads', { name: 'Uji Satu', phone: '0812-3456-7890', propertyId: 'kos_lead', period: 'bulanan', duration: 1, moveDate: '2026-11-01' });
+assert(lead1.status === 201, `reservasi pertama dibuat: ${lead1.status} ${JSON.stringify(lead1.data)}`);
+const lead2 = await call('POST', '/leads', { name: 'Uji Dua', phone: '+62 812 3456 7890', propertyId: 'kos_lead', period: 'bulanan', duration: 1, moveDate: '2026-11-01' });
+assert(lead2.status === 400 && /reservasi aktif/.test(lead2.data.error || ''), `nomor sama (format lain) ditolak: ${lead2.status} ${JSON.stringify(lead2.data)}`);
+console.log('nomor format lain ditolak:', lead2.status);
+
 console.log('ALL HEAL REGRESSION TESTS PASSED');
