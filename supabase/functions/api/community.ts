@@ -85,6 +85,15 @@ export function createCommunity(H: Record<string, any>) {
     ]);
     if ((byPhone.count ?? 0) >= 5 || (ip && (byIp.count ?? 0) >= 8)) throw new HttpError(429, 'Iklan dari nomor ini sudah banyak hari ini. Coba lagi besok, atau hubungi admin lewat WhatsApp.');
     const rec = await insert('listings', { ...f, sellerName, sellerPhone, ip, status: 'baru' });
+    // Hitung ulang setelah insert: iklan yang dikirim bersamaan tidak boleh melewati batas.
+    const [againPhone, againIp] = await Promise.all([
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('seller_phone', sellerPhone).gte('created_at', dayAgo),
+      sb.from('listings').select('id', { count: 'exact', head: true }).eq('ip', ip).gte('created_at', hourAgo),
+    ]);
+    if ((againPhone.count ?? 0) > 5 || (ip && (againIp.count ?? 0) > 8)) {
+      await q(sb.from('listings').delete().eq('id', rec.id));
+      throw new HttpError(429, 'Iklan dari nomor ini sudah banyak hari ini. Coba lagi besok, atau hubungi admin lewat WhatsApp.');
+    }
     await notifyAdmin('titip', `Titip ${f.kind === 'jasa' ? 'jasa' : 'jualan'} baru: ${f.title}`, `${sellerName} (${sellerPhone}). Periksa di menu Titip jualan.`);
     log({ action: 'listing.submit', summary: `Mengirim titip ${f.kind}: ${f.title}`, meta: { name: sellerName } });
     return created({ ok: true, id: rec.id });

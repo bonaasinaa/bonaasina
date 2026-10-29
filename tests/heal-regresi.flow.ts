@@ -63,6 +63,13 @@ const afterDelete = await ok('GET', '/admin/invoices', undefined, A) as any[];
 assert(!afterDelete.some((i) => i.periodStart === target.periodStart), 'tagihan yang dihapus tidak dibuat ulang');
 console.log('tagihan setelah dihapus:', afterDelete.length);
 
+// --- 3b. Ringkasan admin tetap benar setelah query dipersempit -----------------------------------
+const summary = await ok('GET', '/admin/summary', undefined, A) as any;
+assert(summary.overdue >= 1 && summary.overdueAmount > 0, `ringkasan menghitung tunggakan: ${JSON.stringify({ o: summary.overdue, a: summary.overdueAmount })}`);
+assert(Array.isArray(summary.perProperty) && summary.perProperty.length >= 1, 'ringkasan punya perProperty');
+assert(typeof summary.openIssues === 'number' && typeof summary.waitlistToNotify === 'number', 'lencana ringkasan berupa angka');
+console.log('ringkasan: tunggakan', summary.overdue, 'tagihan / Rp' + summary.overdueAmount);
+
 // --- 4. Batas foto & potongan deposit dilaporkan, bukan dipotong/disimpan diam-diam ----------------
 const tooManyPhotos = Array.from({ length: 13 }, (_, i) => `https://test.supabase.co/storage/v1/object/public/photos/uji/${i}.jpg`);
 const photoRes = await call('POST', '/admin/rooms', { propertyId: 'kos_uji', code: 'B-1', photos: tooManyPhotos }, A);
@@ -98,5 +105,19 @@ const chores = await ok('GET', '/admin/chores', undefined, A) as any;
 const turn = chores.items.find((i: any) => i.taskId === task.id && i.date === '2026-10-20');
 assert(turn?.report?.photos?.length === 10, `foto piket tergabung: ${turn?.report?.photos?.length}`);
 console.log('foto piket setelah dua kiriman:', turn.report.photos.length);
+
+// --- 8. Penghuni yang ditolak tidak meninggalkan sisa, dan penghuni keluar tidak menempati kamar --
+const tenBefore = (db.tenants || []).length;
+const rejectedAdd = await call('POST', '/admin/tenants', { name: 'Tidak Jadi', roomId: 'rm_uji', startDate: '2026-10-01', username: 'kosxu', password: 'rahasia123' }, A);
+assert(rejectedAdd.status === 400, `username milik akun lain ditolak: ${rejectedAdd.status} ${JSON.stringify(rejectedAdd.data)}`);
+assert((db.tenants || []).length === tenBefore, `tidak ada penghuni tersisa setelah ditolak (${(db.tenants || []).length} vs ${tenBefore})`);
+console.log('penambahan ditolak, penghuni tersisa tetap:', (db.tenants || []).length);
+
+(db.rooms ||= []).push({ id: 'rm_b', property_id: 'kos_uji', code: 'B-2', status: 'kosong', hidden: false, created_at: stamp(0), updated_at: stamp(0) } as any);
+(db.tenants ||= []).push({ id: 'tn_keluar', name: 'Sudah Keluar', room_id: 'rm_uji', status: 'keluar', rent_cycle: 'bulanan', rent_amount: 500000, start_date: '2025-01-01', end_date: '2025-12-31', created_at: stamp(0), updated_at: stamp(0) } as any);
+await ok('PUT', '/admin/tenants/tn_keluar', { roomId: 'rm_b' }, A);
+const rmB = (db.rooms || []).find((r: any) => r.id === 'rm_b');
+assert(rmB.status === 'kosong', `kamar tujuan tetap kosong untuk penghuni keluar, dapat: ${rmB.status}`);
+console.log('kamar tujuan setelah pindah penghuni keluar:', rmB.status);
 
 console.log('ALL HEAL REGRESSION TESTS PASSED');

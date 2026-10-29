@@ -737,8 +737,15 @@
         <label class="span-all">Keterangan singkat<input name="note" value="${esc(r?.note || '')}" placeholder="Listrik sudah termasuk"></label>
         ${photoField('photos', r?.photos || [])}
         <label class="span-all"><input type="checkbox" name="hidden" ${r?.hidden ? 'checked' : ''}>Sembunyikan kamar ini dari website</label>
+        ${isNew ? '' : '<div class="span-all"><button type="button" class="btn btn--ghost btn--sm" id="rmDel">Hapus kamar</button></div>'}
       </div>`,
-      onOpen: (b) => bindPhotos(b, 'photos'),
+      onOpen: (b) => {
+        bindPhotos(b, 'photos');
+        $('#rmDel', b)?.addEventListener('click', async () => {
+          if (!(await askConfirm('Hapus kamar', `Kamar ${r.code} akan dihapus. Kamar dengan reservasi berjalan akan ditolak server.`, 'Hapus'))) return;
+          try { await api('DELETE', `/rooms/${r.id}`); toast('Kamar dihapus.'); route(); } catch (ex) { toast(ex.message, true); }
+        });
+      },
       onOk: async (d) => {
         d.photos = JSON.parse(d.photos || '[]'); d.hidden = d.hidden === 'on';
         if (isNew) await api('POST', '/rooms', d); else { delete d.propertyId; await api('PUT', `/rooms/${r.id}`, d); }
@@ -947,9 +954,13 @@
     let last = data.items[data.items.length - 1]?.id;
     $('#actMore')?.addEventListener('click', async (e) => {
       const btn = e.currentTarget; btn.disabled = true;
+      // Filter/pencarian bisa berganti selama data dimuat; hasil yang telat tidak boleh masuk ke tabel baru.
+      const asked = activityPath(last);
       try {
-        const more = await api('GET', activityPath(last));
-        $('#actBody').insertAdjacentHTML('beforeend', actRows(more.items));
+        const more = await api('GET', asked);
+        const body = $('#actBody');
+        if (!body || activityPath(last) !== asked) return;
+        body.insertAdjacentHTML('beforeend', actRows(more.items));
         last = more.items[more.items.length - 1]?.id;
         if (!more.hasMore) btn.parentElement.remove();
       } catch (ex) { toast(ex.message, true); }
