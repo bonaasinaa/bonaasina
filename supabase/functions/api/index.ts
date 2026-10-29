@@ -927,7 +927,15 @@ on('POST', '/admin/invoices/:id/unpay', async ({ params }, log) => {
 });
 on('POST', '/admin/invoices/:id/reject-proof', async ({ params, body }, log) => {
   const note = str(body.note, 300); if (!note) throw bad('Tulis alasan agar penghuni tahu apa yang perlu diperbaiki.');
-  const rec = await update('invoices', params.id, { proofStatus: 'ditolak', proofNote: note });
+  const before = await one('invoices', params.id);
+  if (!before || before.proofStatus !== 'menunggu' || !before.proofPath) throw bad('Tidak ada bukti bayar yang sedang menunggu pemeriksaan. Muat ulang daftar tagihan.');
+  if (body.proofPath && body.proofPath !== before.proofPath) throw bad('Penghuni sudah mengunggah bukti baru. Periksa bukti terbaru sebelum menolak.');
+  // Bersyarat: bila bukti diganti saat admin menekan tolak, penolakan ini tidak mengenai bukti baru.
+  const { data: rejected } = await sb.from('invoices')
+    .update({ proof_status: 'ditolak', proof_note: note })
+    .eq('id', before.id).eq('proof_path', before.proofPath).eq('proof_status', 'menunggu').select('*').maybeSingle();
+  if (!rejected) throw bad('Bukti bayar sudah berubah. Muat ulang daftar tagihan lalu periksa ulang.');
+  const rec = toCamel(rejected)!;
   const payer = await one('tenants', rec.tenantId);
   if (payer?.email) mail.send({
     to: payer.email, kind: 'invoice.proof_rejected', dedupeKey: `invoice.proof_rejected:${rec.id}:${rec.proofPath || ''}`,
@@ -1542,7 +1550,11 @@ on('POST', '/penghuni/inspections/:id/ack', async ({ params, body: b, tenant: t 
   return pick(rec, ['id', 'tenantAckAt', 'tenantNote']);
 });
 on('POST', '/penghuni/announcements/:id/read', async ({ params, tenant: t }) => {
-  await q(sb.from('announcement_reads').upsert({ announcement_id: params.id, tenant_id: t!.id }, { onConflict: 'announcement_id,tenant_id', ignoreDuplicates: true }));
+  const a = await one('announcements', params.id);
+  const room = a ? (t!.roomId ? await one('rooms', t!.roomId) : null) : null;
+  // Hanya pengumuman untuk semua kos atau untuk kos penghuni ini; id karangan tidak dicatat.
+  if (!a || (a.propertyId && a.propertyId !== room?.propertyId)) throw notFound('Pengumuman tidak ditemukan.');
+  await q(sb.from('announcement_reads').upsert({ announcement_id: a.id, tenant_id: t!.id }, { onConflict: 'announcement_id,tenant_id', ignoreDuplicates: true }));
   return { ok: true };
 });
 on('POST', '/penghuni/chores/report', async ({ body: b, tenant: t }, log) => {
