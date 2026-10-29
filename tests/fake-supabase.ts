@@ -46,7 +46,46 @@ class Query {
   in(k: string, v: any[]) { this.filters.push((r) => v.includes(r[k])); return this; }
   is(k: string, v: any) { this.filters.push((r) => (v === null ? r[k] == null : r[k] === v)); return this; }
   ilike(k: string, v: string) { const re = new RegExp('^' + v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*') + '$', 'i'); this.filters.push((r) => re.test(String(r[k] ?? ''))); return this; }
-  or(_s: string) { return this; }
+  // Tiruan sederhana PostgREST .or(): dukung grup "and(a,b)" dan kondisi col.op.value.
+  or(spec: string) {
+    const splitTop = (t: string) => {
+      const out: string[] = []; let depth = 0; let cur = '';
+      for (const ch of t) {
+        if (ch === '(') depth++;
+        if (ch === ')') depth--;
+        if (ch === ',' && depth === 0) { out.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      if (cur) out.push(cur);
+      return out.map((x) => x.trim()).filter(Boolean);
+    };
+    const numeric = (v: string) => (v !== '' && !Number.isNaN(Number(v)) ? Number(v) : v);
+    const cond = (e: string) => {
+      const [col, op, ...rest] = e.split('.');
+      const raw = rest.join('.');
+      const val = numeric(raw);
+      switch (op) {
+        case 'eq': return (r: Row) => String(r[col]) === raw;
+        case 'neq': return (r: Row) => String(r[col]) !== raw;
+        case 'gt': return (r: Row) => r[col] != null && r[col] > val;
+        case 'gte': return (r: Row) => r[col] != null && r[col] >= val;
+        case 'lt': return (r: Row) => r[col] != null && r[col] < val;
+        case 'lte': return (r: Row) => r[col] != null && r[col] <= val;
+        case 'is': return (r: Row) => (raw === 'null' ? r[col] == null : String(r[col]) === raw);
+        default: return () => true;
+      }
+    };
+    const parse = (expr: string): ((r: Row) => boolean) => {
+      if (expr.startsWith('and(') && expr.endsWith(')')) {
+        const fns = splitTop(expr.slice(4, -1)).map(cond);
+        return (r: Row) => fns.every((f) => f(r));
+      }
+      return cond(expr);
+    };
+    const fns = splitTop(spec).map(parse);
+    this.filters.push((r) => fns.some((f) => f(r)));
+    return this;
+  }
   order(k: string, o?: Row) { this.orderBy.push([k, o?.ascending !== false]); return this; }
   limit(n: number) { this.lim = n; return this; }
   // PostgREST membatasi jumlah baris per permintaan; tes meniru .range() supaya paginasi ikut teruji.
