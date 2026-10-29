@@ -128,4 +128,44 @@ const lead2 = await call('POST', '/leads', { name: 'Uji Dua', phone: '+62 812 34
 assert(lead2.status === 400 && /reservasi aktif/.test(lead2.data.error || ''), `nomor sama (format lain) ditolak: ${lead2.status} ${JSON.stringify(lead2.data)}`);
 console.log('nomor format lain ditolak:', lead2.status);
 
+// --- 10. Survei admin: satu halaman + hasMore (bukan seluruh riwayat) ---------------------------
+for (let i = 0; i < 60; i++) (db.surveys ||= []).push({ id: `sv_${String(i).padStart(2, '0')}`, name: `Calon ${i}`, phone: '081200000000', property_id: 'kos_lead', room_id: null, date: '2026-11-02', time: '10:00', note: '', status: 'baru', occupation: null, created_at: stamp(i), updated_at: stamp(i) } as any);
+const sv = await ok('GET', '/admin/surveys', undefined, A) as any;
+assert(Array.isArray(sv.items) && sv.items.length === 50 && sv.hasMore === true, `survei 50 baris + hasMore, dapat: ${sv.items?.length}/${sv.hasMore}`);
+const sv2 = await ok('GET', '/admin/surveys?limit=500', undefined, A) as any;
+assert(sv2.items.length === 60 && sv2.hasMore === false, `survei batas besar memuat semua: ${sv2.items?.length}/${sv2.hasMore}`);
+console.log('survei berhalaman:', sv.items.length, 'hasMore', sv.hasMore);
+
+// --- 11. Daftar tunggu: status difilter & dihitung di server ------------------------------------
+(db.waitlist ||= []).push(
+  { id: 'wl_a', name: 'Tunggu A', phone: '081211111111', property_id: 'kos_lead', room_pref: '', budget: null, move_date: null, note: '', status: 'perlu_dikabari', matched_room_id: null, matched_at: null, created_at: stamp(1), updated_at: stamp(1) } as any,
+  { id: 'wl_b', name: 'Tunggu B', phone: '081222222222', property_id: 'kos_lead', room_pref: '', budget: null, move_date: null, note: '', status: 'menunggu', matched_room_id: null, matched_at: null, created_at: stamp(2), updated_at: stamp(2) } as any,
+);
+const wl = await ok('GET', '/admin/waitlist?status=perlu_dikabari', undefined, A) as any;
+assert(wl.items.length === 1 && wl.items[0].id === 'wl_a', `hanya status perlu_dikabari yang dikirim: ${JSON.stringify(wl.items.map((x: any) => x.id))}`);
+assert(wl.counts.perlu_dikabari === 1 && wl.counts.menunggu === 1 && wl.counts.semua === 2, `hitungan segmen dari server: ${JSON.stringify(wl.counts)}`);
+console.log('daftar tunggu per status:', wl.items.length, 'counts', JSON.stringify(wl.counts));
+
+// --- 12. Kontrak: segmen dihitung server, yang dibatalkan tidak ikut -----------------------------
+(db.contracts ||= []).push(
+  { id: 'ct_aktif', number: 'K-1', tenant_id: 't_x', room_id: 'rm_x', property_id: 'kos_lead', start_date: '2026-01-01', end_date: '2026-12-31', monthly_rent: 1000000, deposit: 0, status: 'disetujui', body: '', created_at: stamp(3), updated_at: stamp(3) } as any,
+  { id: 'ct_batal', number: 'K-2', tenant_id: 't_x', room_id: 'rm_x', property_id: 'kos_lead', start_date: '2026-01-01', end_date: '2026-12-31', monthly_rent: 1000000, deposit: 0, status: 'dibatalkan', body: '', created_at: stamp(4), updated_at: stamp(4) } as any,
+  { id: 'ct_baru', number: 'K-3', tenant_id: 't_x', room_id: 'rm_x', property_id: 'kos_lead', start_date: '2026-11-01', end_date: '2027-11-01', monthly_rent: 1000000, deposit: 0, status: 'menunggu', body: '', created_at: stamp(5), updated_at: stamp(5) } as any,
+);
+const ct = await ok('GET', '/admin/contracts?status=semua', undefined, A) as any;
+assert(ct.items.length === 3 && ct.counts.semua === 3, `semua kontrak terbaca: ${ct.items.length}`);
+assert(ct.counts.tindakan === 1, `satu kontrak perlu tindakan, dapat: ${ct.counts.tindakan}`);
+const ctA = await ok('GET', '/admin/contracts?status=aktif', undefined, A) as any;
+assert(ctA.items.every((c: any) => c.status !== 'dibatalkan'), 'kontrak dibatalkan tidak ikut segmen berjalan');
+assert(ctA.counts.aktif === 1 && ctA.items.length === 1 && ctA.items[0].id === 'ct_aktif', `segmen berjalan hanya kontrak berjalan: ${ctA.items.length} / ${ctA.counts.aktif}`);
+console.log('kontrak per segmen:', ctA.items.length, 'counts', JSON.stringify(ctA.counts));
+
+// --- 13. Pengumuman admin: satu halaman, bukan seluruh riwayat -----------------------------------
+for (let i = 0; i < 25; i++) (db.announcements ||= []).push({ id: `an_${String(i).padStart(2, '0')}`, title: `Pengumuman ${i}`, body: 'isi', property_id: null, expires_on: null, pinned: false, created_at: stamp(i), updated_at: stamp(i) } as any);
+const an = await ok('GET', '/admin/announcements', undefined, A) as any;
+assert(Array.isArray(an.items) && an.items.length === 20 && an.hasMore === true, `pengumuman 20 baris + hasMore, dapat: ${an.items?.length}/${an.hasMore}`);
+const an2 = await ok('GET', '/admin/announcements?before=' + encodeURIComponent(stamp(10)), undefined, A) as any;
+assert(an2.items.length === 10 && an2.hasMore === false, `halaman berikutnya 10 baris tanpa sisa: ${an2.items?.length}/${an2.hasMore}`);
+console.log('pengumuman berhalaman:', an.items.length, 'halaman kedua', an2.items.length);
+
 console.log('ALL HEAL REGRESSION TESTS PASSED');
