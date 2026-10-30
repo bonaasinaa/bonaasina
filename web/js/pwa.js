@@ -3,6 +3,8 @@
 (() => {
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+    // updateViaCache 'none': zona ini menaikkan max-age sw.js jadi 4 jam, jadi pemeriksaan
+    // versi harus lewat jaringan supaya perbaikan service worker tidak tertahan cache.
+    navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => {});
   });
 })();
