@@ -157,3 +157,5 @@
 .form .tphotos__add { display: grid; }
 .tcard__body { display: flex; flex-direction: column; gap: 6px; }
 .tcard__seller { margin-top: auto; padding-top: 12px; }
+
+.gallery__static { display: block; border: 0; padding: 0; background: var(--ink); }
