@@ -351,10 +351,13 @@
     } finally { btn.disabled = false; btn.textContent = 'Masuk daftar tunggu'; }
   });
 
-  // Tanya jawab (akordeon dengan tinggi teranimasi)
+  // Tanya jawab. HTML statis di index.html adalah snapshot site.faq; render dari API menimpa
+  // keduanya sekaligus supaya teks yang tampil dan JSON-LD FAQPage tidak pernah berbeda.
   function renderFaq() {
     const faq = state.data.site.faq || [];
+    if (!faq.length) return;
     $('#faq').innerHTML = faq.map((f) => `<details><summary>${esc(f.q)}</summary><div class="faq__a"><p>${esc(f.a)}</p></div></details>`).join('');
+    syncFaqSchema(faq);
     if (reduce) return;
     $$('#faq details').forEach((d) => {
       const sum = $('summary', d), body = $('.faq__a', d);
@@ -369,6 +372,20 @@
         }
       });
     });
+  }
+
+  // Sumber tunggal JSON-LD FAQPage: dibangun dari data yang sama dengan HTML di atasnya.
+  function syncFaqSchema(faq) {
+    const el = document.getElementById('faqSchema');
+    if (!el) return;
+    const schema = {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      '@id': 'https://bonaasina.my.id/#faq',
+      mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+    };
+    // "<\/" mencegah tag penutup di dalam teks memutus blok script.
+    el.textContent = JSON.stringify(schema, null, 1).replace(/<\//g, '<\\/');
   }
 
   function renderFooter() {
