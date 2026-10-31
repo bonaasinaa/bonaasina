@@ -9,7 +9,7 @@
 .tl li.is-done .tl__dot { background: var(--green); border-color: var(--green); color: #fff; }
 .tl li.is-done::before { background: var(--green); }
 .tl li.is-now .tl__dot { border-color: var(--red); color: var(--red); box-shadow: 0 0 0 4px rgba(142, 27, 27, .12); }
-.tl strong { display: block; font-size: 14px; font-weight: 650; line-height: 28px; }
+.tl strong { display: block; font-size: 14px; font-weight: 600; line-height: 28px; }
 .tl small { display: block; color: var(--ijuk); font-size: 12px; margin-top: -4px; }
 
 /* Kartu langkah berikutnya */

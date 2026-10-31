@@ -62,7 +62,7 @@
         <div class="kd__main">
           <div class="gallery">${gallery}</div>
           ${p.description ? `<p class="kd__desc">${esc(p.description)}</p>` : ''}
-          <section id="kamar"><div class="section__head section__head--split"><div><h2>Kamar &amp; harga</h2><p>${free} dari ${d.rooms.length} kamar kosong.</p></div>
+          <section id="kamar"><div class="section__head section__head--split"><div><h2>Kamar &amp; harga</h2><p id="kamarNote">${free} dari ${d.rooms.length} kamar kosong.</p></div>
             ${p.periods.length > 1 ? `<div class="toggle" role="radiogroup" aria-label="Lama sewa" id="cyc" style="--n:${p.periods.length};--i:${p.periods.indexOf(cycle)}" data-n="${p.periods.length}"><span class="toggle__pill" aria-hidden="true"></span>${p.periods.map((k) => `<button role="radio" aria-checked="${k === cycle}" data-cycle="${k}">${PERIODS[k][0]}</button>`).join('')}</div>` : ''}</div>
             <ul class="rooms" id="rooms"></ul></section>
           <div class="kd__cols">
@@ -98,6 +98,13 @@
     const k = PERIODS[cycle];
     const order = { kosong: 0, dipesan: 1, terisi: 2, perbaikan: 3 };
     const list = [...d.rooms].sort((a, b) => order[a.status] - order[b.status] || a.code.localeCompare(b.code, 'id', { numeric: true }));
+    // Semua kamar berharga sama: harga ditulis sekali di catatan, bukan diulang di setiap baris.
+    const prices = list.map((r) => Number(r[k[2]]) || 0);
+    const uniform = prices.length > 0 && prices.every((p) => p && p === prices[0]);
+    const free = list.filter((r) => r.status === 'kosong').length;
+    const note = $('#kamarNote');
+    if (note) note.textContent = uniform ? `${free} dari ${list.length} kamar kosong. Semua kamar ${rp(prices[0])} per ${k[1]}.` : `${free} dari ${list.length} kamar kosong.`;
+    $('#rooms').classList.toggle('is-uniform', uniform);
     $('#rooms').innerHTML = list.length ? list.map((r) => {
       const price = Number(r[k[2]]) || 0; const avail = r.status === 'kosong';
       return `<li class="room ${avail ? '' : 'is-unavailable'}">
@@ -106,7 +113,7 @@
           ${Number(r.capacity) === 2 ? `<div class="room__cap">Bisa untuk 2 orang${r.extraPersonFee ? ` (+${rp(r.extraPersonFee)}/${r.extraPersonPeriod === 'tahunan' ? 'tahun' : 'bln'})` : ''}</div>` : ''}
           <span class="status status--${r.status}">${STATUS[r.status] || esc(r.status)}</span></div>
         <div class="room__fac">${(r.facilities || []).map(esc).join(', ')}${r.note ? `<span class="room__note">${esc(r.note)}</span>` : ''}</div>
-        <div class="room__price">${price ? `<span class="room__amount">${rp(price)}</span><span class="room__per">per ${k[1]}</span>` : `<span class="room__per">Harga ${k[0].toLowerCase()} belum ada</span>`}</div>
+        ${uniform ? '' : `<div class="room__price">${price ? `<span class="room__amount">${rp(price)}</span><span class="room__per">per ${k[1]}</span>` : `<span class="room__per">Harga ${k[0].toLowerCase()} belum ada</span>`}</div>`}
         <div class="room__actions">${avail ? `<button class="btn btn--red btn--sm" data-book="${r.id}">Pesan kamar ini</button>` : `<span class="room__per">${STATUS[r.status]}</span>`}</div></li>`;
     }).join('') : '<li class="rooms__empty">Pemilik belum menambahkan kamar.</li>';
   }
