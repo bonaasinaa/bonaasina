@@ -5,7 +5,7 @@
 .tl li { position: relative; display: grid; grid-template-columns: 28px 1fr; gap: 8px; padding-bottom: 12px; }
 .tl li::before { content: ""; position: absolute; left: 13px; top: 24px; bottom: 0; width: 2px; background: var(--line); }
 .tl li:last-child { padding-bottom: 0; } .tl li:last-child::before { display: none; }
-.tl__dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--line-strong); background: var(--paper); font-size: 13px; font-weight: 700; color: var(--ijuk); }
+.tl__dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--line-strong); background: var(--surface); font-size: 13px; font-weight: 700; color: var(--ijuk); }
 .tl li.is-done .tl__dot { background: var(--green); border-color: var(--green); color: #fff; }
 .tl li.is-done::before { background: var(--green); }
 .tl li.is-now .tl__dot { border-color: var(--red); color: var(--red); box-shadow: 0 0 0 4px rgba(142, 27, 27, .12); }
@@ -13,7 +13,7 @@
 .tl small { display: block; color: var(--ijuk); font-size: 12px; margin-top: -4px; }
 
 /* Kartu langkah berikutnya */
-.next { border-radius: var(--r-lg); padding: 16px 20px; background: var(--paper); border: 1.5px solid var(--line); display: grid; gap: 8px; }
+.next { border-radius: var(--r-lg); padding: 16px 20px; background: var(--surface); border: 1.5px solid var(--line); display: grid; gap: 8px; }
 .next--act { border-color: var(--red); background: #FFF6F2; }
 .next--ok { border-color: rgba(47, 107, 63, .4); background: var(--green-bg); }
 .next--wait { border-color: rgba(138, 90, 11, .3); background: #FBF4E4; }
@@ -21,7 +21,7 @@
 .next p { color: var(--ink); max-width: 66ch; }
 .next .btn-row { margin-top: 4px; }
 .big-amount { font-family: var(--serif); font-size: clamp(1.8rem, 5vw, 2.4rem); line-height: 1; }
-.bank { white-space: pre-line; font-weight: 600; background: var(--paper); border: 1px dashed var(--line-strong); border-radius: var(--r-sm); padding: 8px 12px; }
+.bank { white-space: pre-line; font-weight: 600; background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--r-sm); padding: 8px 12px; }
 .countdown { font-weight: 700; color: var(--red); }
 
 /* Detail reservasi (pemilik & admin) */
@@ -37,7 +37,7 @@
 .unread { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; font-weight: 700; margin-left: 4px; }
 
 /* Chat */
-.chat { display: flex; flex-direction: column; height: min(70vh, 620px); min-height: 380px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.chat { display: flex; flex-direction: column; height: min(70vh, 620px); min-height: 380px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
 .chat__head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .chat__head strong { font-size: 15px; }
 .chat__live { font-size: 12px; color: var(--green); display: inline-flex; align-items: center; gap: 4px; }
@@ -46,13 +46,13 @@
 .chat__list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: linear-gradient(180deg, rgba(247, 237, 227, .5), rgba(247, 237, 227, .2)); overscroll-behavior: contain; }
 .msg { max-width: 82%; padding: 8px 12px; border-radius: 16px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg small { display: block; font-size: 11px; color: var(--ijuk); margin-top: 3px; }
-.msg--me { align-self: flex-end; background: var(--ink); color: var(--paper); border-bottom-right-radius: 6px; }
+.msg--me { align-self: flex-end; background: var(--ink); color: var(--surface); border-bottom-right-radius: 6px; }
 .msg--me small { color: rgba(247, 237, 227, .7); }
 .msg--other { align-self: flex-start; background: #fff; border: 1px solid var(--line); border-bottom-left-radius: 6px; }
 .msg--sys { align-self: center; max-width: 92%; background: var(--amber-bg); color: var(--ink); font-size: 13px; border-radius: 12px; text-align: center; }
 .msg__who { display: block; font-size: 11px; font-weight: 700; color: var(--ijuk); margin-bottom: 2px; }
 .msg--me .msg__who { display: none; }
-.chat__form { display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--line); background: var(--paper); }
+.chat__form { display: flex; gap: 8px; padding: 8px; border-top: 1px solid var(--line); background: var(--surface); }
 .chat__form textarea { flex: 1; min-height: 44px; max-height: 120px; resize: none; margin: 0 !important; }
 .chat__off { padding: 12px 16px; border-top: 1px solid var(--line); color: var(--ijuk); font-size: 14px; }
 .chat__empty { margin: auto; text-align: center; color: var(--ijuk); font-size: 14px; max-width: 30ch; }
@@ -72,14 +72,14 @@
 .bell .badge { position: absolute; top: -7px; right: -9px; margin: 0; }
 
 /* Kredensial */
-.cred { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; background: var(--paper); border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: 12px 16px; }
+.cred { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: 12px 16px; }
 .cred dt { color: var(--ijuk); font-size: 13px; }
 .cred dd { margin: 0; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 
 /* Panduan */
 .guide { counter-reset: g; list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .guide li { counter-increment: g; display: grid; grid-template-columns: 30px 1fr; gap: 8px; }
-.guide li::before { content: counter(g); width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.guide li::before { content: counter(g); width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-size: 13px; }
 .guide strong { display: block; }
 .guide span { color: var(--ijuk); font-size: 14px; }
 

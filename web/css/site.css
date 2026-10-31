@@ -134,6 +134,11 @@ p { margin: 0; }
   .hero__facts { gap: 20px; }
 }
 @media (max-width: 520px) { .hero__facts { display: grid; grid-template-columns: 1fr 1fr; } .hero__facts dd { font-size: 1.35rem; } }
+/* Di layar sempit lebar rotator tidak boleh bergantung pada lebar px dari JS: setelah layar diperkecil
+   tanpa reload (rotasi/pisah layar), lebar lama 245px membuat baris judul meluber 36px. */
+@media (max-width: 430px) {
+  .rotator { width: auto !important; }
+}
 
 /* Pita ulos */
 .ulos { position: relative; background: var(--ink); color: var(--cream); overflow: hidden; }

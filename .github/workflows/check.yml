@@ -1,5 +1,5 @@
-# Penjaga komentar antislop-code: gagal bila ada pemisah dekoratif, label KAPITAL, emoji, narasi langkah, atau blok komentar lebih dari dua baris.
-name: Cek komentar
+# Penjaga komentar antislop-code dan aturan UI (jarak kelipatan 4, berat font, ?v= aset, alt gambar, outline fokus).
+name: Cek komentar & UI
 
 on:
   push:
@@ -17,3 +17,5 @@ jobs:
           node-version: 22
       - name: Jalankan penjaga komentar
         run: node scripts/check-comments.mjs --strict
+      - name: Jalankan penjaga aturan UI
+        run: node scripts/check-ui.mjs
