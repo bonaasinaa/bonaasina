@@ -42,7 +42,9 @@ Diambil dari `web/css/dash.css` (dashboard) dan skala publik:
 
 - Teks: delapan langkah **11, 12, 13, 14, 16, 20, 24, 32 px**. 11 untuk label mikro, 12 keterangan dan header tabel, 13 label dan chip, 14 teks utama, 16 sub-judul panel dan isian, 20 ke atas untuk judul (`clamp` untuk judul halaman). Tidak ada setengah langkah seperti 13.5 px; `scripts/check-ui.mjs` menolak ukuran di luar daftar ini.
 - Jarak: kelipatan 4 px.
-- Radius: tombol publik 999 px (pil, `min-height` 48 px), tombol dashboard 12 px, kecil 10 px, panel 14 sampai 24 px.
+- Radius: **enam nilai, tidak lebih**. Pil 999 px (tombol dan chip publik). Panel dan dialog 24 px. Kartu, gambar, dan item daftar 16 px. Kolom isian 14 px. Kontrol dashboard 12 px. Kontrol kecil 10 px.
+- Di bawah 10 px hanya untuk detail mikro: swatch legenda, batang grafik, kode inline. Satu pengecualian yang disengaja: bingkai ponsel contoh di `/mitra/` 36 px, karena itu gambar perangkat, bukan permukaan UI.
+- Nilai 18, 20, 22, 26, 28, dan 32 sudah dihapus dan dipetakan ke 16 atau 24. Jangan menambah nilai baru; kalau butuh, ubah daftar ini dulu.
 - Lebar isi publik: `--max 1240px`, gutter `clamp(16px, 4vw, 56px)`.
 - Kurva gerak: `cubic-bezier(.22, .8, .2, 1)`.
 

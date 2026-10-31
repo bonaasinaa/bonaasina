@@ -62,7 +62,7 @@ button.side__group[aria-expanded="false"]::after { transform: rotate(-45deg); }
 /* navigasi bawah di HP */
 .bnav { display: none; }
 @media (max-width: 1023px) {
-  .bnav { position: fixed; z-index: 45; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 22px; background: rgba(255, 255, 255, .94); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--line); box-shadow: 0 16px 36px -14px rgba(34, 21, 16, .35); }
+  .bnav { position: fixed; z-index: 45; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 24px; background: rgba(255, 255, 255, .94); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--line); box-shadow: 0 16px 36px -14px rgba(34, 21, 16, .35); }
   .bnav a, .bnav button { position: relative; display: grid; justify-items: center; gap: 2px; padding: 8px 2px 4px; border: 0; border-radius: 16px; background: none; color: var(--mute); font: 600 11px/1.15 var(--sans); text-decoration: none; cursor: pointer; transition: background-color .2s, color .2s; min-width: 0; }
   .bnav .lbl { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bnav svg { width: 21px; height: 21px; fill: currentColor; }
@@ -159,8 +159,8 @@ a.stat:hover, a.stat--link:hover { transform: translateY(-2px); box-shadow: var(
 .grid--hero > .stat:first-child .spark path.l { stroke: #F2B8A8; } .grid--hero > .stat:first-child .spark path.a { fill: #F2B8A8; opacity: .12; }
 
 /* Grafik */
-.meter { height: 8px; border-radius: 99px; background: rgba(34, 21, 16, .07); overflow: hidden; }
-.meter i { display: block; height: 100%; width: 0; border-radius: 99px; background: var(--tone, var(--ink)); transition: width .9s var(--ease); }
+.meter { height: 8px; border-radius: 999px; background: rgba(34, 21, 16, .07); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--tone, var(--ink)); transition: width .9s var(--ease); }
 .viz { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
 .donut { position: relative; width: 140px; height: 140px; flex: none; }
 .donut svg { width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -183,7 +183,7 @@ a.stat:hover, a.stat--link:hover { transform: translateY(-2px); box-shadow: var(
 .colbars__l { font-size: 11px; color: var(--mute); }
 .funnel { display: grid; gap: 8px; }
 .funnel div { display: grid; grid-template-columns: 130px minmax(0, 1fr) 36px; gap: 8px; align-items: center; font-size: 14px; }
-.funnel i { display: block; height: 10px; border-radius: 99px; background: var(--tone, var(--ink)); width: 0; transition: width .9s var(--ease); }
+.funnel i { display: block; height: 10px; border-radius: 999px; background: var(--tone, var(--ink)); width: 0; transition: width .9s var(--ease); }
 .funnel b { text-align: right; font-variant-numeric: tabular-nums; }
 .bars__in { background: var(--ink); } .bars__out { background: #D9A79B; }
 .bars__pair span { border-radius: 5px 5px 2px 2px; }
@@ -275,7 +275,7 @@ input:disabled, select:disabled { background-color: var(--soft); }
 .prop-card .logo-box { position: relative; flex: none; width: 76px; height: 76px; border-radius: 16px; background: var(--soft); display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); }
 .prop-card .logo-box img { width: 84%; height: 84%; object-fit: contain; }
 .logo-pick { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.logo-pick__img { width: 96px; height: 96px; border-radius: 18px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; }
+.logo-pick__img { width: 96px; height: 96px; border-radius: 16px; background: var(--soft); border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; }
 .logo-pick__img img { width: 86%; height: 86%; object-fit: contain; }
 
 /* Gerak */

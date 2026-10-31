@@ -103,8 +103,8 @@
 .stack { display: grid; gap: 12px; }
 .row-between { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
 .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 12px; }
-.setup__bar { height: 10px; border-radius: 99px; background: rgba(36, 22, 15, .1); overflow: hidden; }
-.setup__bar span { display: block; height: 100%; background: var(--green); border-radius: 99px; transition: width .6s var(--ease); }
+.setup__bar { height: 10px; border-radius: 999px; background: rgba(36, 22, 15, .1); overflow: hidden; }
+.setup__bar span { display: block; height: 100%; background: var(--green); border-radius: 999px; transition: width .6s var(--ease); }
 .setup__list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; }
 .setup__list li { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 .setup__list li::before { content: ""; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-strong); flex: none; }
