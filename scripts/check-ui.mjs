@@ -20,6 +20,13 @@ function walk(dir, out = []) {
 const SPACING = /(margin(?:-(?:top|right|bottom|left))?|padding(?:-(?:top|right|bottom|left))?|gap|row-gap|column-gap)\s*:\s*([^;{}]+)/g;
 const WEIGHT = /font(?:-weight)?\s*:\s*([^;{}]+)/g;
 const ALLOWED_WEIGHTS = new Set([400, 500, 600, 700]);
+// Skala teks: delapan langkah. Setengah langkah (11.5/12.5/13.5) membuat hierarki
+// tidak terbaca dan gampang menambah nilai baru tanpa sadar.
+const TYPE_SCALE = new Set([11, 12, 13, 14, 16, 20, 24, 32]);
+const FONT_SIZE = /font(?:-size)?\s*:\s*([^;{}]+)/g;
+// Token radius wajib dari tangga yang sama dengan border-radius literal.
+const RADIUS_TOKEN = /--r-[a-z]+\s*:\s*([0-9]+)px/g;
+const RADIUS_SCALE = new Set([10, 12, 14, 16, 24, 999]);
 
 const problems = [];
 const say = (file, line, rule, detail) => problems.push({ file, line, rule, detail });
@@ -55,6 +62,19 @@ for (const file of walk(ROOT)) {
       if (/outline\s*:\s*(none|0)/.test(ln) && !/(border|box-shadow)/.test(ln) && !/\{.*\}/.test(ln)) {
         say(rel, n, 'fokus', 'outline dimatikan tanpa border/box-shadow di baris yang sama');
       }
+      // Ukuran huruf di luar skala delapan langkah
+      for (const m of ln.matchAll(FONT_SIZE)) {
+        if (/\b(clamp|calc|var|env)\(|\b(em|rem|%)\b/.test(m[1])) continue;
+        for (const tok of m[1].matchAll(/(\d+(?:\.\d+)?)px/g)) {
+          const v = parseFloat(tok[1]);
+          if (!TYPE_SCALE.has(v)) say(rel, n, 'huruf', `ukuran ${v}px di luar skala 11/12/13/14/16/20/24/32`);
+        }
+      }
+      // Token radius di luar tangga
+      for (const m of ln.matchAll(RADIUS_TOKEN)) {
+        const v = Number(m[1]);
+        if (!RADIUS_SCALE.has(v)) say(rel, n, 'radius', `${m[0]} (tangga 10/12/14/16/24/999)`);
+      }
     });
   }
 
@@ -82,4 +102,4 @@ if (problems.length) {
   console.error(`\n${problems.length} masalah UI.`);
   process.exit(1);
 }
-console.log('Aturan UI: 0 masalah (jarak kelipatan 4, berat font 400-700, ?v= aset, alt gambar, outline fokus).');
+console.log('Aturan UI: 0 masalah (jarak kelipatan 4, berat font 400-700, skala huruf 8 langkah, tangga radius, ?v= aset, alt gambar, outline fokus).');

@@ -34,13 +34,13 @@ Hijau dan kuning (`--amber #8A5A0B`) tidak boleh dipakai untuk memperindah, hany
 - **Judul: Libre Caslon Display** (serif, 400). Alasan: memberi nada rumah dan cetakan, bukan nada aplikasi. Dipakai untuk `h1` dan `h2` dengan ukuran `clamp(2.1rem, 4.6vw, 3.6rem)` dan `line-height` 1.05.
 - **Teks: Plus Jakarta Sans** (400, 500, 600, 700). Alasan: huruf tanpa kait yang ramah dan terbaca di ponsel berukuran kecil, dan mendukung huruf Indonesia sehari-hari.
 - Font disimpan sendiri di `web/fonts/`, bukan dari Google Fonts, karena CSP situs ini ketat dan tidak boleh memuat font dari domain lain. Lisensi SIL OFL ada di folder yang sama.
-- `h3` memakai sans 650, bukan serif. Serif hanya untuk judul bagian.
+- `h3` memakai sans 600, bukan serif. Serif hanya untuk judul bagian.
 
 ## Skala dan jarak
 
 Diambil dari `web/css/dash.css` (dashboard) dan skala publik:
 
-- Teks: 12, 13, 14, 15 px. Judul: 28 sampai 36 px serif.
+- Teks: delapan langkah **11, 12, 13, 14, 16, 20, 24, 32 px**. 11 untuk label mikro, 12 keterangan dan header tabel, 13 label dan chip, 14 teks utama, 16 sub-judul panel dan isian, 20 ke atas untuk judul (`clamp` untuk judul halaman). Tidak ada setengah langkah seperti 13.5 px; `scripts/check-ui.mjs` menolak ukuran di luar daftar ini.
 - Jarak: kelipatan 4 px.
 - Radius: tombol publik 999 px (pil, `min-height` 48 px), tombol dashboard 12 px, kecil 10 px, panel 14 sampai 24 px.
 - Lebar isi publik: `--max 1240px`, gutter `clamp(16px, 4vw, 56px)`.
