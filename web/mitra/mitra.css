@@ -18,7 +18,8 @@
 .phone__bar img { width: 28px; height: auto; background: var(--cream); border-radius: 7px; padding: 2px; }
 .phone__screen { background: var(--cream); border-radius: 26px; min-height: 380px; padding: 18px 16px; display: grid; align-content: start; gap: 12px; overflow: hidden; }
 .phone__dots { display: flex; justify-content: center; gap: 8px; padding: 14px 0 6px; }
-.phone__dots button { width: 34px; height: 6px; border-radius: 99px; border: 0; background: rgba(247, 237, 227, .28); cursor: pointer; padding: 0; transition: background-color .3s; }
+.phone__dots button { position: relative; width: 34px; height: 6px; border-radius: 99px; border: 0; background: rgba(247, 237, 227, .28); cursor: pointer; padding: 0; transition: background-color .3s; }
+.phone__dots button::after { content: ""; position: absolute; inset: -19px 0; } /* area tekan 44px, batangnya tetap 6px */
 .phone__dots button[aria-selected="true"] { background: var(--cream); }
 .dm { animation: dmIn .45s var(--ease) both; display: grid; gap: 12px; }
 @keyframes dmIn { from { opacity: 0; transform: translateY(10px); } }

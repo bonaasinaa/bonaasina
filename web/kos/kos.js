@@ -12,7 +12,30 @@
   $('#year').textContent = new Date().getFullYear();
   const ago = (iso) => { if (!iso) return ''; const n = Math.floor((Date.now() - Date.parse(iso)) / 864e5); return n <= 0 ? 'hari ini' : n === 1 ? 'kemarin' : `${n} hari lalu`; };
 
-  if (!slug) { box.innerHTML = '<div class="kempty">Kos tidak ditemukan. <a href="/kos-sekitar/">Lihat semua kos sekitar</a>.</div>'; return; }
+  if (!slug) { renderChooser(); return; }
+  // /kos/ tanpa ?k= dulu hanya menampilkan "Kos tidak ditemukan" tanpa judul. Sekarang jadi halaman pemilih.
+  function renderChooser() {
+    document.title = 'Pilih kos | Bonaasina';
+    box.innerHTML = '<p class="muted">Memuat daftar kos…</p>';
+    fetch(`${API}/public`).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then((data) => {
+      const props = data.properties || [];
+      if (!props.length) throw new Error('Kos belum ada.');
+      const cards = props.map((p) => {
+        const free = (data.rooms || []).filter((r) => r.propertyId === p.id && r.status === 'kosong').length;
+        return `<a class="kcard" href="/kos/?k=${encodeURIComponent(p.slug)}">
+          <div class="kcard__img">${p.photos && p.photos[0] ? `<img src="${esc(p.photos[0])}" alt="Foto ${esc(p.name)}" loading="lazy">` : `<div class="ph">Foto menyusul</div>`}
+            <span class="kcard__badge${free ? '' : ' is-full'}">${free ? `${free} kamar kosong` : 'Penuh'}</span></div>
+          <div class="kcard__body"><span class="kcard__name">${esc(p.name)}</span>
+            <span class="kcard__meta">${esc(p.city || '')}${p.gender ? ` · Kos ${esc(String(p.gender).toLowerCase())}` : ''}</span></div>
+        </a>`;
+      }).join('');
+      box.innerHTML = `<div class="page__head"><div><h1>Pilih kos</h1>
+        <p>Dua kos yang dikelola langsung pemiliknya. Pilih satu untuk melihat kamar kosong, harga, dan fasilitasnya.</p></div></div>
+        <div class="kgrid">${cards}</div>`;
+    }).catch(() => {
+      box.innerHTML = '<div class="kempty">Daftar kos belum bisa dimuat. <a href="/kos-sekitar/">Lihat kos sekitar</a> atau muat ulang halaman ini.</div>';
+    });
+  }
   fetch(`${API}/kos/${encodeURIComponent(slug)}`).then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; }).then((data) => {
     d = data; const p = d.property;
     cycle = p.periods.includes('bulanan') ? 'bulanan' : p.periods[0];

@@ -7,24 +7,25 @@
 .lc[hidden], .lc [hidden] { display: none !important; }
 
 /* tombol pembuka */
+/* Ikon bulat 56px: pil berteks 214px menutupi tombol kirim formulir dan separuh lebar HP. */
 .lc__launch {
   position: fixed; right: calc(18px + env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 70;
-  display: inline-flex; align-items: center; gap: 12px; min-height: 60px; padding: 6px 22px 6px 6px; border: 1px solid rgba(255, 255, 255, .45);
-  border-radius: 999px; background: var(--lc-red); color: #fff; font: inherit; text-align: left; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0; width: 56px; height: 56px; min-height: 56px; padding: 0; border: 1px solid rgba(255, 255, 255, .45);
+  border-radius: 999px; background: var(--lc-red); color: #fff; font: inherit; text-align: center; cursor: pointer;
   box-shadow: 0 10px 30px -8px rgba(36, 22, 15, .5); transition: background .2s, transform .2s, padding .2s;
 }
 .lc__launch:hover { background: var(--lc-red-deep); }
 .lc__launch:focus-visible { outline: 3px solid var(--lc-ink); outline-offset: 3px; }
 .lc__mark { position: relative; flex: 0 0 48px; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--lc-paper); color: var(--lc-red); }
 .lc__ico-close { display: none; }
-.lc__copy { display: grid; gap: 1px; line-height: 1.25; white-space: nowrap; }
+.lc__copy { display: none; }
 .lc__copy strong { font-size: 15px; font-weight: 700; }
 .lc__copy span { font-size: 13px; opacity: .9; }
 .lc__badge {
   position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: var(--lc-ink); color: #fff;
   font-size: 12px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--lc-paper);
 }
-.lc.is-open .lc__launch { padding: 6px; }
+.lc.is-open .lc__launch { padding: 4px; }
 .lc.is-open .lc__copy { display: none; }
 .lc.is-open .lc__ico-chat { display: none; }
 .lc.is-open .lc__ico-close { display: block; }
@@ -60,7 +61,7 @@
 .lc-msg--sistem { align-self: center; max-width: 94%; background: rgba(36, 22, 15, .06); color: var(--lc-ijuk); font-size: 13px; text-align: center; border-radius: 12px; }
 .lc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .lc-chips button {
-  min-height: 36px; padding: 6px 12px; border: 1px solid var(--lc-red); border-radius: 999px; background: var(--lc-paper); color: var(--lc-red);
+  min-height: 44px; padding: 8px 14px; border: 1px solid var(--lc-red); border-radius: 999px; background: var(--lc-paper); color: var(--lc-red);
   font-family: inherit; font-size: 13.5px; font-weight: 600; line-height: 1.2; cursor: pointer; transition: background .15s, color .15s;
 }
 .lc-chips button:hover { background: var(--lc-red); color: #fff; }
@@ -75,7 +76,7 @@
 .lc-card p span, .lc-card label span { color: var(--lc-ijuk); font-weight: 400; }
 .lc-card label { display: grid; gap: 4px; font-weight: 600; font-size: 13.5px; }
 .lc-card input, .lc-card textarea, .lc__form textarea {
-  width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-strong, rgba(36, 22, 15, .3)); border-radius: 12px; background: var(--lc-paper);
+  width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-field, rgba(36, 22, 15, .48)); border-radius: 12px; background: var(--lc-paper);
   color: var(--lc-ink); font-family: inherit; font-size: 16px; line-height: 1.4; box-sizing: border-box;
 }
 .lc-card input:focus, .lc-card textarea:focus, .lc__form textarea:focus { outline: 2px solid var(--lc-red); outline-offset: 0; border-color: transparent; }
@@ -96,11 +97,11 @@
 
 /* tombol "Chat dengan kami" di dalam halaman (mis. di bawah tanya jawab) */
 .lc-more { max-width: var(--max, 1240px); margin: 24px auto 0; font-size: 16px; color: var(--ijuk, #6B4B3A); }
-.lc-more button { border: 0; padding: 0; background: none; color: var(--red, #8E1B1B); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.lc-more button { display: inline-flex; align-items: center; min-height: 44px; border: 0; padding: 0; background: none; color: var(--red, #8E1B1B); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
 @media (max-width: 560px) {
-  .lc__launch { right: calc(14px + env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); padding: 5px 16px 5px 5px; min-height: 56px; }
-  .lc__mark { flex-basis: 44px; width: 44px; height: 44px; }
+  .lc__launch { right: calc(14px + env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); padding: 4px; min-height: 56px; }
+  .lc__mark { flex-basis: 48px; width: 48px; height: 48px; }
   .lc__copy span { display: none; }
   /* Di HP panel memenuhi layar supaya keyboard tidak menutupi kolom tulis. */
   .lc__panel { inset: 0; width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }

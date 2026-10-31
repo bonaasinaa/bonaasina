@@ -44,6 +44,8 @@
 .kd h2 { font-size: clamp(1.8rem, 3.4vw, 2.6rem); }
 .kd__tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .kd__tags span { padding: 5px 12px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-size: 13px; font-weight: 600; }
+.kd__tags .kd__price { display: inline-flex; align-items: baseline; gap: 2px; font-family: var(--serif); font-size: 1.25rem; font-weight: 400; padding: 4px 14px; }
+.kd__tags .kd__price small { font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--ijuk); }
 .kd__tags .is-fresh { background: #E3EFE2; color: var(--green); border-color: transparent; }
 .kd__desc { color: var(--ijuk); font-size: 1.05rem; max-width: 62ch; }
 .kd__cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 36px; }
@@ -76,7 +78,7 @@
 /* V2: filter, kartu kos, detail */
 .kfilters { gap: 10px 12px; }
 .ksearch { flex: 1 1 220px; max-width: 320px; margin-left: auto; }
-.ksearch input { width: 100%; min-height: 44px; padding: 0 16px 0 40px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236B4B3A' d='M10 2a8 8 0 0 1 6.3 12.9l5.4 5.4-1.4 1.4-5.4-5.4A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z'/%3E%3C/svg%3E") 14px center / 18px no-repeat; font: 400 15px var(--sans); color: var(--ink); }
+.ksearch input { width: 100%; min-height: 44px; padding: 0 16px 0 40px; border-radius: 999px; border: 1px solid var(--line-field); background: var(--paper) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%236B4B3A' d='M10 2a8 8 0 0 1 6.3 12.9l5.4 5.4-1.4 1.4-5.4-5.4A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z'/%3E%3C/svg%3E") 14px center / 18px no-repeat; font: 400 15px var(--sans); color: var(--ink); }
 .ksearch input:focus { outline: none; border-color: var(--ink); }
 @media (max-width: 640px) { .ksearch { max-width: none; margin-left: 0; flex-basis: 100%; } }
 .kfilters .chips + .chips { padding-left: 12px; border-left: 1px solid var(--line); }

@@ -6,7 +6,6 @@
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const rp = (n) => 'Rp' + Number(n || 0).toLocaleString('id-ID');
-  const rpShort = (n) => n >= 1e6 ? 'Rp' + (n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 2 }) + ' jt' : 'Rp' + Math.round(n / 1000) + ' rb';
 
   const API = (window.BONA_CONFIG?.apiBase || '/api').replace(/\/$/, '');
   const state = { data: null, cycle: 'bulanan', prop: 'semua', onlyAvailable: false, activeTab: null };
@@ -48,15 +47,24 @@
 
   function renderAll() {
     const { site, properties, rooms } = state.data;
-    // Bar ketersediaan
-    const parts = properties.map((p) => {
-      const n = rooms.filter((r) => r.propertyId === p.id && r.status === 'kosong').length;
-      return n ? `${n} kamar kosong di ${p.name}` : `${p.name} sedang penuh`;
-    });
+    // Bar ketersediaan: satu kalimat, tanpa mengulang "kamar kosong" per kos.
+    const free = properties.map((p) => ({ name: p.name, n: rooms.filter((r) => r.propertyId === p.id && r.status === 'kosong').length })).filter((x) => x.n);
+    const full = properties.filter((p) => !free.some((f) => f.name === p.name)).map((p) => p.name);
     const totalFree = rooms.filter((r) => r.status === 'kosong').length;
-    $('#availabilityText').textContent = !parts.length ? '' : totalFree ? `Saat ini ada ${parts.join(', ')}.` : 'Saat ini semua kamar terisi. Tanyakan lewat WhatsApp untuk masuk daftar tunggu.';
+    let availability = '';
+    if (properties.length) {
+      if (!free.length) availability = 'Saat ini semua kamar terisi. Tanyakan lewat WhatsApp untuk masuk daftar tunggu.';
+      else if (free.length === 1) {
+        availability = `Saat ini ada ${free[0].n} kamar kosong di ${free[0].name}.`;
+        if (full.length) availability += ` ${full.join(' dan ')} sedang penuh.`;
+      } else {
+        availability = `Saat ini ada ${totalFree} kamar kosong: ${free.map((f) => `${f.n} di ${f.name}`).join(', ')}.`;
+        if (full.length) availability += ` ${full.join(' dan ')} sedang penuh.`;
+      }
+    }
+    $('#availabilityText').textContent = availability;
     // Versi pendek untuk layar sempit, supaya bar tidak memakan tiga baris.
-    $('#availabilityShort').textContent = !parts.length ? '' : totalFree ? `${totalFree} kamar kosong saat ini` : 'Semua kamar terisi';
+    $('#availabilityShort').textContent = !properties.length ? '' : totalFree ? `${totalFree} kamar kosong` : 'Semua kamar terisi';
 
     if (site.tagline) $('#heroLead').textContent = site.tagline;
     const hello = `Horas, saya tertarik dengan kamar di ${site.siteName || 'Bonaasina'}. Apakah masih ada yang kosong?`;
@@ -70,13 +78,19 @@
     const cheap = rooms.flatMap((r) => Object.keys(MONTHS).map((k) => ({ k, v: priceOf(r, k) / MONTHS[k] }))).filter((x) => x.v);
     if (cheap.length) {
       const min = cheap.reduce((a, b) => (b.v < a.v ? b : a));
-      facts.push([min.k === 'bulanan' ? 'Mulai dari' : `Mulai dari (sewa ${PERIODS[min.k][0].toLowerCase()})`, `${rpShort(Math.round(min.v / 1000) * 1000)}/bulan`]);
+      // Angka selalu per bulan, jadi labelnya harus menyebut itu; tanpa "setara" pembaca mengira ada sewa bulanan seharga itu.
+      const label = min.k === 'bulanan' ? 'Mulai dari' : `Setara bulanan, sewa ${PERIODS[min.k][0].toLowerCase()}`;
+      facts.push([label, `${rp(Math.round(min.v / 1000) * 1000)}/bulan`]);
     } else if (state.periods.includes('harian')) {
       const daily = rooms.map((r) => priceOf(r, 'harian')).filter(Boolean);
-      if (daily.length) facts.push(['Mulai dari', `${rpShort(Math.min(...daily))}/malam`]);
+      if (daily.length) facts.push(['Mulai dari', `${rp(Math.min(...daily))}/malam`]);
     }
     facts.push(['Jumlah kamar', `${rooms.length} di ${properties.length} lokasi`]);
-    if (site.surveyHours) facts.push(['Jam survei', site.surveyHours.split(',')[0]]);
+    // "Jam survei" harus berisi jam, bukan kata "Setiap hari".
+    if (site.surveyHours) {
+      const [, jamSurvei] = site.surveyHours.split(',');
+      facts.push([jamSurvei ? 'Jam survei' : 'Jadwal survei', (jamSurvei || site.surveyHours).trim()]);
+    }
     $('#heroFacts').innerHTML = facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
 
     // Pita ulos: fasilitas gabungan, diulang dua kali untuk marquee tanpa jeda
