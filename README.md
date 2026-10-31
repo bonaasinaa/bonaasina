@@ -173,3 +173,4 @@ node scripts/kos-pages.mjs --api /tmp/public.json   # pakai salinan data API (un
 - `.github/workflows/kos-pages.yml` menjalankan `--check` pada setiap PR dan tiap hari 05.00 WIB. Kalau beda, job gagal dan (pada jadwal) satu issue berlabel `harga-basi` dibuka atau diperbarui berisi kamar mana yang harganya berubah dan jumlah kamar kosong.
 - Batasnya: workflow **tidak** commit sendiri ke `main`. Harga baru baru tayang setelah PR hasil `node scripts/kos-pages.mjs` di-merge pemilik. Sampai itu terjadi, halaman tetap menampilkan harga lama, dan itulah yang dilaporkan issue.
 - Nomor WhatsApp, `minBooking`, jam kunjungan, dan fasilitas ikut diambil dari API, jadi ubah di admin, bukan di HTML.
+- Harga kamar memakai urutan bulanan → tahunan → harian; kalau ketiganya kosong (0) halaman menulis "Hubungi pemilik", bukan "Rp0".

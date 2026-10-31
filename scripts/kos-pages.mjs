@@ -28,24 +28,43 @@ const tanggal = (iso) => {
 const kunciKata = (w) => /^[A-Z]{2,}$/.test(w) || /^[A-Z][a-z]+[A-Z]/.test(w);
 const kalimat = (s) => String(s ?? '').split(' ').filter(Boolean)
   .map((w, i) => (i === 0 || kunciKata(w) ? w : w.toLowerCase())).join(' ');
+// Rentang hanya dari harga yang benar-benar ada; 0 berarti "tidak diisi", bukan gratis.
 const daftarHarga = (rooms) => {
-  const bulanan = rooms.filter((r) => r.priceMonthly > 0).map((r) => r.priceMonthly);
-  const tahunan = rooms.filter((r) => r.priceYearly > 0).map((r) => r.priceYearly);
+  const bulanan = rooms.map((r) => Number(r.priceMonthly) || 0).filter((n) => n > 0);
+  const tahunan = rooms.map((r) => Number(r.priceYearly) || 0).filter((n) => n > 0);
+  const harian = rooms.map((r) => Number(r.priceDaily) || 0).filter((n) => n > 0);
   return {
     minBulan: bulanan.length ? Math.min(...bulanan) : 0,
     maxTahun: tahunan.length ? Math.max(...tahunan) : 0,
+    minHarian: harian.length ? Math.min(...harian) : 0,
   };
+};
+// Satu frasa harga untuk teks: bulanan dulu, lalu tahunan, lalu harian.
+const frasaHarga = (angka) => {
+  if (angka.minBulan) {
+    return `${rupiah(angka.minBulan)} per bulan${angka.maxTahun ? ` atau ${rupiah(angka.maxTahun)} per tahun` : ''}`;
+  }
+  if (angka.maxTahun) return `${rupiah(angka.maxTahun)} per tahun`;
+  if (angka.minHarian) return `${rupiah(angka.minHarian)} per hari`;
+  return 'belum ada harganya';
 };
 const frasaSekitar = (p) => {
   const n = (p.nearby || [])[0] || '';
   if (!n) return 'pusat kota';
   return /^[A-Z]{2,}$/.test(n) ? `Kampus ${n}` : n;
 };
-const hargaPerKamar = (r, slug) => {
-  const utama = r.priceMonthly > 0 ? r.priceMonthly : r.priceDaily;
-  const per = r.priceMonthly > 0 ? 'per bulan' : 'per hari';
-  const tahun = r.priceYearly > 0 ? `<span class="room__per">${rupiah(r.priceYearly)} per tahun</span>` : '';
-  return `<span class="room__amount">${rupiah(utama)}</span><span class="room__per">${per}</span>${tahun}`;
+// Urutan harga: bulanan → tahunan → harian. Jangan pernah menayangkan Rp0.
+const hargaPerKamar = (r) => {
+  const pilihan = [
+    { nilai: Number(r.priceMonthly) || 0, label: 'per bulan' },
+    { nilai: Number(r.priceYearly) || 0, label: 'per tahun' },
+    { nilai: Number(r.priceDaily) || 0, label: 'per hari' },
+  ];
+  const utama = pilihan.find((p) => p.nilai > 0);
+  if (!utama) return '<span class="room__amount">Hubungi pemilik</span>';
+  const tahun = pilihan[1].nilai > 0 && utama.label !== 'per tahun'
+    ? `<span class="room__per">${rupiah(pilihan[1].nilai)} per tahun</span>` : '';
+  return `<span class="room__amount">${rupiah(utama.nilai)}</span><span class="room__per">${utama.label}</span>${tahun}`;
 };
 
 function kartuKamar(r, slug) {
@@ -64,7 +83,7 @@ function kartuKamar(r, slug) {
     `              <div class="room__code">${esc(r.code)}</div>`,
     `              <div class="room__info"><div class="room__type">${esc(kalimat(r.type))}</div><div class="room__meta">${meta}</div>${status}</div>`,
     `              <div class="room__fac">${fas}${note}</div>`,
-    `              <div class="room__price">${hargaPerKamar(r, slug)}</div>`,
+    `              <div class="room__price">${hargaPerKamar(r)}</div>`,
     `              <div class="room__actions">${aksi}</div>`,
     '            </li>',
   ].join('\n');
@@ -91,7 +110,7 @@ function jsonLd(p, rooms, site, angka) {
     telephone: site.whatsappNormalized ? '+' + site.whatsappNormalized : undefined,
     priceRange: angka.minBulan && angka.maxTahun
       ? `${rupiah(angka.minBulan)} - ${rupiah(angka.maxTahun)}`
-      : angka.minBulan ? `${rupiah(angka.minBulan)} per bulan` : `${rupiah(angka.maxTahun)} per tahun`,
+      : frasaHarga(angka),
     numberOfRooms: rooms.length,
     amenityFeature: (p.facilities || []).map((f) => ({ '@type': 'LocationFeatureSpecification', name: kalimat(f), value: true })),
   };
@@ -109,10 +128,7 @@ function render(p, semuaRooms, site, tpl) {
   const angka = daftarHarga(rooms);
   const kecamatan = (p.city || '').split(',')[1]?.trim() || p.city || '';
   const near = frasaSekitar(p);
-  const harga = [
-    angka.minBulan ? `${rupiah(angka.minBulan)} per bulan` : '',
-    angka.maxTahun ? `${rupiah(angka.maxTahun)} per tahun` : '',
-  ].filter(Boolean).join(' atau ');
+  const harga = frasaHarga(angka);
   const tagline = String(p.tagline || '').trim();
   const intro = `${tagline}${/[.!?]$/.test(tagline) ? '' : '.'} Kos ${String(p.gender || '').toLowerCase()} di ${p.city || ''}, dekat ${near}.`;
   const waText = `Horas, saya melihat ${p.name} di Bonaasina. Apakah masih ada kamar kosong?`;
@@ -124,7 +140,7 @@ function render(p, semuaRooms, site, tpl) {
     kecamatan,
     city: p.city || '',
     metaDesc: `${p.name} di ${p.city || ''}: kamar ${harga}, dekat ${near}. Lihat kamar kosong, fasilitas, dan alamatnya.`,
-    ogDesc: `${angka.minBulan ? `Kamar ${rupiah(angka.minBulan)} per bulan` : `Kamar ${rupiah(angka.maxTahun)} per tahun`}, dekat ${near}. ${kosong} kamar kosong dari ${rooms.length} kamar.`,
+    ogDesc: `Kamar ${angka.minBulan ? `${rupiah(angka.minBulan)} per bulan` : frasaHarga(angka)}, dekat ${near}. ${kosong} kamar kosong dari ${rooms.length} kamar.`,
     foto0: (p.photos || [])[0] || p.logo || '/assets/img/logo-bonaasina.webp',
     intro,
     deskripsi: p.description || '',
@@ -174,13 +190,17 @@ function barisDiff(lama, baru, batas = 40) {
   const a = lama.split('\n');
   const b = baru.split('\n');
   const keluar = [];
-  for (let i = 0; i < Math.max(a.length, b.length) && keluar.length < batas; i++) {
+  let beda = 0;
+  let tercetak = 0;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
     if (a[i] === b[i]) continue;
+    beda++;
+    if (keluar.length >= batas) continue;
+    tercetak++;
     if (a[i] !== undefined) keluar.push(`- ${a[i]}`);
     if (b[i] !== undefined) keluar.push(`+ ${b[i]}`);
   }
-  const sisa = Math.max(a.length, b.length) - keluar.length;
-  if (keluar.length >= batas && sisa > 0) keluar.push(`… ${sisa} baris lain ikut berubah`);
+  if (beda > tercetak) keluar.push(`… ${beda - tercetak} baris lain ikut berubah`);
   return keluar.join('\n');
 }
 
@@ -242,6 +262,7 @@ if (CHECK) {
     const isi = drift
       ? `Drift terdeteksi: ${drift} halaman /kos/<slug>/ tidak sama dengan data API publik (${API}).\n\n` + laporan.join('\n') + kaki
       : 'Tidak ada drift.\n';
+    mkdirSync(dirname(SUMMARY), { recursive: true });
     writeFileSync(SUMMARY, isi, 'utf8');
   }
   if (drift) {
