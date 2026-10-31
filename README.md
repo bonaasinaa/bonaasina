@@ -159,3 +159,17 @@ Penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 
 ## Analitik & log aktivitas
 - **Google Analytics 4**: ID di `web/js/config.js` (`ga4Id`). `web/js/analytics.js` mengirim page view dengan alamat bersih (tanpa `#` dan `?`), jadi parameter seperti kode `?k=` tidak terkirim. Dashboard penghuni mengirim page view per menu (`/penghuni/<menu>`). Admin mengirim page view per menu (`/admin/<menu>`). Event: `generate_lead` (formulir survei terkirim), `contact_whatsapp` (klik tautan WA), `page_not_found`.
 - **Log aktivitas** (menu admin *Log aktivitas*, tabel `activity_log`): login/keluar dan percobaan gagal, semua perubahan data oleh admin, unduhan & bukti bayar yang dibuka, aktivitas penghuni di dashboard (login, bukti bayar, persetujuan kontrak, piket, unduhan), serta permintaan survei & daftar tunggu. Disimpan 180 hari, dihapus otomatis.
+
+## Halaman per kos (`/kos/<slug>/`)
+Halaman ini statis dan di-commit, jadi ia bisa **basi** kalau harga atau kamar diubah lewat admin. Sumbernya data API, bukan tulisan tangan:
+
+```bash
+node scripts/kos-pages.mjs             # render ulang web/kos/<slug>/index.html dari API publik
+node scripts/kos-pages.mjs --check     # bandingkan dengan yang ada di repo, keluar 1 bila beda
+node scripts/kos-pages.mjs --api /tmp/public.json   # pakai salinan data API (untuk uji)
+```
+
+- Template: `scripts/templates/kos-page.html`. Satu halaman dibuat per kos yang muncul di `GET /functions/v1/api/public`, jadi kos baru tidak perlu halaman manual.
+- `.github/workflows/kos-pages.yml` menjalankan `--check` pada setiap PR dan tiap hari 05.00 WIB. Kalau beda, job gagal dan (pada jadwal) satu issue berlabel `harga-basi` dibuka atau diperbarui berisi kamar mana yang harganya berubah dan jumlah kamar kosong.
+- Batasnya: workflow **tidak** commit sendiri ke `main`. Harga baru baru tayang setelah PR hasil `node scripts/kos-pages.mjs` di-merge pemilik. Sampai itu terjadi, halaman tetap menampilkan harga lama, dan itulah yang dilaporkan issue.
+- Nomor WhatsApp, `minBooking`, jam kunjungan, dan fasilitas ikut diambil dari API, jadi ubah di admin, bukan di HTML.

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{nameKap}}, Kos {{genderKap}} di {{kecamatan}} | Bonaasina</title>
+  <meta name="description" content="{{metaDesc}}">
+  <link rel="canonical" href="https://bonaasina.my.id/kos/{{slug}}/">
+  <meta name="theme-color" content="#F7EDE3">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="id_ID">
+  <meta property="og:site_name" content="Bonaasina">
+  <meta property="og:url" content="https://bonaasina.my.id/kos/{{slug}}/">
+  <meta property="og:title" content="{{nameKap}}, Kos {{genderKap}} di {{kecamatan}}">
+  <meta property="og:description" content="{{ogDesc}}">
+  <meta property="og:image" content="{{foto0}}">
+  <meta property="og:image:alt" content="Foto {{nameKap}} di {{kecamatan}}">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/assets/img/icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/img/icon-180.png">
+  <link rel="stylesheet" href="/css/fonts.css?v=20261024a">
+  <link rel="stylesheet" href="/css/site.css?v=20261024a">
+  <link rel="stylesheet" href="/css/kos.css?v=20261030a">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script type="application/ld+json">
+{{jsonld}}
+  </script>
+</head>
+<body>
+  <header class="nav is-scrolled" id="nav">
+    <a class="nav__brand" href="/" aria-label="Bonaasina, ke beranda"><img src="/assets/img/mark.webp" alt="" width="54" height="37"><span>Bonaasina</span></a>
+    <nav class="nav__links" aria-label="Menu utama">
+      <a href="/">Kos Asina &amp; Bona</a>
+      <a href="/kos-sekitar/">Kos sekitar</a>
+      <a href="/sekitar/">Info sekitar</a>
+      <a href="/titip/">Titip jualan</a>
+      <a href="/mitra/">Jadi mitra</a>
+    </nav>
+    <a class="btn btn--ink btn--sm nav__cta" href="#pesan">Pesan kamar</a>
+  </header>
+
+  <main class="page" id="top">
+    <p class="crumbs"><a href="/">Bonaasina</a> / <a href="/kos-sekitar/">Kos sekitar</a> / {{nameKap}}</p>
+
+    <div class="page__head">
+      <div>
+        <div class="kd__title"><h1>{{nameKap}}</h1></div>
+        <p>{{intro}}</p>
+        <div class="kd__tags">
+          <span>Kos {{genderLower}}</span>
+          <span>{{city}}</span>
+          <span>{{kosong}} kamar kosong</span>
+          <span class="is-fresh">Ketersediaan dicek {{checked}}</span>
+{{periodTags}}
+        </div>
+      </div>
+    </div>
+
+    <div class="kd">
+      <div class="kd__main">
+        <div class="gallery">
+{{galeri}}
+        </div>
+
+        <p class="kd__desc">{{deskripsi}}</p>
+
+        <section id="kamar">
+          <div class="section__head section__head--split">
+            <div>
+              <h2>Kamar &amp; harga</h2>
+              <p>{{ringkasKamar}}</p>
+            </div>
+          </div>
+          <ul class="rooms">
+{{kamar}}
+          </ul>
+        </section>
+
+        <div class="kd__cols">
+          <div>
+            <h3>Fasilitas bersama</h3>
+            <ul class="kd__list">
+{{fasilitas}}
+            </ul>
+          </div>
+          <div>
+            <h3>Dekat dengan</h3>
+            <ul class="kd__list">
+{{sekitar}}
+            </ul>
+          </div>
+          <div>
+            <h3>Aturan rumah</h3>
+            <p class="kd__desc" style="margin-top:12px">{{aturan}}</p>
+          </div>
+        </div>
+
+        <section>
+          <h2>Lokasi</h2>
+          <p class="kd__desc" style="margin:10px 0 16px">{{alamat}}</p>
+          <p><a href="https://www.google.com/maps/search/?api=1&amp;query={{mapsQuery}}" target="_blank" rel="noopener">Buka di Google Maps</a></p>
+          <p style="margin-top:10px"><a href="/sekitar/">Lihat warung, laundry &amp; toko di sekitar →</a></p>
+        </section>
+      </div>
+
+      <aside class="kd__side" id="pesan">
+        <div class="kd__contact">
+          <h3>Pesan kamar</h3>
+          <p>Belum perlu membayar. Pengelola memastikan kamarnya ada dulu, lalu Anda membayar booking minimal {{minBooking}} langsung ke rekening pengelola. Setelah itu Anda mendapat bukti booking resmi.</p>
+          <p>Jam kunjungan: {{visitHours}}</p>
+          <p>Setelah memesan, Anda bisa chat langsung dengan pengelola. <a href="{{waHref}}" target="_blank" rel="noopener">Atau tanya lewat WhatsApp</a>.</p>
+          <a class="btn btn--red" href="/kos/?k={{slug}}#pesan">Lihat formulir pemesanan</a>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer footer--std">
+    <div class="footer__std">
+      <a class="footer__brand" href="/"><img src="/assets/img/logo-bonaasina.webp" alt="Bonaasina" width="420" height="371" loading="lazy" data-brand-logo></a>
+      <div><strong>Cari kos</strong><a href="/">Kos Asina &amp; Kos Bona</a><a href="/kos/{{slug}}/">{{nameKap}}</a><a href="/kos-sekitar/">Kos sekitar</a><a href="/akun/">Reservasi saya</a></div>
+      <div><strong>Sekitar kos</strong><a href="/sekitar/">Warung, laundry &amp; toko</a><a href="/titip/">Titip jualan &amp; jasa</a><a href="/titip/#pasang">Pasang iklan gratis</a></div>
+      <div><strong>Pemilik kos</strong><a href="/mitra/">Jadi mitra Bonaasina</a><a href="/pemilik/">Masuk pemilik</a></div>
+      <div><strong>Penghuni</strong><a href="/penghuni/">Masuk dashboard penghuni</a><a href="/cek/">Cek keaslian dokumen</a></div>
+    </div>
+    <p class="footer__small">© <span id="year">2026</span> Bonaasina, Kos Asina &amp; Kos Bona.</p>
+  </footer>
+
+  <script src="/js/pwa.js?v=20261029m" defer></script>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>
