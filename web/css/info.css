@@ -1,40 +1,40 @@
 /* Halaman teks panjang: tentang, kontak, kebijakan. Memakai token dari site.css. */
 
 .info { max-width: 880px; padding-bottom: clamp(48px, 7vw, 96px); }
-.info__lede { color: var(--ijuk); font-size: 1.08rem; max-width: 62ch; margin-top: 14px; }
+.info__lede { color: var(--ijuk); font-size: 1.08rem; max-width: 62ch; margin-top: 12px; }
 .info__doc { margin-top: clamp(36px, 5vw, 56px); }
 .info__doc + .info__doc { border-top: 1px solid var(--line); padding-top: clamp(32px, 4vw, 48px); }
 .info__doc h2 { font-family: var(--serif); font-size: clamp(1.7rem, 3.6vw, 2.4rem); line-height: 1.1; letter-spacing: -.01em; }
-.info__doc h3 { font-family: var(--serif); font-size: clamp(1.25rem, 2.4vw, 1.55rem); line-height: 1.2; margin-top: 34px; }
-.info__doc h4 { font-size: 1.02rem; font-weight: 700; margin-top: 22px; }
+.info__doc h3 { font-family: var(--serif); font-size: clamp(1.25rem, 2.4vw, 1.55rem); line-height: 1.2; margin-top: 32px; }
+.info__doc h4 { font-size: 1.02rem; font-weight: 700; margin-top: 20px; }
 .info__doc p { margin-top: 12px; max-width: 68ch; color: var(--ink); overflow-wrap: break-word; }
-.info__doc ul, .info__doc ol { margin: 12px 0 0; padding-left: 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 68ch; }
+.info__doc ul, .info__doc ol { margin: 12px 0 0; padding-left: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 68ch; }
 .info__doc li { color: var(--ink); overflow-wrap: break-word; }
 .info__doc a { color: var(--red); text-decoration: underline; text-underline-offset: 2px; }
 .info__meta { color: var(--ijuk); font-size: .95rem; margin-top: 8px; }
 
 .info__tablewrap { margin-top: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .info__tablewrap table { border-collapse: collapse; width: 100%; font-size: .95rem; }
-.info__tablewrap th, .info__tablewrap td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: break-word; }
+.info__tablewrap th, .info__tablewrap td { text-align: left; padding: 12px 12px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: break-word; }
 .info__tablewrap th { font-weight: 700; background: var(--cream); }
 .info__tablewrap tr:last-child td { border-bottom: 0; }
 
 .info__grid { display: grid; gap: clamp(20px, 3vw, 32px); margin-top: clamp(24px, 4vw, 40px); }
 .info__card { border: 1px solid var(--line); border-radius: 16px; background: var(--paper); padding: clamp(18px, 3vw, 26px); }
 .info__card h2, .info__card h3 { font-family: var(--serif); font-size: 1.3rem; line-height: 1.2; }
-.info__card p { margin-top: 10px; color: var(--ijuk); }
+.info__card p { margin-top: 8px; color: var(--ijuk); }
 .info__card a { color: var(--red); }
 
-.info__facts { margin: 14px 0 0; display: grid; gap: 10px; }
-.info__facts div { display: flex; gap: 10px; flex-wrap: wrap; }
+.info__facts { margin: 12px 0 0; display: grid; gap: 8px; }
+.info__facts div { display: flex; gap: 8px; flex-wrap: wrap; }
 .info__facts dt { min-width: 150px; color: var(--ijuk); font-size: .95rem; }
 .info__facts dd { margin: 0; font-weight: 600; }
 
-.info__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+.info__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 .info__actions .btn { min-height: 46px; }
 
-.info__toc { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; }
-.info__toc a { border: 1px solid var(--line-strong); border-radius: 999px; padding: 8px 14px; font-size: .92rem; text-decoration: none; background: var(--paper); }
+.info__toc { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+.info__toc a { border: 1px solid var(--line-strong); border-radius: 999px; padding: 8px 12px; font-size: .92rem; text-decoration: none; background: var(--paper); }
 .info__toc a:hover { border-color: var(--red); color: var(--red); }
 
 @media (min-width: 768px) {
