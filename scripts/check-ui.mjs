@@ -23,6 +23,9 @@ const ALLOWED_WEIGHTS = new Set([400, 500, 600, 700]);
 
 const problems = [];
 const say = (file, line, rule, detail) => problems.push({ file, line, rule, detail });
+// Satu aset harus memakai satu versi di semua halaman: deploy setengah jalan membuat
+// sebagian halaman memuat CSS lama selama cache zona ini.
+const versions = new Map();
 
 for (const file of walk(ROOT)) {
   const rel = relative(ROOT, file).replace(/\\/g, '/');
@@ -60,7 +63,11 @@ for (const file of walk(ROOT)) {
       const n = i + 1;
       // Aset CSS/JS wajib punya ?v=
       for (const m of ln.matchAll(/(?:href|src)="(\/(?:css|js)\/[^"?]+\.(?:css|js))(\?[^"]*)?"/g)) {
-        if (!m[2] || !/[?&]v=/.test(m[2])) say(rel, n, 'cache', `${m[1]} tanpa ?v=`);
+        if (!m[2] || !/[?&]v=/.test(m[2])) { say(rel, n, 'cache', `${m[1]} tanpa ?v=`); continue; }
+        const v = /[?&]v=([^&"]+)/.exec(m[2])[1];
+        const seen = versions.get(m[1]);
+        if (!seen) versions.set(m[1], { v, file: rel, line: n });
+        else if (seen.v !== v) say(rel, n, 'cache', `${m[1]} memakai v=${v}, halaman lain v=${seen.v} (${seen.file})`);
       }
       // Semua gambar punya alt
       for (const m of ln.matchAll(/<img\b[^>]*>/g)) {
