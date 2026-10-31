@@ -249,7 +249,14 @@
     const order = { kosong: 0, dipesan: 1, terisi: 2, perbaikan: 3 };
     rooms = [...rooms].sort((a, b) => order[a.status] - order[b.status] || a.code.localeCompare(b.code, 'id', { numeric: true }));
     const free = rooms.filter((r) => r.status === 'kosong').length;
-    $('#kamarNote').textContent = `${free} dari ${rooms.length} kamar yang ditampilkan sedang kosong. Status diperbarui langsung oleh pemilik.`;
+    // Semua kamar berharga sama: harga ditulis sekali di catatan, bukan diulang di setiap baris.
+    const prices = rooms.map((r) => priceOf(r));
+    const uniform = prices.length > 0 && prices.every((p) => p && p === prices[0]);
+    const status = 'Status diperbarui langsung oleh pemilik.';
+    $('#kamarNote').textContent = uniform
+      ? `${free} dari ${rooms.length} kamar sedang kosong. Semua kamar ${rp(prices[0])} per ${PERIODS[state.cycle][1]}. ${status}`
+      : `${free} dari ${rooms.length} kamar yang ditampilkan sedang kosong. ${status}`;
+    $('#roomList').classList.toggle('is-uniform', uniform);
     if (!rooms.length) {
       $('#roomList').innerHTML = `<li class="rooms__empty">Belum ada kamar kosong untuk pilihan ini. <a href="#tunggu" data-wait="${state.prop === 'semua' ? '' : esc(state.prop)}">Masuk daftar tunggu</a>, kami kabari begitu ada yang kosong.</li>`;
       return;
@@ -269,7 +276,7 @@
           <span class="status status--${r.status}">${STATUS[r.status] || esc(r.status)}</span>
         </div>
         <div class="room__fac">${(r.facilities || []).map(esc).join(', ')}${r.note ? `<span class="room__note">${esc(r.note)}</span>` : ''}</div>
-        <div class="room__price">${price ? `<span class="room__amount" data-id="${r.id}">${rp(price)}</span><span class="room__per">per ${PERIODS[state.cycle][1]}</span>` : altPrice(r)}</div>
+        ${uniform ? '' : `<div class="room__price">${price ? `<span class="room__amount" data-id="${r.id}">${rp(price)}</span><span class="room__per">per ${PERIODS[state.cycle][1]}</span>` : altPrice(r)}</div>`}
         <div class="room__actions">
           ${avail
             ? `<a class="btn btn--red btn--sm" href="#survei" data-survey="${r.propertyId}" data-room="${r.id}">Pesan kamar ini</a>

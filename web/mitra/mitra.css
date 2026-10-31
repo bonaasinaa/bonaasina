@@ -12,7 +12,8 @@
 @media (max-width: 900px) { .mhero { grid-template-columns: minmax(0, 1fr); } .mhero h1 { max-width: 16ch; } }
 
 /* ponsel contoh */
-.phone { display: grid; justify-items: center; }
+.phone { display: grid; justify-items: center; gap: 14px; }
+.phone__caption { max-width: 34ch; margin: 0; text-align: center; font-size: 12.5px; line-height: 1.45; color: var(--ijuk); }
 .phone__frame { width: min(340px, 100%); border-radius: 36px; background: var(--ink); padding: 12px; box-shadow: 0 40px 80px -40px rgba(36, 22, 15, .6); }
 .phone__bar { display: flex; align-items: center; gap: 8px; color: var(--cream); font: 600 13px var(--sans); padding: 8px 12px 12px; }
 .phone__bar img { width: 28px; height: auto; background: var(--cream); border-radius: 7px; padding: 2px; }
