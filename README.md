@@ -158,4 +158,7 @@ Penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 
 
 ## Analitik & log aktivitas
 - **Google Analytics 4**: ID di `web/js/config.js` (`ga4Id`). `web/js/analytics.js` mengirim page view dengan alamat bersih (tanpa `#` dan `?`), jadi parameter seperti kode `?k=` tidak terkirim. Dashboard penghuni mengirim page view per menu (`/penghuni/<menu>`). Admin mengirim page view per menu (`/admin/<menu>`). Event: `generate_lead` (formulir survei terkirim), `contact_whatsapp` (klik tautan WA), `page_not_found`.
-- **Log aktivitas** (menu admin *Log aktivitas*, tabel `activity_log`): login/keluar dan percobaan gagal, semua perubahan data oleh admin, unduhan & bukti bayar yang dibuka, aktivitas penghuni di dashboard (login, bukti bayar, persetujuan kontrak, piket, unduhan), serta permintaan survei & daftar tunggu. Disimpan 180 hari, dihapus otomatis.
+- **Log aktivitas** (menu admin *Log aktivitas*, tabel `activity_log`): login/keluar dan percobaan gagal, semua perubahan data oleh admin, unduhan & bukti bayar yang dibuka, aktivitas penghuni di dashboard (login, bukti bayar, persetujuan kontrak, piket, unduhan), serta permintaan survei & daftar tunggu. Disimpan 180 hari, dihapus otomatis.
+
+## Memeriksa halaman per kos
+Halaman `/kos/<slug>/` adalah berkas statis, jadi harganya snapshot. Jalankan `node scripts/kos-pages.mjs` sebelum rilis atau berkala: skrip ini membandingkan harga, jumlah kamar, dan kamar kosong di halaman dengan data API, lalu keluar dengan kode 1 bila berbeda. Harga baru tetap baru tayang setelah perubahannya di-merge.
