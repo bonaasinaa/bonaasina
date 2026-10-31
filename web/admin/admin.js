@@ -223,6 +223,7 @@
       main.onclick = null; main.onchange = null;
       const y = isNewView ? 0 : scrollY;
       await view();
+      hintScroll();
       shownView = key;
       if (isNewView) { main.classList.remove('is-in'); void main.offsetWidth; main.classList.add('is-in'); scrollTo(0, 0); } else scrollTo(0, y);
     };
@@ -278,6 +279,23 @@
   }
 
   function progress(on) { $('#progress').classList.toggle('is-on', on); }
+  // Tabel yang lebih lebar dari panelnya diberi tahu, supaya kolom yang terpotong
+  // tidak dikira hilang. Diukur ulang setiap kali tampilan digambar atau layar berubah.
+  let hintTimer;
+  function hintScroll() {
+    $$('.table-wrap').forEach((w) => {
+      const wide = w.scrollWidth > w.clientWidth + 2;
+      const prev = w.previousElementSibling;
+      const ada = prev && prev.classList.contains('scroll-hint-js');
+      if (wide && !ada) {
+        const p = document.createElement('p');
+        p.className = 'scroll-hint scroll-hint-js';
+        p.textContent = 'Tabel ini lebih lebar dari layar. Geser ke samping untuk melihat kolom lainnya.';
+        w.before(p);
+      } else if (!wide && ada) prev.remove();
+    });
+  }
+  addEventListener('resize', () => { clearTimeout(hintTimer); hintTimer = setTimeout(hintScroll, 150); });
   function skeleton() {
     return `<div class="skeleton" aria-busy="true" aria-label="Memuat"><div class="sk sk--title"></div><div class="sk sk--line"></div>
       <div class="grid grid--stats" style="margin-top:22px">${'<div class="sk sk--card"></div>'.repeat(4)}</div><div class="sk sk--table"></div></div>`;
@@ -338,12 +356,15 @@
         <td data-label="Jatuh tempo" class="nowrap">${tgl(i.dueDate)}${i.overdue ? `<span class="sub" style="color:var(--red)">lewat ${i.overdueDays} hari</span>` : ''}</td>
         <td class="num" data-label="Jumlah"><strong>${rp(i.amount)}</strong></td>
         <td class="actions"><button class="btn btn--ghost btn--sm btn--wa" data-remind="${i.id}" title="Kirim pengingat lewat WhatsApp">${D.ico('wa')}Ingatkan</button><button class="btn btn--ghost btn--sm" data-pay="${i.id}">Tandai lunas</button></td></tr>`).join('')}</tbody></table>` : `<div class="empty empty--calm">${emptyText}</div>`;
-    const todoCount = todoItems(s).reduce((a, [n]) => a + n, 0);
+    const todo = todoItems(s);
+    const todoCount = todo.reduce((a, [n]) => a + n, 0);
+    // Kalimat ringkasan menyebut pekerjaan terbesar, bukan "19 hal" yang tidak menjelaskan apa pun.
+    const todoRinci = [...todo].sort((a, b) => b[0] - a[0]).slice(0, 3).map(([n, , , , label]) => `<strong>${n}</strong> ${label}`).join(', ');
     main.innerHTML = `
       <section class="hello">
         <div><p class="hello__kicker">${D.longDate(s.today)}</p>
-          <h1>${D.greet()}, ${esc((cache.settings?.ownerName || 'Admin').split(' ')[0])}.</h1>
-          <p>${todoCount ? `Ada <strong>${todoCount} hal</strong> yang menunggu Anda hari ini${s.overdue ? `, termasuk <strong>${s.overdue} tagihan telat</strong>` : ''}.` : 'Semua beres hari ini. Tidak ada yang mendesak.'}${s.newInvoices ? ` ${s.newInvoices} tagihan baru dibuat otomatis.` : ''}</p></div>
+          <h1>Horas, ${esc(cache.settings?.ownerName || 'Admin')}.</h1>
+          <p>${todoCount ? `Ada <strong>${todoCount} pekerjaan</strong> menunggu: ${todoRinci}${s.overdue ? `, termasuk <strong>${s.overdue} tagihan telat</strong>` : ''}.` : 'Semua beres hari ini. Tidak ada yang mendesak.'}${s.newInvoices ? ` ${s.newInvoices} tagihan baru dibuat otomatis.` : ''}</p></div>
         <div class="hello__actions"><a class="btn btn--ghost" href="/" target="_blank" rel="noopener">Lihat website</a><a class="btn btn--light" href="#tagihan">Buka tagihan</a></div>
       </section>${sample}
       <div class="grid grid--stats grid--hero">
@@ -383,27 +404,28 @@
     bindInvoiceActions(inv);
   }
 
+  // [jumlah, tujuan, kalimat lengkap, mendesak, label pendek untuk ringkasan]
   function todoItems(s) {
     return [
-      [s.chat?.unreadThreads, '#chat', 'chat dari website belum dibalas', true],
-      [s.proofsPending, '#tagihan', 'bukti bayar menunggu dicek', true],
-      [s.contractDecisions, '#kontrak', 'penghuni memilih perpanjang atau berhenti', true],
-      [s.waitlistToNotify, '#tunggu', 'calon penyewa perlu dikabari, ada kamar kosong', true],
-      [s.contractsEnding, '#kontrak', 'kontrak berakhir dalam 30 hari tanpa keputusan', false],
-      [s.contractsPending, '#kontrak', 'kontrak menunggu persetujuan penghuni', false],
-      [s.tenantsWithoutContract, '#penghuni', 'penghuni aktif belum punya kontrak', false],
-      [s.newSurveys, '#survei', 'permintaan survei baru', false],
-      [s.openIssues, '#kerusakan', 'laporan kerusakan terbuka', false],
-      [s.market?.approvals, '#persetujuan', 'transaksi Kos Sekitar menunggu persetujuan', true],
-      [s.market?.refunds, '#persetujuan', 'refund perlu dipantau', true],
-      [s.market?.noResponse, '#reservasi', 'reservasi belum direspons pemilik', true],
-      [s.market?.leadsNew, '#reservasi', 'reservasi baru (semua kos)', false],
-      [s.market?.feeOverdue, '#fee', 'fee pemilik lewat batas bayar', false],
-      [s.market?.applications, '#daftar', 'pendaftaran mitra baru menunggu ditinjau', true],
-      [s.market?.partnersPending, '#mitra', 'kos mitra minta ditampilkan di website', true],
-      [s.market?.feeToReturn, '#persetujuan', 'fee perlu dikembalikan ke pemilik (refund)', false],
-      [s.community?.listingsNew, '#titip', 'titip jualan/jasa baru menunggu dicek', true],
-      [s.community?.placesSuggested, '#tempat', 'usulan tempat sekitar menunggu dicek', false],
+      [s.chat?.unreadThreads, '#chat', 'chat dari website belum dibalas', true, 'chat'],
+      [s.proofsPending, '#tagihan', 'bukti bayar menunggu dicek', true, 'bukti bayar'],
+      [s.contractDecisions, '#kontrak', 'penghuni memilih perpanjang atau berhenti', true, 'keputusan kontrak'],
+      [s.waitlistToNotify, '#tunggu', 'calon penyewa perlu dikabari, ada kamar kosong', true, 'calon penyewa'],
+      [s.contractsEnding, '#kontrak', 'kontrak berakhir dalam 30 hari tanpa keputusan', false, 'kontrak berakhir'],
+      [s.contractsPending, '#kontrak', 'kontrak menunggu persetujuan penghuni', false, 'kontrak'],
+      [s.tenantsWithoutContract, '#penghuni', 'penghuni aktif belum punya kontrak', false, 'kontrak kosong'],
+      [s.newSurveys, '#survei', 'permintaan survei baru', false, 'survei'],
+      [s.openIssues, '#kerusakan', 'laporan kerusakan terbuka', false, 'kerusakan'],
+      [s.market?.approvals, '#persetujuan', 'transaksi Kos Sekitar menunggu persetujuan', true, 'persetujuan'],
+      [s.market?.refunds, '#persetujuan', 'refund perlu dipantau', true, 'refund'],
+      [s.market?.noResponse, '#reservasi', 'reservasi belum direspons pemilik', true, 'reservasi'],
+      [s.market?.leadsNew, '#reservasi', 'reservasi baru (semua kos)', false, 'reservasi baru'],
+      [s.market?.feeOverdue, '#fee', 'fee pemilik lewat batas bayar', false, 'fee telat'],
+      [s.market?.applications, '#daftar', 'pendaftaran mitra baru menunggu ditinjau', true, 'pendaftaran mitra'],
+      [s.market?.partnersPending, '#mitra', 'kos mitra minta ditampilkan di website', true, 'kos mitra'],
+      [s.market?.feeToReturn, '#persetujuan', 'fee perlu dikembalikan ke pemilik (refund)', false, 'refund fee'],
+      [s.community?.listingsNew, '#titip', 'titip jualan/jasa baru menunggu dicek', true, 'titip jualan'],
+      [s.community?.placesSuggested, '#tempat', 'usulan tempat sekitar menunggu dicek', false, 'usulan tempat'],
     ].filter(([n]) => n);
   }
   function todoPanel(s) {
@@ -503,7 +525,7 @@
       if (invFilter === 'lunas') list = list.filter((i) => i.status === 'lunas').sort((a, b) => (b.paidAt || '').localeCompare(a.paidAt || ''));
       const q = invQuery.toLowerCase();
       if (q) list = list.filter((i) => `${i.tenantName} ${i.roomCode} ${i.periodLabel}`.toLowerCase().includes(q));
-      $('#invTable').innerHTML = list.length ? `<table><thead><tr><th>Penghuni</th><th>Periode</th><th>Jatuh tempo</th><th class="num">Jumlah</th><th>Status</th><th></th></tr></thead><tbody>${list.map((i) => `<tr>
+      $('#invTable').innerHTML = list.length ? `<table><thead><tr><th>Penghuni</th><th>Periode</th><th>Jatuh tempo</th><th class="num">Jumlah</th><th>Status</th><th class="actions"></th></tr></thead><tbody>${list.map((i) => `<tr>
         <td data-label="Penghuni"><div class="who-cell">${window.BonaDash.avatar(i.tenantName)}<div><strong>${esc(i.tenantName)}</strong><span class="sub">Kamar ${esc(i.roomCode)}, ${esc(propName(i.propertyId))}</span></div></div></td>
         <td data-label="Periode">${esc(i.periodLabel)}${i.cycle !== 'bulanan' && CYCLE_NAME[i.cycle] ? `<span class="sub">Sewa ${CYCLE_NAME[i.cycle].toLowerCase()}</span>` : ''}</td>
         <td data-label="Jatuh tempo">${tgl(i.dueDate)}${i.overdue ? `<span class="sub" style="color:var(--red)">lewat ${i.overdueDays} hari</span>` : ''}${i.lastRemindedAt ? `<span class="sub">Diingatkan ${tgl(i.lastRemindedAt)}</span>` : ''}</td>
@@ -549,7 +571,7 @@
     const [tenants, rooms] = await Promise.all([get('/tenants'), get('/rooms')]);
     const draw = () => {
       const list = tenants.filter((t) => tenantFilter === 'semua' || t.status === tenantFilter);
-      $('#tnTable').innerHTML = list.length ? `<table><thead><tr><th>Nama</th><th>Kamar</th><th>Sewa</th><th>Mulai</th><th>Akun</th><th>Tagihan</th><th></th></tr></thead><tbody>${list.map((t) => `<tr>
+      $('#tnTable').innerHTML = list.length ? `<table><thead><tr><th>Nama</th><th>Kamar</th><th>Sewa</th><th>Mulai</th><th>Akun</th><th>Tagihan</th><th class="actions"></th></tr></thead><tbody>${list.map((t) => `<tr>
         <td data-label="Nama"><div class="who-cell">${window.BonaDash.avatar(t.name)}<div><a href="#penghuni?id=${t.id}"><strong>${esc(t.name)}</strong></a><span class="sub">${esc(t.phone || 'Belum ada nomor WA')}${t.occupation ? `, ${esc(t.occupation)}` : ''}</span></div></div></td>
         <td data-label="Kamar">${esc(t.room?.code || '-')}<span class="sub">${esc(propName(t.room?.propertyId))}</span></td>
         <td data-label="Sewa">${rp(t.rentAmount)}<span class="sub">per ${cycleWord(t.rentCycle)}${t.coName ? ', 2 orang' : ''}</span></td>
@@ -660,7 +682,7 @@
       props.map((p) => {
         const list = rooms.filter((r) => r.propertyId === p.id);
         return `<div class="room-head"><h2>${esc(p.name)}</h2><span class="muted small">${list.filter((r) => r.effectiveStatus === 'kosong').length} kosong dari ${list.length} kamar</span></div>
-        <div class="table-wrap">${list.length ? `<table class="table--rooms"><colgroup><col style="width:10%"><col style="width:22%"><col style="width:12%"><col style="width:13%"><col style="width:15%"><col style="width:18%"><col style="width:10%"></colgroup><thead><tr><th>Kamar</th><th>Tipe</th><th class="num">Bulanan</th><th class="num">Tahunan</th><th>Status</th><th>Penghuni</th><th></th></tr></thead><tbody>${list.map((r) => `<tr>
+        <div class="table-wrap">${list.length ? `<table class="table--rooms"><colgroup><col style="width:10%"><col style="width:22%"><col style="width:12%"><col style="width:13%"><col style="width:15%"><col style="width:18%"><col style="width:10%"></colgroup><thead><tr><th>Kamar</th><th>Tipe</th><th class="num">Bulanan</th><th class="num">Tahunan</th><th>Status</th><th>Penghuni</th><th class="actions"></th></tr></thead><tbody>${list.map((r) => `<tr>
           <td data-label="Kamar"><strong>${esc(r.code)}</strong>${r.hidden ? '<span class="sub">Disembunyikan dari website</span>' : ''}</td>
           <td data-label="Tipe">${esc(r.type)}<span class="sub">${[r.sizeM2, r.floor].filter(Boolean).map(esc).join(', ')}${(r.photos || []).length ? `, ${r.photos.length} foto` : ''}</span></td>
           <td class="num" data-label="Bulanan">${rp(r.priceMonthly)}</td>
@@ -823,7 +845,7 @@
     const page = await get(`/surveys?limit=${surveiLimit}`);
     const list = page.items || [];
     main.innerHTML = head('Survei', 'Permintaan survei dari website. Hubungi lewat WhatsApp, lalu ubah statusnya.') +
-      `<div class="table-wrap">${list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Jadwal</th><th>Catatan</th><th>Status</th><th></th></tr></thead><tbody>${list.map((s) => `<tr>
+      `<div class="table-wrap">${list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Jadwal</th><th>Catatan</th><th>Status</th><th class="actions"></th></tr></thead><tbody>${list.map((s) => `<tr>
         <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(s.name)}<div><strong>${esc(s.name)}</strong><span class="sub">${esc(s.phone)}${s.occupation ? `, ${esc(s.occupation)}` : ''}</span></div></div></td>
         <td data-label="Kos & kamar">${esc(s.propertyName)}<span class="sub">${s.roomCode ? `Kamar ${esc(s.roomCode)}` : 'Kamar belum dipilih'}, sewa ${esc(s.duration)}</span></td>
         <td data-label="Jadwal">${tgl(s.date)}<span class="sub">${esc(s.time)}</span></td>
@@ -851,7 +873,7 @@
     const list = await get('/issues');
     const draw = () => {
       const rows = list.filter((i) => issueFilter === 'semua' || (issueFilter === 'terbuka' ? i.status !== 'selesai' : i.status === 'selesai'));
-      $('#issTable').innerHTML = rows.length ? `<table><thead><tr><th>Laporan</th><th>Kamar</th><th>Dilaporkan</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((i) => `<tr>
+      $('#issTable').innerHTML = rows.length ? `<table><thead><tr><th>Laporan</th><th>Kamar</th><th>Dilaporkan</th><th>Status</th><th class="actions"></th></tr></thead><tbody>${rows.map((i) => `<tr>
         <td data-label="Laporan" class="wrap"><strong>${esc(i.title)}</strong><span class="sub">${esc(i.category)}${i.description ? `: ${esc(i.description)}` : ''}</span>${i.ownerNote ? `<span class="sub">Catatan Anda: ${esc(i.ownerNote)}</span>` : ''}</td>
         <td data-label="Kamar">${esc(i.roomCode)}<span class="sub">${esc(i.propertyName)}, ${esc(i.tenantName)}</span></td>
         <td data-label="Dilaporkan" class="nowrap">${tgl(i.createdAt)}</td>
@@ -892,6 +914,13 @@
     const max = Math.max(1, ...rep.months.map((m) => Math.max(m.income, m.expense)));
     const yearOpts = Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i));
     const yExp = exps.filter((e) => e.date.startsWith(repYear));
+    // Kolom per kos dibatasi tiga kos terbesar; sisanya digabung supaya tabel tidak
+    // melebar tanpa batas setiap kali ada kos mitra baru.
+    const propTotal = (p) => rep.months.reduce((sum, m) => sum + (m.byProp[p.id]?.income || 0), 0);
+    const propsSorted = [...rep.properties].sort((a, b) => propTotal(b) - propTotal(a));
+    const propTop = propsSorted.slice(0, 3);
+    const propRest = propsSorted.slice(3);
+    const restIncome = (m) => propRest.reduce((sum, p) => sum + (m.byProp[p.id]?.income || 0), 0);
     main.innerHTML = head('Laporan', 'Uang masuk dihitung dari tagihan yang ditandai lunas, menurut tanggal bayar.',
       `<select class="inline" id="repYear" aria-label="Tahun">${yearOpts.map((y) => `<option ${y === repYear ? 'selected' : ''}>${y}</option>`).join('')}</select>
        <button class="btn btn--ghost" id="csvBtn">Unduh CSV (Excel)</button>
@@ -906,11 +935,12 @@
         <div class="bars" role="img" aria-label="Grafik uang masuk dan pengeluaran per bulan">${rep.months.map((m, i) => `<div class="bars__col" title="${BULAN[i]}: masuk ${rp(m.income)}, keluar ${rp(m.expense)}"><div class="bars__pair"><span class="bars__in" style="height:${(m.income / max) * 100}%"></span><span class="bars__out" style="height:${(m.expense / max) * 100}%"></span></div><span class="bars__lbl">${BULAN[i]}</span></div>`).join('')}</div>
         <div class="legend"><span><i class="c-terisi"></i>Uang masuk</span><span><i class="c-perbaikan"></i>Pengeluaran</span></div>
       </div>
-      <div class="table-wrap mt"><table class="table--keep"><thead><tr><th>Bulan</th>${rep.properties.map((p) => `<th class="num">${esc(p.name)}</th>`).join('')}<th class="num">Total masuk</th><th class="num">Pengeluaran</th><th class="num">Selisih</th></tr></thead><tbody>
-        ${rep.months.map((m, i) => `<tr><td data-label="Bulan">${BULAN[i]} ${repYear}</td>${rep.properties.map((p) => `<td class="num" data-label="${esc(p.name)}">${rp(m.byProp[p.id]?.income)}</td>`).join('')}<td class="num" data-label="Total masuk"><strong>${rp(m.income)}</strong></td><td class="num" data-label="Pengeluaran">${rp(m.expense)}</td><td class="num" data-label="Selisih">${rp(m.net)}</td></tr>`).join('')}
+      <div class="table-wrap mt"><table class="table--keep"><thead><tr><th>Bulan</th>${propTop.map((p) => `<th class="num">${esc(p.name)}</th>`).join('')}${propRest.length ? `<th class="num" title="${esc(propRest.map((p) => p.name).join(', '))}">Kos lain (${propRest.length})</th>` : ''}<th class="num">Total masuk</th><th class="num">Pengeluaran</th><th class="num">Selisih</th></tr></thead><tbody>
+        ${rep.months.map((m, i) => `<tr><td data-label="Bulan">${BULAN[i]} ${repYear}</td>${propTop.map((p) => `<td class="num" data-label="${esc(p.name)}">${rp(m.byProp[p.id]?.income)}</td>`).join('')}${propRest.length ? `<td class="num" data-label="Kos lain (${propRest.length})">${rp(restIncome(m))}</td>` : ''}<td class="num" data-label="Total masuk"><strong>${rp(m.income)}</strong></td><td class="num" data-label="Pengeluaran">${rp(m.expense)}</td><td class="num" data-label="Selisih">${rp(m.net)}</td></tr>`).join('')}
       </tbody></table></div>
+      ${propRest.length ? `<p class="scroll-hint">"Kos lain" menggabungkan ${propRest.length} kos dengan uang masuk terkecil tahun ini: ${esc(propRest.map((p) => p.name).join(', '))}. Daftar lengkapnya ada di CSV.</p>` : ''}
       <div class="room-head"><h2>Pengeluaran ${repYear}</h2></div>
-      <div class="table-wrap">${yExp.length ? `<table><thead><tr><th>Tanggal</th><th>Kategori</th><th>Kos</th><th>Keterangan</th><th class="num">Jumlah</th><th></th></tr></thead><tbody>${yExp.map((e) => `<tr>
+      <div class="table-wrap">${yExp.length ? `<table><thead><tr><th>Tanggal</th><th>Kategori</th><th>Kos</th><th>Keterangan</th><th class="num">Jumlah</th><th class="actions"></th></tr></thead><tbody>${yExp.map((e) => `<tr>
         <td data-label="Tanggal">${tgl(e.date)}</td><td data-label="Kategori">${esc(e.category)}</td><td data-label="Kos">${e.propertyId ? esc(propName(e.propertyId)) : 'Umum'}</td><td data-label="Keterangan">${esc(e.note) || '-'}</td><td class="num" data-label="Jumlah">${rp(e.amount)}</td>
         <td class="actions"><button class="btn btn--ghost btn--sm" data-del-exp="${e.id}">Hapus</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Belum ada pengeluaran tercatat tahun ini.</div>'}</div>
       <p class="small muted mt">Catatan pajak: penghasilan kos dikecualikan dari PPh final 10% sewa bangunan (PP 34/2017 Pasal 2 ayat 3), jadi diperlakukan sebagai penghasilan usaha. Pastikan skema yang berlaku untuk Anda ke KPP atau konsultan pajak.</p>`;
@@ -1174,7 +1204,7 @@
     main.innerHTML = head('Kontrak', 'Kontrak sewa digital. Penghuni membaca dan menyetujui di dashboard mereka; PDF tersimpan otomatis.') +
       (s.tenantsWithoutContract ? `<div class="notice"><p><strong>${s.tenantsWithoutContract} penghuni aktif belum punya kontrak berjalan.</strong> Buat kontrak dari halaman detail penghuni.</p><a class="btn btn--sm" href="#penghuni">Lihat penghuni</a></div>` : '') + `
       <div class="toolbar"><div class="seg" id="ctrSeg">${[['tindakan', 'Perlu tindakan'], ['aktif', 'Berjalan'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${ctrFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
-      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Penghuni</th><th>Nomor</th><th>Masa sewa</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((c) => `<tr>
+      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Penghuni</th><th>Nomor</th><th>Masa sewa</th><th>Status</th><th class="actions"></th></tr></thead><tbody>${rows.map((c) => `<tr>
         <td data-label="Penghuni"><a href="#penghuni?id=${c.tenantId}"><strong>${esc(c.tenantName)}</strong></a><span class="sub">Kamar ${esc(c.roomCode)}, ${esc(c.propertyName)}</span></td>
         <td data-label="Nomor">${esc(c.number)}<span class="sub">${rp(c.rentAmount)} / ${cycleWord(c.rentCycle)}</span></td>
         <td data-label="Masa sewa">${tgl(c.startDate)} – ${tgl(c.endDate)}${c.daysLeft !== null && c.daysLeft >= 0 && c.phase !== 'menunggu' ? `<span class="sub">${c.daysLeft} hari lagi</span>` : ''}</td>
@@ -1475,7 +1505,7 @@
     const rows = list;
     main.innerHTML = head('Daftar tunggu', 'Calon penyewa yang mendaftar saat kos penuh. Begitu ada kamar kosong, mereka otomatis ditandai "Perlu dikabari".') + `
       <div class="toolbar"><div class="seg" id="wlSeg">${[['perlu_dikabari', 'Perlu dikabari'], ['menunggu', 'Menunggu kamar'], ['dikabari', 'Sudah dikabari'], ['semua', 'Semua']].map(([k, l]) => `<button aria-pressed="${wlFilter === k}" data-k="${k}">${l} (${counts[k]})</button>`).join('')}</div></div>
-      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Calon penyewa</th><th>Minat</th><th>Didaftar</th><th>Status</th><th></th></tr></thead><tbody>${rows.map((w) => `<tr>
+      <div class="table-wrap">${rows.length ? `<table><thead><tr><th>Calon penyewa</th><th>Minat</th><th>Didaftar</th><th>Status</th><th class="actions"></th></tr></thead><tbody>${rows.map((w) => `<tr>
         <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(w.name)}<div><strong>${esc(w.name)}</strong><span class="sub">${esc(w.phone)}</span></div></div></td>
         <td data-label="Minat" class="wrap">${esc(w.propertyName)}${w.roomPref ? `<span class="sub">${esc(w.roomPref)}</span>` : ''}${w.budget ? `<span class="sub">Anggaran ${rp(w.budget)}/bulan</span>` : ''}${w.moveDate ? `<span class="sub">Rencana masuk ${tgl(w.moveDate)}</span>` : ''}${w.note ? `<span class="sub">"${esc(w.note)}"</span>` : ''}</td>
         <td data-label="Didaftar">${tgl(w.createdAt)}</td>
@@ -1584,7 +1614,7 @@
     || (l.propertyKind !== 'mitra' && ['baru', 'dp_dikirim'].includes(l.status)) || (l.propertyKind !== 'mitra' && l.visitStatus === 'diminta' && ['baru', 'menunggu_dp'].includes(l.status));
 
   function leadRows(list, empty) {
-    return list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th class="num">DP / fee</th><th></th></tr></thead><tbody>${list.map((l) => `<tr>
+    return list.length ? `<table><thead><tr><th>Calon penyewa</th><th>Kos & kamar</th><th>Sewa</th><th>Status</th><th class="num">DP / fee</th><th class="actions"></th></tr></thead><tbody>${list.map((l) => `<tr>
       <td data-label="Calon penyewa"><div class="who-cell">${window.BonaDash.avatar(l.name)}<div><a href="#reservasi?id=${l.id}"><strong>${esc(l.name)}</strong></a>${l.unread && l.propertyKind !== 'mitra' ? `<span class="unread">${l.unread}</span>` : ''}<span class="sub">${esc(l.phone)}, ${MK.relTime(l.createdAt)}</span></div></div></td>
       <td data-label="Kos & kamar">${esc(l.propertyName)}<span class="sub">${esc(l.roomCode || 'kamar belum dipilih')}, ${l.propertyKind === 'mitra' ? `mitra: ${esc(l.ownerName)}` : 'kos Bonaasina'}</span></td>
       <td data-label="Sewa">${esc(l.periodLabel)}<span class="sub">mulai ${tgl(l.moveDate)}${l.people === 2 ? ', 2 orang' : ''}</span></td>
@@ -1792,7 +1822,7 @@
     main.innerHTML = head('Tempat sekitar', 'Warung, toko, laundry, dan tempat penting lain di sekitar kos. Tampil di halaman <a href="/sekitar/" target="_blank" rel="noopener">Info sekitar</a>; pengunjung juga bisa mengusulkan tempat baru.',
       '<a class="btn btn--ghost" href="/sekitar/" target="_blank" rel="noopener">Lihat halaman</a><button class="btn btn--red" id="addPlace">Tambah tempat</button>') + `
       <div class="toolbar"><div class="seg" id="tpSeg">${[['aktif', `Tampil (${n('aktif')})`], ['usulan', `Usulan (${n('usulan')})`], ['tutup', 'Tutup'], ['ditolak', 'Ditolak'], ['semua', 'Semua']].map(([k, t]) => `<button aria-pressed="${tempatFilter === k}" data-k="${k}">${t}</button>`).join('')}</div></div>
-      <div class="table-wrap">${list.length ? `<table><thead><tr><th>Tempat</th><th>Kategori</th><th>Jarak & jam buka</th><th>Status</th><th></th></tr></thead><tbody>${list.map((p) => `<tr>
+      <div class="table-wrap">${list.length ? `<table><thead><tr><th>Tempat</th><th>Kategori</th><th>Jarak & jam buka</th><th>Status</th><th class="actions"></th></tr></thead><tbody>${list.map((p) => `<tr>
         <td data-label="Tempat"><div class="who-cell">${p.photo ? `<img class="av" src="${esc(p.photo)}" alt="" style="object-fit:cover">` : D.avatar(p.name)}<div><strong>${esc(p.name)}</strong><span class="sub">${esc(p.address || p.description || '-')}</span>${p.status === 'usulan' && p.suggestedBy ? `<span class="sub">Diusulkan: ${esc(p.suggestedBy)}</span>` : ''}</div></div></td>
         <td data-label="Kategori">${esc(categories[p.category] || p.category)}</td>
         <td data-label="Jarak & jam">${esc(p.distanceNote || '-')}<span class="sub">${esc(p.openHours || '')}</span></td>
@@ -1902,7 +1932,7 @@
   async function pemilik() {
     const owners = await get('/owners');
     main.innerHTML = head('Pemilik kos', 'Akun untuk pemilik kos mitra. Mereka masuk di /pemilik dengan username & kata sandi dari Anda, lalu wajib mengganti kata sandi.', '<button class="btn btn--red" id="addOwner">Tambah pemilik</button>') +
-      `<div class="table-wrap">${owners.length ? `<table><thead><tr><th>Pemilik</th><th>Username</th><th>Kos</th><th>Login</th><th></th></tr></thead><tbody>${owners.map((o) => `<tr>
+      `<div class="table-wrap">${owners.length ? `<table><thead><tr><th>Pemilik</th><th>Username</th><th>Kos</th><th>Login</th><th class="actions"></th></tr></thead><tbody>${owners.map((o) => `<tr>
         <td data-label="Pemilik"><strong>${esc(o.name)}</strong><span class="sub">${esc(o.phone || '-')}${o.email ? `, ${esc(o.email)}` : ''}</span></td>
         <td data-label="Username"><span class="pill pill--${o.status === 'aktif' ? 'aktif' : 'nonaktif'}">${esc(o.username)}</span></td>
         <td data-label="Kos">${o.properties.length ? o.properties.map((p) => `${esc(p.name)} <span class="sub">${PROP_STATUS[p.status]}</span>`).join('') : '<span class="muted">Belum ada</span>'}</td>
