@@ -39,7 +39,7 @@ h3 { font-family: var(--sans); font-weight: 600; font-size: 1.05rem; line-height
 p { margin: 0; }
 :focus-visible { outline: 3px solid var(--red); outline-offset: 3px; border-radius: 6px; }
 
-.skip { position: absolute; left: -999px; top: 8px; display: inline-flex; align-items: center; min-height: 44px; background: var(--ink); color: var(--paper); padding: 8px 12px; border-radius: 8px; z-index: 100; }
+.skip { position: absolute; left: -999px; top: 8px; display: inline-flex; align-items: center; min-height: 44px; background: var(--ink); color: var(--paper); padding: 8px 12px; border-radius: 10px; z-index: 100; }
 .skip:focus { left: 8px; }
 
 /* Tombol */
@@ -89,7 +89,9 @@ p { margin: 0; }
 .nav__brand { display: flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; font-family: var(--serif); font-size: 24px; }
 .nav__brand img { width: 46px; height: auto; }
 .nav__links { display: flex; gap: 4px; margin-left: auto; }
-.nav__links a { padding: 8px 12px; border-radius: 999px; text-decoration: none; font-size: 16px; font-weight: 500; color: var(--ijuk); transition: color .2s, background-color .2s; }
+.nav__links a { white-space: nowrap; padding: 8px 12px; border-radius: 999px; text-decoration: none; font-size: 16px; font-weight: 500; color: var(--ijuk); transition: color .2s, background-color .2s; }
+/* Enam tautan mulai menyempit di bawah 1100px: rapatkan tanpa memotong label. */
+@media (max-width: 1100px) { .nav__links { gap: 0; } .nav__links a { padding: 8px 8px; font-size: 14px; } }
 .nav__links a:hover { color: var(--ink); background: rgba(36, 22, 15, .06); }
 .nav__menu { display: none; border: 1.5px solid var(--line-field); background: var(--paper); color: var(--ink); border-radius: 999px; min-height: 44px; padding: 0 16px; font: 600 14px var(--sans); cursor: pointer; }
 .mobile-menu { position: absolute; left: 0; right: 0; top: 100%; display: grid; gap: 2px; padding: 12px max(var(--gutter), calc((100% - var(--max)) / 2 + var(--gutter))) 20px; background: var(--cream); border-bottom: 1px solid var(--line); box-shadow: 0 24px 40px -24px rgba(36, 22, 15, .35); animation: menuIn .35s var(--ease); }
@@ -189,7 +191,7 @@ p { margin: 0; }
 .prop__fac li::before { content: ""; flex: none; width: 8px; height: 8px; transform: rotate(45deg) translateY(-1px); background: var(--red); }
 .prop__cta { margin-top: 24px; display: flex; gap: 8px; flex-wrap: wrap; }
 .gallery { display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; min-height: 380px; }
-.gallery > * { border-radius: 18px; overflow: hidden; }
+.gallery > * { border-radius: 16px; overflow: hidden; }
 .gallery > :first-child { grid-row: span 2; }
 .gallery img { width: 100%; height: 100%; object-fit: cover; }
 .gallery__item { border: 0; padding: 0; background: var(--ink); cursor: zoom-in; display: block; }
@@ -367,7 +369,7 @@ p { margin: 0; }
 @media (max-width: 760px) { .footer__info { grid-template-columns: 1fr; } .footer__logos { grid-template-columns: 1fr 1fr; } .footer__logos .footer__main { grid-column: 1 / -1; order: -1; } }
 
 /* Lightbox */
-.lightbox { width: min(1100px, calc(100% - 24px)); max-height: calc(100vh - 24px); padding: 0; border: 0; border-radius: 18px; background: var(--ink); color: var(--cream); overflow: hidden; }
+.lightbox { width: min(1100px, calc(100% - 24px)); max-height: calc(100vh - 24px); padding: 0; border: 0; border-radius: 16px; background: var(--ink); color: var(--cream); overflow: hidden; }
 .lightbox::backdrop { background: rgba(20, 12, 8, .82); }
 .lightbox[open] { animation: lbIn .35s var(--ease); }
 @keyframes lbIn { from { opacity: 0; transform: scale(.97); } }
