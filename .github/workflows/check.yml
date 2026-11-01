@@ -19,3 +19,5 @@ jobs:
         run: node scripts/check-comments.mjs --strict
       - name: Jalankan penjaga aturan UI
         run: node scripts/check-ui.mjs
+      - name: Jalankan penjaga CSP
+        run: node scripts/check-csp.mjs

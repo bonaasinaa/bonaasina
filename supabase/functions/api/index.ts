@@ -302,7 +302,8 @@ async function readImage(req: Request, maxBytes = 5 * 1024 * 1024) {
   return { buf, type, ext };
 }
 async function putFile(bucket: string, path: string, buf: Uint8Array, type: string) {
-  const { error } = await sb.storage.from(bucket).upload(path, buf, { contentType: type, upsert: false });
+  // Path selalu mengandung stempel waktu, jadi isinya tidak pernah ditimpa: aman di-cache lama.
+  const { error } = await sb.storage.from(bucket).upload(path, buf, { contentType: type, upsert: false, cacheControl: '31536000' });
   if (error) { console.error(error); throw new HttpError(500, 'Gagal menyimpan file.'); }
 }
 async function signedUrl(path: string) {
