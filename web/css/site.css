@@ -361,8 +361,8 @@ p { margin: 0; }
 /* Footer */
 .footer { margin-top: clamp(80px, 10vw, 140px); background: var(--paper); border-top: 1px solid var(--line); padding: 56px var(--gutter) 28px; }
 .footer__logos { max-width: var(--max); margin: 0 auto; display: grid; grid-template-columns: 1fr 1.3fr 1fr; align-items: end; gap: clamp(12px, 3vw, 48px); }
-.footer__logos img { width: 100%; height: auto; max-width: 300px; justify-self: center; }
-.footer__logos .footer__main { max-width: 420px; }
+.footer__logos img { width: 100%; height: auto; aspect-ratio: 30 / 34; object-fit: contain; max-width: 300px; justify-self: center; }
+.footer__logos .footer__main { max-width: 420px; aspect-ratio: 42 / 37; }
 .footer__info { max-width: var(--max); margin: 40px auto 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding-top: 28px; border-top: 1px solid var(--line); font-size: 16px; color: var(--ijuk); }
 .footer__info strong { display: block; color: var(--ink); margin-bottom: 4px; }
 .footer__small { max-width: var(--max); margin: 32px auto 0; font-size: 13px; color: var(--ijuk); }
