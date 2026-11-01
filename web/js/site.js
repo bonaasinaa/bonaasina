@@ -460,11 +460,17 @@
     startRotator();
     if (reduce) return;
 
-    // Lenis: scroll halus, juga untuk tautan jangkar
+    // Lenis: scroll halus, juga untuk tautan jangkar. Satu jam saja: kalau GSAP ada,
+    // ticker-nya yang memutar Lenis supaya scroll dan animasi tidak berlomba.
     if (window.Lenis) {
       const lenis = new Lenis({ duration: 1.1, smoothWheel: true });
-      const raf = (t) => { lenis.raf(t); requestAnimationFrame(raf); };
-      requestAnimationFrame(raf);
+      if (window.gsap) {
+        gsap.ticker.add((t) => lenis.raf(t * 1000));
+        gsap.ticker.lagSmoothing(0);
+      } else {
+        const raf = (t) => { lenis.raf(t); requestAnimationFrame(raf); };
+        requestAnimationFrame(raf);
+      }
       document.addEventListener('click', (e) => {
         const a = e.target.closest('a[href^="#"]'); if (!a) return;
         const id = a.getAttribute('href'); if (id.length < 2) return;
@@ -486,6 +492,27 @@
         gsap.registerPlugin(ScrollTrigger);
         // Logo sedikit tenggelam saat hero discroll lewat
         if (matchMedia('(min-width: 861px)').matches) gsap.to('#heroLogo', { yPercent: 10, scale: .94, ease: 'none', scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true } });
+      }
+    }
+
+    // Bagian di bawah hero muncul saat masuk layar. Keadaan tersembunyi hanya dipasang
+    // kalau GSAP siap, dan properti dibersihkan bila animasinya gagal dibuat.
+    if (window.gsap && window.ScrollTrigger) {
+      gsap.registerPlugin(ScrollTrigger);
+      const reveal = gsap.utils.toArray('[data-reveal]');
+      if (reveal.length) {
+        try {
+          gsap.set(reveal, { y: 14, opacity: 0 });
+          ScrollTrigger.batch(reveal, {
+            start: 'top 88%', once: true,
+            onEnter: (batch) => gsap.to(batch, { y: 0, opacity: 1, duration: .4, ease: 'power1.out', stagger: .06, overwrite: true }),
+          });
+          // Tinggi halaman berubah setelah foto, font, dan daftar kamar selesai dimuat.
+          addEventListener('load', () => ScrollTrigger.refresh());
+          document.fonts?.ready.then(() => ScrollTrigger.refresh());
+        } catch {
+          gsap.set(reveal, { clearProps: 'opacity,transform' });
+        }
       }
     }
   }
