@@ -1,9 +1,11 @@
 # Lighthouse, catatan putaran
 
-Lighthouse 12.8.2 dijalankan dengan Chromium bawaan Hermes: mode mobile bawaan untuk
+Lighthouse 13.6.0 dijalankan dengan Chromium bawaan Hermes: mode mobile bawaan untuk
 beranda, `/kos/asina/`, dan satu putaran desktop untuk beranda. Pembanding kedua
 adalah salinan branch yang disajikan lokal, jadi CSP tidak berlaku di sana (server
 lokal tidak mengirim `_headers`).
+
+Versi dibaca dari `lighthouseVersion` di setiap berkas laporan (ketujuhnya 13.6.0), karena `npx lighthouse` tanpa pin memasang versi terbaru tanpa pemberitahuan.
 
 ## Angka awal di produksi
 
