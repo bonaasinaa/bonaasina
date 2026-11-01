@@ -261,6 +261,21 @@
     else { pending = text; const mine = { sender: 'pengunjung', body: text }; botLog.push(mine); saveBotLog(); addBubbles([mine]); showNameCard(); }
   });
 
+  // CSS panel dimuat saat widget dipakai. Di head ia memblokir render 5 halaman
+  // padahal panelnya belum tentu tampil (admin bisa mematikannya).
+  function loadChatCss() {
+    return new Promise((resolve) => {
+      if (document.querySelector('link[data-livechat-css]')) return resolve();
+      const link = document.createElement('link');
+      link.rel = 'stylesheet'; link.href = '/css/livechat.css?v=20261101a';
+      link.setAttribute('data-livechat-css', '1');
+      link.addEventListener('load', resolve, { once: true });
+      link.addEventListener('error', resolve, { once: true });
+      document.head.appendChild(link);
+      setTimeout(resolve, 1200);
+    });
+  }
+
   // Mulai
   async function init() {
     let out;
@@ -274,6 +289,7 @@
     const wa = document.getElementById('waFloat');
     if (wa) { wa.hidden = true; wa.closest('aside')?.setAttribute('hidden', ''); }
     setWa();
+    await loadChatCss();
     document.body.appendChild(root);
     root.classList.add('is-ready');
     setStatus();
