@@ -2,7 +2,7 @@
    Arah: kanvas terang hangat, kartu putih tipis, menu samping melayang dengan pil aktif gelap, satu aksen merah ulos; skala teks 11/12/13/14/16, judul 20–32 serif, jarak kelipatan 4, radius 10/12/14/16/24. */
 :root {
   --canvas: #F3EFE9; --surface: #FFFFFF; /* dulu bernama --paper; namanya bentrok dengan site.css yang lebih krem */ --soft: #FAF7F3; --cream: #F7EDE3; --field: #FFFFFF;
-  --ink: #221510; --ink-2: #3A2A21; --ijuk: #6E5547; --mute: #8C7769;
+  --ink: #221510; --ink-2: #3A2A21; --ijuk: #6E5547; --mute: #7B685C;
   --red: #8E1B1B; --red-deep: #6E1212; --red-50: #F8E7E3; --green: #2F6B3F; --green-50: #E6F0E5; --amber: #8A5A0B; --amber-50: #F8EDD3; --blue: #2B4C7E; --blue-50: #E6ECF5;
   --red-bg: var(--red-50); --green-bg: var(--green-50); --amber-bg: var(--amber-50); --blue-bg: var(--blue-50);
   --line: rgba(34, 21, 16, .08); --line-strong: rgba(34, 21, 16, .18); --line-field: rgba(34, 21, 16, .48);
@@ -27,7 +27,7 @@ body { background: var(--canvas); font-size: 14px; line-height: 1.5; }
 .side__nav a[aria-current="page"] { background: var(--ink); color: #fff; font-weight: 600; box-shadow: 0 8px 18px -10px rgba(34, 21, 16, .7); }
 .side__nav a[aria-current="page"] svg { opacity: 1; color: #F2B8A8; }
 .side__nav a[aria-current="page"] .badge { box-shadow: 0 0 0 2px var(--ink); }
-.side__group, button.side__group { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 8px 4px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+.side__group, button.side__group { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; margin: 12px 8px 4px; font: 700 11px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
 button.side__group { width: calc(100% - 20px); border: 0; background: none; cursor: pointer; padding: 2px 0; }
 button.side__group:hover { color: var(--ink); }
 button.side__group::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform .25s var(--ease); }
