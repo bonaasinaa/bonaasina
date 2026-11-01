@@ -33,6 +33,13 @@ const toSnake = (r: Row) => Object.fromEntries(Object.entries(r).map(([k, v]) =>
 
 const str = (v: unknown, max = 500) => String(v ?? '').trim().slice(0, max);
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0; };
+// Harga kamar boleh 0, tetapi negatif atau bukan angka ditolak dengan pesan (dulu menjadi 0 diam-diam).
+function harga(v: unknown, label: string) {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) throw bad(`${label} tidak boleh negatif atau bukan angka.`);
+  return Math.round(n);
+}
 // Potongan deposit boleh 0, tetapi negatif atau bukan angka ditolak dengan pesan (dulu menjadi 0 diam-diam).
 function depositDeduction(v: unknown) {
   if (v === undefined || v === null || v === '') return 0;
@@ -707,7 +714,7 @@ const STATUS_KAMAR = ['kosong', 'terisi', 'dipesan', 'perbaikan'];
 export function roomFromBody(b: Row) {
   const r: Row = {};
   for (const [k, m] of [['propertyId', 60], ['code', 20], ['type', 60], ['floor', 20], ['sizeM2', 20], ['note', 300]] as const) if (b[k] !== undefined) r[k] = str(b[k], m);
-  for (const k of ['priceDaily', 'priceMonthly', 'priceSemester', 'priceYearly', 'extraPersonFee']) if (b[k] !== undefined) r[k] = num(b[k]);
+  for (const [k, label] of [['priceDaily', 'Harga harian'], ['priceMonthly', 'Harga bulanan'], ['priceSemester', 'Harga semesteran'], ['priceYearly', 'Harga tahunan'], ['extraPersonFee', 'Biaya orang tambahan']] as const) if (b[k] !== undefined) r[k] = harga(b[k], label);
   if (b.capacity !== undefined) r.capacity = Number(b.capacity) === 2 ? 2 : 1;
   if (b.extraPersonPeriod !== undefined) r.extraPersonPeriod = b.extraPersonPeriod === 'tahunan' ? 'tahunan' : 'bulanan';
   if (b.facilities !== undefined) r.facilities = strList(b.facilities);
